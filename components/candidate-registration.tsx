@@ -1142,6 +1142,9 @@ function Step3EmploymentAndSkills({
     fetchSkills()
   })
 
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+
   const indianCities = [
     { city: "Mumbai", state: "Maharashtra" },
     { city: "Delhi", state: "Delhi" },
@@ -1660,7 +1663,7 @@ function Step3EmploymentAndSkills({
                       value={currentEntry.companyName}
                       onChange={(e) => setCurrentEntry({ ...currentEntry, companyName: e.target.value })}
                       placeholder="Eg. Amazon"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
 
@@ -1673,66 +1676,71 @@ function Step3EmploymentAndSkills({
                       value={currentEntry.currentJobTitle}
                       onChange={(e) => setCurrentEntry({ ...currentEntry, currentJobTitle: e.target.value })}
                       placeholder="Eg. Software Developer"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2 relative">
-                  <Label className="text-sm" htmlFor="currentCity">
-                    Current city*
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="currentCity"
-                      value={currentEntry.currentCity}
-                      onChange={(e) => {
-                        setCurrentEntry({ ...currentEntry, currentCity: e.target.value })
-                        setShowCityDropdown(true)
-                      }}
-                      onFocus={() => setShowCityDropdown(true)}
-                      placeholder="Select city"
-                      className="h-10 text-sm"
-                    />
-                    {currentEntry.currentCity && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentEntry({ ...currentEntry, currentCity: "", currentState: "" })
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2 relative">
+                    <Label className="text-sm" htmlFor="currentCity">
+                      Current city*
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="currentCity"
+                        value={currentEntry.currentCity}
+                        onChange={(e) => {
+                          setCurrentEntry({ ...currentEntry, currentCity: e.target.value })
+                          setShowCityDropdown(true)
                         }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                        onFocus={() => setShowCityDropdown(true)}
+                        placeholder="Select city"
+                        className="h-10 text-sm rounded-full"
+                      />
+                      {currentEntry.currentCity && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentEntry({ ...currentEntry, currentCity: "", currentState: "" })
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {showCityDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {indianCities
+                          .filter((c) => c.city.toLowerCase().includes(currentEntry.currentCity.toLowerCase()))
+                          .map((c) => (
+                            <button
+                              key={c.city}
+                              type="button"
+                              onClick={() => {
+                                setCurrentEntry({ ...currentEntry, currentCity: c.city, currentState: c.state })
+                                setShowCityDropdown(false)
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                            >
+                              {c.city}
+                            </button>
+                          ))}
+                      </div>
                     )}
                   </div>
-                  {showCityDropdown && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {indianCities
-                        .filter((c) => c.city.toLowerCase().includes(currentEntry.currentCity.toLowerCase()))
-                        .map((c) => (
-                          <button
-                            key={c.city}
-                            type="button"
-                            onClick={() => {
-                              setCurrentEntry({ ...currentEntry, currentCity: c.city, currentState: c.state })
-                              setShowCityDropdown(false)
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                          >
-                            {c.city}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
 
-                {currentEntry.currentState && (
                   <div className="space-y-2">
                     <Label className="text-sm">State</Label>
-                    <Input value={currentEntry.currentState} disabled className="h-10 text-sm text-muted-foreground" />
+                    <Input
+                      value={currentEntry.currentState}
+                      disabled
+                      placeholder="Auto-filled"
+                      className="h-10 text-sm text-muted-foreground rounded-full"
+                    />
                   </div>
-                )}
+                </div>
 
                 <div className="space-y-2">
                   <Label className="text-sm">Duration*</Label>
@@ -1741,7 +1749,7 @@ function Step3EmploymentAndSkills({
                       value={currentEntry.durationFrom}
                       onChange={(value) => setCurrentEntry({ ...currentEntry, durationFrom: value })}
                       placeholder="Start date"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                     <span className="text-xs text-muted-foreground font-medium">To</span>
                     <MonthYearPicker
@@ -1749,7 +1757,7 @@ function Step3EmploymentAndSkills({
                       onChange={(value) => setCurrentEntry({ ...currentEntry, durationTo: value })}
                       placeholder="Present"
                       disabled={currentEntry.currentlyEmployed === "yes"}
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
                 </div>
@@ -1757,16 +1765,21 @@ function Step3EmploymentAndSkills({
                 <div className="space-y-2">
                   <Label className="text-sm">Annual salary*</Label>
                   <div className="flex gap-2">
-                    <select className="w-20 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <select className="w-20 rounded-full border border-input bg-background px-3 py-2 text-sm">
                       <option>₹</option>
                     </select>
                     <Input
                       id="annualSalary"
-                      type="number"
-                      value={currentEntry.annualSalary}
-                      onChange={(e) => setCurrentEntry({ ...currentEntry, annualSalary: e.target.value })}
+                      type="text"
+                      value={currentEntry.annualSalary ? Number(currentEntry.annualSalary).toLocaleString("en-IN") : ""}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/,/g, "")
+                        if (/^\d*$/.test(value)) {
+                          setCurrentEntry({ ...currentEntry, annualSalary: value })
+                        }
+                      }}
                       placeholder="Eg. 5,64,000"
-                      className="flex-1 h-10 text-sm"
+                      className="flex-1 h-10 text-sm rounded-full"
                     />
                     <span className="flex items-center text-sm text-muted-foreground">per year</span>
                   </div>
@@ -1789,7 +1802,11 @@ function Step3EmploymentAndSkills({
                   </div>
                 </div>
 
-                <Button type="button" onClick={handleSaveCurrentEmployment} className="w-full h-10">
+                <Button
+                  type="button"
+                  onClick={handleSaveCurrentEmployment}
+                  className="w-full md:w-auto md:px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
+                >
                   {formData.currentEmployment ? "Update Employment Entry" : "Save Current Employment"}
                 </Button>
               </div>
@@ -1899,7 +1916,7 @@ function Step3EmploymentAndSkills({
                           setCurrentAdditionalEntry({ ...currentAdditionalEntry, companyName: e.target.value })
                         }
                         placeholder="Eg. Microsoft"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm rounded-full"
                       />
                     </div>
 
@@ -1914,7 +1931,7 @@ function Step3EmploymentAndSkills({
                           setCurrentAdditionalEntry({ ...currentAdditionalEntry, jobTitle: e.target.value })
                         }
                         placeholder="Eg. Senior Developer"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm rounded-full"
                       />
                     </div>
                   </div>
@@ -1926,19 +1943,19 @@ function Step3EmploymentAndSkills({
                         value={currentAdditionalEntry.fromDate}
                         onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, fromDate: value })}
                         placeholder="Start date"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm rounded-full"
                       />
                       <span className="text-xs text-muted-foreground font-medium">To</span>
                       <MonthYearPicker
                         value={currentAdditionalEntry.toDate}
                         onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, toDate: value })}
                         placeholder="End date"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm rounded-full"
                       />
                     </div>
                   </div>
 
-                  <Button type="button" onClick={handleSaveAdditionalEmployment} className="w-full h-10">
+                  <Button type="button" onClick={handleSaveAdditionalEmployment} className="w-full h-10 rounded-full">
                     {editingAdditionalIndex !== null ? "Update Previous Employment" : "Add Previous Employment"}
                   </Button>
                 </div>
@@ -1949,7 +1966,7 @@ function Step3EmploymentAndSkills({
                   type="button"
                   variant="outline"
                   onClick={() => setShowAdditionalEmploymentForm(true)}
-                  className="w-full h-10"
+                  className="w-full h-10 rounded-full"
                 >
                   + Add Previous Employment
                 </Button>
@@ -2021,7 +2038,7 @@ function Step3EmploymentAndSkills({
                 setSkillSearch(e.target.value)
                 setShowSkillDropdown(true)
               }}
-              className="relative h-10 text-sm"
+              className="relative h-10 text-sm rounded-full"
               onFocus={() => setShowSkillDropdown(true)}
               placeholder="Search or add skills..."
             />
@@ -2070,7 +2087,7 @@ function Step3EmploymentAndSkills({
             )}
           </div>
 
-          {/* Display suggested skills */}
+          {/* Suggested skills */}
           {!skillSearch && suggestedSkills.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {suggestedSkills.map((skill) => (
@@ -2088,31 +2105,72 @@ function Step3EmploymentAndSkills({
           )}
         </div>
 
-        {/* Industry */}
-        <div className="space-y-2">
+        <div className="space-y-2 relative">
           <Label className="text-sm">
             Industry<span className="text-red-500">*</span>
           </Label>
-          <select
-            value={formData.industry}
-            onChange={(e) => {
-              updateFormData("industry", e.target.value)
-              updateFormData("department", "") // Reset department when industry changes
-              updateFormData("roleCategory", "") // Reset roleCategory
-              updateFormData("jobRole", "") // Reset jobRole
-            }}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-          >
-            <option value="">Select industry</option>
-            {industries.map((industry) => (
-              <option key={industry} value={industry}>
-                {industry}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <Input
+              value={formData.industry || industrySearch}
+              onChange={(e) => {
+                setIndustrySearch(e.target.value)
+                updateFormData("industry", "")
+                setShowIndustryDropdown(true)
+                // Reset dependent fields
+                updateFormData("department", "")
+                updateFormData("roleCategory", "")
+                updateFormData("jobRole", "")
+              }}
+              onFocus={() => setShowIndustryDropdown(true)}
+              placeholder="Type to search industries"
+              className="h-10 text-sm rounded-full"
+            />
+            {(formData.industry || industrySearch) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIndustrySearch("")
+                  updateFormData("industry", "")
+                  updateFormData("department", "")
+                  updateFormData("roleCategory", "")
+                  updateFormData("jobRole", "")
+                  setShowIndustryDropdown(false)
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {showIndustryDropdown && (
+            <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+              {industries
+                .filter((industry) =>
+                  industry.toLowerCase().includes((formData.industry || industrySearch).toLowerCase()),
+                )
+                .map((industry) => (
+                  <button
+                    key={industry}
+                    type="button"
+                    onClick={() => {
+                      updateFormData("industry", industry)
+                      setIndustrySearch("")
+                      setShowIndustryDropdown(false)
+                      // Reset dependent fields
+                      updateFormData("department", "")
+                      updateFormData("roleCategory", "")
+                      updateFormData("jobRole", "")
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                  >
+                    {industry}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
 
-        {/* Department */}
+        {/* Department - Only show when industry is selected */}
         {formData.industry && (
           <div className="space-y-2">
             <Label className="text-sm">
@@ -2126,7 +2184,7 @@ function Step3EmploymentAndSkills({
                 updateFormData("roleCategory", "")
                 updateFormData("jobRole", "")
               }}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
               disabled={!formData.industry}
             >
               <option value="">Select department</option>
@@ -2136,11 +2194,10 @@ function Step3EmploymentAndSkills({
                 </option>
               ))}
             </select>
-            {!formData.industry && <p className="text-xs text-muted-foreground">Please select an industry first</p>}
           </div>
         )}
 
-        {/* Role Category */}
+        {/* Role Category - Only show when department is selected */}
         {formData.department && (
           <div className="space-y-2">
             <Label className="text-sm">
@@ -2150,9 +2207,9 @@ function Step3EmploymentAndSkills({
               value={formData.roleCategory}
               onChange={(e) => {
                 updateFormData("roleCategory", e.target.value)
-                updateFormData("jobRole", "") // Reset jobRole
+                updateFormData("jobRole", "")
               }}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
             >
               <option value="">Select role category</option>
               {Object.keys(rolesByCategory).map((category) => (
@@ -2164,7 +2221,7 @@ function Step3EmploymentAndSkills({
           </div>
         )}
 
-        {/* Job Role */}
+        {/* Job Role - Only show when role category is selected */}
         {formData.roleCategory && (
           <div className="space-y-2">
             <Label className="text-sm">
@@ -2173,7 +2230,7 @@ function Step3EmploymentAndSkills({
             <select
               value={formData.jobRole}
               onChange={(e) => updateFormData("jobRole", e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
             >
               <option value="">Select job role</option>
               {rolesByCategory[formData.roleCategory]?.map((role) => (
@@ -2344,7 +2401,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                   onFocus={() => setShowCourseDropdown(true)}
                   onBlur={() => setTimeout(() => setShowCourseDropdown(false), 200)}
                   placeholder="Select or type course"
-                  className="h-10 text-sm"
+                  className="h-10 text-sm rounded-full"
                 />
                 {showCourseDropdown && (
                   <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -2403,7 +2460,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                   onFocus={() => setShowSpecializationDropdown(true)}
                   onBlur={() => setTimeout(() => setShowSpecializationDropdown(false), 200)}
                   placeholder="Select or type specialization"
-                  className="h-10 text-sm"
+                  className="h-10 text-sm rounded-full"
                 />
                 {showSpecializationDropdown && (
                   <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -2438,7 +2495,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                 value={formData.university}
                 onChange={(e) => updateFormData("university", e.target.value)}
                 placeholder="Eg. University of Mumbai"
-                className="h-10 text-sm"
+                className="h-10 text-sm rounded-full"
               />
             </div>
 
@@ -2452,7 +2509,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                 value={formData.startingYear}
                 onChange={(e) => updateFormData("startingYear", e.target.value)}
                 placeholder="2018"
-                className="h-10 text-sm"
+                className="h-10 text-sm rounded-full"
               />
             </div>
 
@@ -2466,7 +2523,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                 value={formData.passingYear}
                 onChange={(e) => updateFormData("passingYear", e.target.value)}
                 placeholder="2022"
-                className="h-10 text-sm"
+                className="h-10 text-sm rounded-full"
               />
             </div>
           </div>
@@ -2486,6 +2543,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                   { name: "", issuer: "", issueDate: "", expiryDate: "" },
                 ])
               }}
+              className="rounded-full"
             >
               + Add Certification
             </Button>
@@ -2523,7 +2581,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                       updateFormData("certifications", updated)
                     }}
                     placeholder="e.g., AWS Certified Solutions Architect"
-                    className="h-10 text-sm"
+                    className="h-10 text-sm rounded-full"
                   />
                 </div>
 
@@ -2539,7 +2597,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                       updateFormData("certifications", updated)
                     }}
                     placeholder="e.g., Amazon Web Services"
-                    className="h-10 text-sm"
+                    className="h-10 text-sm rounded-full"
                   />
                 </div>
 
@@ -2555,7 +2613,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                       updated[index].issueDate = e.target.value
                       updateFormData("certifications", updated)
                     }}
-                    className="h-10 text-sm"
+                    className="h-10 text-sm rounded-full"
                   />
                 </div>
 
@@ -2569,7 +2627,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                       updated[index].expiryDate = e.target.value
                       updateFormData("certifications", updated)
                     }}
-                    className="h-10 text-sm"
+                    className="h-10 text-sm rounded-full"
                   />
                 </div>
               </div>
@@ -2596,6 +2654,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                   { title: "", description: "", role: "", startDate: "", endDate: "", technologies: "" },
                 ])
               }}
+              className="rounded-full"
             >
               + Add Project
             </Button>
@@ -2633,7 +2692,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                       updateFormData("projects", updated)
                     }}
                     placeholder="e.g., E-Commerce Platform Development"
-                    className="h-10 text-sm"
+                    className="h-10 text-sm rounded-full"
                   />
                 </div>
 
@@ -2666,7 +2725,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                         updateFormData("projects", updated)
                       }}
                       placeholder="e.g., Full Stack Developer"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
 
@@ -2680,7 +2739,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                         updateFormData("projects", updated)
                       }}
                       placeholder="e.g., React, Node.js, MongoDB"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
 
@@ -2696,7 +2755,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                         updated[index].startDate = e.target.value
                         updateFormData("projects", updated)
                       }}
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
 
@@ -2711,7 +2770,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
                         updateFormData("projects", updated)
                       }}
                       placeholder="Leave empty if ongoing"
-                      className="h-10 text-sm"
+                      className="h-10 text-sm rounded-full"
                     />
                   </div>
                 </div>
@@ -2861,7 +2920,7 @@ function Step5PersonalAndPreferences({
             value={formData.resumeHeadline}
             onChange={(e) => updateFormData("resumeHeadline", e.target.value)}
             placeholder="Eg. Experienced Software Engineer with expertise in AI/ML"
-            className="h-10 text-sm"
+            className="h-10 text-sm rounded-full"
           />
           <p className="text-xs text-gray-500">A brief summary highlighting your key skills and experience.</p>
         </div>
@@ -2872,7 +2931,7 @@ function Step5PersonalAndPreferences({
             Expected Salary
           </Label>
           <div className="flex gap-2">
-            <select className="w-20 rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select className="w-20 rounded-full border border-input bg-background px-3 py-2 text-sm">
               <option>₹</option>
             </select>
             <Input
@@ -2880,7 +2939,7 @@ function Step5PersonalAndPreferences({
               value={formData.preferredSalary}
               onChange={(e) => updateFormData("preferredSalary", e.target.value)} // Handle formatting in Step 3 if needed, or here
               placeholder="Eg. 10,00,000"
-              className="flex-1 h-10 text-sm"
+              className="flex-1 h-10 text-sm rounded-full"
             />
             <span className="flex items-center text-sm text-muted-foreground">per year</span>
           </div>
@@ -2902,7 +2961,7 @@ function Step5PersonalAndPreferences({
                 setTimeout(() => setShowPreferredLocationsDropdown(false), 200)
               }}
               placeholder="Search for locations..."
-              className="h-10 text-sm"
+              className="h-10 text-sm rounded-full"
             />
             {formData.preferredLocations.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
@@ -2986,7 +3045,7 @@ function Step5PersonalAndPreferences({
                 value={formData.dateOfBirth}
                 onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
                 max={new Date().toISOString().split("T")[0]}
-                className="h-10 text-sm"
+                className="h-10 text-sm rounded-full"
               />
             </div>
 
@@ -3040,6 +3099,7 @@ function Step5PersonalAndPreferences({
                     { language: "", read: false, write: false, speak: false },
                   ])
                 }}
+                className="rounded-full"
               >
                 + Add Language
               </Button>
@@ -3058,6 +3118,7 @@ function Step5PersonalAndPreferences({
                         updateFormData("languagesKnown", updated)
                       }}
                       placeholder="e.g., English, Hindi, Tamil"
+                      className="rounded-full"
                     />
                   </div>
                   <Button
