@@ -19,27 +19,27 @@ JobKarle now supports payment processing through PayU, India's leading payment g
 
 Add the following to your `.env` file:
 
-```env
+\`\`\`env
 # PayU Payment Gateway Configuration
 PAYU_MERCHANT_KEY=your_merchant_key_here
 PAYU_MERCHANT_SALT=your_merchant_salt_here
 PAYU_API_URL=https://secure.payu.in/_payment
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
-```
+\`\`\`
 
 For testing, use:
-```env
+\`\`\`env
 PAYU_API_URL=https://test.payu.in/_payment
-```
+\`\`\`
 
 ### 3. Run Database Migration
 
 Execute the payment transactions table migration:
 
-```bash
+\`\`\`bash
 # Run the SQL script in Supabase SQL Editor
 # File: scripts/043_create_payment_transactions_table.sql
-```
+\`\`\`
 
 This creates:
 - `payment_transactions` table
@@ -123,7 +123,7 @@ PayU provides test credentials in their dashboard:
 Initiates a payment transaction.
 
 **Request:**
-```json
+\`\`\`json
 {
   "employerId": "uuid",
   "planType": "classic" | "premium",
@@ -132,10 +132,10 @@ Initiates a payment transaction.
   "employerEmail": "email@company.com",
   "employerPhone": "9876543210"
 }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "paymentParams": {
@@ -147,7 +147,7 @@ Initiates a payment transaction.
   "paymentUrl": "https://secure.payu.in/_payment",
   "transactionId": "JOBKARLE_xxx"
 }
-```
+\`\`\`
 
 ### POST `/api/payment/verify`
 
@@ -197,19 +197,19 @@ Verifies payment callback from PayU (internal endpoint).
 ### Check Transaction Status
 
 Query payment transactions table:
-```sql
+\`\`\`sql
 SELECT * FROM payment_transactions 
 WHERE employer_id = 'employer_uuid' 
 ORDER BY created_at DESC;
-```
+\`\`\`
 
 ### Check Credit Allocation
 
-```sql
+\`\`\`sql
 SELECT * FROM employer_credits 
 WHERE employer_id = 'employer_uuid' 
 AND is_expired = false;
-```
+\`\`\`
 
 ### Payment Logs
 

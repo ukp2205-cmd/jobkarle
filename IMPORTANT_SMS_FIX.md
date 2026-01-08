@@ -13,14 +13,14 @@ Even with approved template, OTPs are being delivered via voice calls instead of
 Changed from manual OTP endpoint to AUTOGEN endpoint:
 
 **Before (Manual OTP):**
-```
+\`\`\`
 https://2factor.in/API/V1/{api_key}/SMS/{phone}/{otp}/OTP1
-```
+\`\`\`
 
 **After (AUTOGEN):**
-```
+\`\`\`
 https://2factor.in/API/V1/{api_key}/SMS/{phone}/AUTOGEN/OTP1
-```
+\`\`\`
 
 ## AUTOGEN Endpoint Behavior
 - 2Factor generates and sends the OTP automatically

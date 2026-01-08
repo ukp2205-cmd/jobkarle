@@ -14,7 +14,7 @@ The 2Factor.in template "OTP1" (Sender ID: JOBKAR) is configured for voice deliv
 **Subject:** Configure Template OTP1 for SMS-Only Delivery (No Voice Calls)
 
 **Body:**
-```
+\`\`\`
 Hello 2Factor Support Team,
 
 Account Details:
@@ -41,7 +41,7 @@ SMS delivery only for better user experience.
 Please confirm once this is configured.
 
 Thank you.
-```
+\`\`\`
 
 ## Alternative: Create New SMS-Only Template
 

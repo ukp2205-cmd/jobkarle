@@ -16,11 +16,11 @@ The easiest way to get password reset emails working is using Gmail SMTP.
 
 Add these to your Vercel environment variables (or `.env.local` for development):
 
-```
+\`\`\`
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASSWORD=your-16-char-app-password
 EMAIL_FROM=your-email@gmail.com
-```
+\`\`\`
 
 ### Step 3: Test
 
@@ -33,14 +33,14 @@ EMAIL_FROM=your-email@gmail.com
 
 If you have a custom SMTP server (like your hosting provider's SMTP):
 
-```
+\`\`\`
 SMTP_HOST=smtp.your-provider.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-smtp-username
 SMTP_PASSWORD=your-smtp-password
 EMAIL_FROM=noreply@yourdomain.com
-```
+\`\`\`
 
 ## Troubleshooting
 

@@ -22,14 +22,14 @@ Your OTP template is now **APPROVED** and ready to use!
 
 Add the following environment variable to your project:
 
-```bash
+\`\`\`bash
 TWO_FACTOR_API_KEY=c7f445c1-d69f-11f0-a6b2-0200cd936042
-```
+\`\`\`
 
 **For local development (.env.local):**
-```
+\`\`\`
 TWO_FACTOR_API_KEY=c7f445c1-d69f-11f0-a6b2-0200cd936042
-```
+\`\`\`
 
 **For Vercel deployment:**
 Add this variable in your Vercel project settings under Environment Variables or in the Vars section of the v0 in-chat sidebar.
@@ -37,9 +37,9 @@ Add this variable in your Vercel project settings under Environment Variables or
 ## Database Setup
 
 1. Run the SQL script to create the `phone_verifications` table:
-   ```bash
+   \`\`\`bash
    # Execute scripts/006_create_phone_verifications.sql in your Supabase project
-   ```
+   \`\`\`
 
 2. The table structure:
    - `id`: UUID primary key
@@ -54,49 +54,49 @@ Add this variable in your Vercel project settings under Environment Variables or
 **POST** `/api/send-otp`
 
 Request:
-```json
+\`\`\`json
 {
   "phoneNumber": "9876543210"
 }
-```
+\`\`\`
 
 Response:
-```json
+\`\`\`json
 {
   "success": true,
   "message": "OTP sent successfully to your phone",
   "sessionId": "otp-session"
 }
-```
+\`\`\`
 
 ### 2. Verify OTP
 **POST** `/api/verify-otp`
 
 Request:
-```json
+\`\`\`json
 {
   "phoneNumber": "9876543210",
   "otp": "123456"
 }
-```
+\`\`\`
 
 Response:
-```json
+\`\`\`json
 {
   "success": true,
   "message": "Phone number verified successfully!"
 }
-```
+\`\`\`
 
 ### 3. Resend OTP
 **POST** `/api/resend-otp`
 
 Request:
-```json
+\`\`\`json
 {
   "phoneNumber": "9876543210"
 }
-```
+\`\`\`
 
 Response: Same as send-otp
 
@@ -122,25 +122,25 @@ Only valid Indian mobile numbers (starting with 6-9) are accepted.
 ## Testing
 
 1. **Send OTP**:
-   ```bash
+   \`\`\`bash
    curl -X POST http://localhost:3000/api/send-otp \
      -H "Content-Type: application/json" \
      -d '{"phoneNumber": "9876543210"}'
-   ```
+   \`\`\`
 
 2. **Verify OTP**:
-   ```bash
+   \`\`\`bash
    curl -X POST http://localhost:3000/api/verify-otp \
      -H "Content-Type: application/json" \
      -d '{"phoneNumber": "9876543210", "otp": "123456"}'
-   ```
+   \`\`\`
 
 3. **Resend OTP**:
-   ```bash
+   \`\`\`bash
    curl -X POST http://localhost:3000/api/resend-otp \
      -H "Content-Type: application/json" \
      -d '{"phoneNumber": "9876543210"}'
-   ```
+   \`\`\`
 
 ## Error Handling
 

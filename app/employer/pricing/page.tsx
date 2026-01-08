@@ -297,11 +297,7 @@ export default function EmployerPricingPage() {
               </Button>
             </Link>
             <Link href="/employer/login">
-              <Button
-                size="lg"
-                variant="outline"
-                className="min-w-[200px] bg-transparent text-white border-white hover:bg-white hover:text-blue-600"
-              >
+              <Button size="lg" variant="secondary" className="min-w-[200px]">
                 Sign In
               </Button>
             </Link>

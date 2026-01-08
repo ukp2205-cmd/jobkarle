@@ -24,9 +24,9 @@ The required package `@elastic/elasticsearch` is already included in package.jso
 
 Run the setup script to create the jobs index with proper mappings:
 
-```bash
+\`\`\`bash
 npx tsx scripts/setup-elasticsearch-index.ts
-```
+\`\`\`
 
 This creates an index called `jobs` with the following mappings:
 - Full-text fields: `title`, `skills`, `company_name`, `description`
@@ -38,7 +38,7 @@ This creates an index called `jobs` with the following mappings:
 
 After creating the index, you can bulk-index existing jobs from Supabase:
 
-```typescript
+\`\`\`typescript
 // Run this in a server action or API route
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -56,7 +56,7 @@ for (const job of jobs || []) {
     body: JSON.stringify({ jobId: job.id })
   })
 }
-```
+\`\`\`
 
 ## Usage
 
@@ -71,28 +71,28 @@ When a job is created or updated via `createJobPosting()` or `updateJobPosting()
 If you need to manually index/update a job:
 
 **Index a job:**
-```typescript
+\`\`\`typescript
 POST /api/jobs/index
 Body: { jobId: "uuid-here" }
-```
+\`\`\`
 
 **Update a job:**
-```typescript
+\`\`\`typescript
 PUT /api/jobs/index
 Body: { jobId: "uuid-here" }
-```
+\`\`\`
 
 **Delete a job:**
-```typescript
+\`\`\`typescript
 DELETE /api/jobs/index
 Body: { jobId: "uuid-here" }
-```
+\`\`\`
 
 ### Searching Jobs
 
 Use the server action in your components:
 
-```typescript
+\`\`\`typescript
 import { searchJobsWithElastic } from "@/app/actions/elastic-search-actions"
 
 // In your component
@@ -114,18 +114,18 @@ const results = await searchJobsWithElastic({
   limit: 20,
   totalPages: 8
 }
-```
+\`\`\`
 
 ### Autocomplete
 
 Get suggestions as users type:
 
-```typescript
+\`\`\`typescript
 import { getAutocompleteSuggestions } from "@/app/actions/elastic-search-actions"
 
 const suggestions = await getAutocompleteSuggestions("java", "title")
 // Returns: [{ value: "Java Developer", id: "..." }, ...]
-```
+\`\`\`
 
 ## Search Features
 
@@ -158,13 +158,13 @@ const suggestions = await getAutocompleteSuggestions("java", "title")
 
 ### Data Flow
 
-```
+\`\`\`
 User Action → Supabase (Save) → Elasticsearch (Index)
                 ↓
          Source of Truth
                 
 User Search → Elasticsearch API → Results
-```
+\`\`\`
 
 ### Why This Approach?
 
@@ -203,13 +203,13 @@ User Search → Elasticsearch API → Results
 ## Troubleshooting
 
 ### Index not found
-```bash
+\`\`\`bash
 # Re-run setup script
 npx tsx scripts/setup-elasticsearch-index.ts
-```
+\`\`\`
 
 ### Jobs not appearing in search
-```typescript
+\`\`\`typescript
 // Check job status
 const { data } = await supabase
   .from("job_postings")
@@ -221,7 +221,7 @@ await fetch("/api/jobs/index", {
   method: "POST",
   body: JSON.stringify({ jobId: "job-id" })
 })
-```
+\`\`\`
 
 ### Connection errors
 - Verify `ELASTIC_URL` is correct
@@ -232,7 +232,7 @@ await fetch("/api/jobs/index", {
 
 Test the setup:
 
-```typescript
+\`\`\`typescript
 // Test connection
 import { testElasticConnection } from "@/lib/elastic"
 await testElasticConnection()
@@ -245,7 +245,7 @@ const results = await searchJobsWithElastic({
 })
 
 console.log(`Found ${results.total} jobs`)
-```
+\`\`\`
 
 ## API Reference
 
@@ -253,56 +253,56 @@ console.log(`Found ${results.total} jobs`)
 Index a single job from Supabase to Elasticsearch.
 
 **Request:**
-```json
+\`\`\`json
 { "jobId": "uuid" }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "message": "Job indexed successfully",
   "elasticId": "uuid"
 }
-```
+\`\`\`
 
 ### PUT /api/jobs/index
 Update a job in Elasticsearch index.
 
 **Request:**
-```json
+\`\`\`json
 { "jobId": "uuid" }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "message": "Job updated successfully"
 }
-```
+\`\`\`
 
 ### DELETE /api/jobs/index
 Remove a job from Elasticsearch index.
 
 **Request:**
-```json
+\`\`\`json
 { "jobId": "uuid" }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "message": "Job deleted from index successfully"
 }
-```
+\`\`\`
 
 ### POST /api/jobs/search
 Search for jobs with filters.
 
 **Request:**
-```json
+\`\`\`json
 {
   "keyword": "React Developer",
   "city": ["Mumbai", "Bangalore"],
@@ -311,10 +311,10 @@ Search for jobs with filters.
   "page": 1,
   "limit": 20
 }
-```
+\`\`\`
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "jobs": [
@@ -334,13 +334,13 @@ Search for jobs with filters.
   "limit": 20,
   "totalPages": 8
 }
-```
+\`\`\`
 
 ### GET /api/jobs/search?keyword=java&field=title
 Get autocomplete suggestions.
 
 **Response:**
-```json
+\`\`\`json
 {
   "success": true,
   "suggestions": [
