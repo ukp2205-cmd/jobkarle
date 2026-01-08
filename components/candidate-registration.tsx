@@ -32,6 +32,10 @@ type EmploymentEntry = {
   durationTo: string
   annualSalary: string
   noticePeriod: string
+  industry?: string // Added to EmploymentEntry
+  department?: string // Added to EmploymentEntry
+  roleCategory?: string // Added to EmploymentEntry
+  jobRole?: string // Added to EmploymentEntry
 }
 
 type AdditionalEmploymentEntry = {
@@ -1145,6 +1149,415 @@ function Step3EmploymentAndSkills({
   const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
   const [industrySearch, setIndustrySearch] = useState("")
 
+  // Updated industry and department structure to include roles and departments within industries
+  const industries = [
+    {
+      name: "IT Services & Consulting",
+      departments: [
+        "Software Development",
+        "Web Development",
+        "Mobile Development",
+        "Cloud Services",
+        "IT Support",
+        "Consulting",
+        "System Administration",
+        "Network Administration",
+      ],
+      roles: [
+        {
+          department: "Software Development",
+          category: "Software Development",
+          titles: [
+            "Software Engineer",
+            "Senior Software Engineer",
+            "Tech Lead",
+            "Principal Engineer",
+            "Software Architect",
+          ],
+        },
+        {
+          department: "Web Development",
+          category: "Web Development",
+          titles: ["Frontend Developer", "Backend Developer", "Full Stack Developer", "Web Developer"],
+        },
+        {
+          department: "IT Support",
+          category: "Customer Service",
+          titles: ["IT Support Specialist", "Help Desk Technician"],
+        },
+      ],
+    },
+    {
+      name: "Software Product",
+      departments: [
+        "Product Development",
+        "Software Engineering",
+        "QA/Testing",
+        "DevOps",
+        "Product Management",
+        "Technical Support",
+      ],
+      roles: [
+        {
+          department: "Product Development",
+          category: "Software Development",
+          titles: ["Software Engineer", "Senior Software Engineer"],
+        },
+        {
+          department: "Product Management",
+          category: "Product Management",
+          titles: ["Product Manager", "Senior Product Manager"],
+        },
+      ],
+    },
+    {
+      name: "Internet",
+      departments: [
+        "Digital Marketing",
+        "Content Development",
+        "Web Development",
+        "Product Management",
+        "Business Development",
+      ],
+      roles: [
+        {
+          department: "Digital Marketing",
+          category: "Digital Marketing",
+          titles: [
+            "Digital Marketing Executive",
+            "SEO Specialist",
+            "SEM Specialist",
+            "Social Media Manager",
+            "Head - Digital Marketing",
+          ],
+        },
+        { department: "Product Management", category: "Product Management", titles: ["Product Manager"] },
+      ],
+    },
+    {
+      name: "Banking",
+      departments: [
+        "Retail Banking",
+        "Corporate Banking",
+        "Investment Banking",
+        "Credit & Risk",
+        "Operations",
+        "Compliance",
+        "Customer Service",
+      ],
+      roles: [
+        { department: "Retail Banking", category: "Banking Operations", titles: ["Bank Teller", "Loan Officer"] },
+        { department: "Credit & Risk", category: "Risk Management", titles: ["Credit Analyst", "Risk Manager"] },
+        { department: "Customer Service", category: "Customer Service", titles: ["Customer Service Representative"] },
+      ],
+    },
+    {
+      name: "Financial Services",
+      departments: [
+        "Financial Analysis",
+        "Portfolio Management",
+        "Trading",
+        "Risk Management",
+        "Compliance",
+        "Operations",
+      ],
+      roles: [
+        {
+          department: "Financial Analysis",
+          category: "Financial Analysis",
+          titles: ["Financial Analyst", "Senior Financial Analyst"],
+        },
+        { department: "Risk Management", category: "Risk Management", titles: ["Risk Analyst"] },
+      ],
+    },
+    {
+      name: "Insurance",
+      departments: [
+        "Underwriting",
+        "Claims Processing",
+        "Sales & Distribution",
+        "Actuarial",
+        "Risk Management",
+        "Customer Service",
+      ],
+      roles: [
+        {
+          department: "Underwriting",
+          category: "Insurance Underwriting",
+          titles: ["Underwriter", "Senior Underwriter"],
+        },
+        { department: "Claims Processing", category: "Claims Management", titles: ["Claims Adjuster"] },
+      ],
+    },
+    {
+      name: "BPO / Call Centre",
+      departments: [
+        "Customer Service",
+        "Technical Support",
+        "Sales",
+        "Back Office Operations",
+        "Quality Assurance",
+        "Training",
+      ],
+      roles: [
+        {
+          department: "Customer Service",
+          category: "Customer Service",
+          titles: ["Customer Service Representative", "Call Center Agent"],
+        },
+        { department: "Technical Support", category: "Technical Support", titles: ["Technical Support Specialist"] },
+      ],
+    },
+    {
+      name: "Analytics / KPO / Research",
+      departments: [
+        "Data Analysis",
+        "Business Intelligence",
+        "Market Research",
+        "Financial Analysis",
+        "Research & Development",
+      ],
+      roles: [
+        {
+          department: "Data Analysis",
+          category: "Data Analysis",
+          titles: ["Data Analyst", "Senior Data Analyst", "Analytics Manager", "Data Scientist"],
+        },
+        { department: "Market Research", category: "Market Research", titles: ["Market Research Analyst"] },
+      ],
+    },
+    {
+      name: "Healthcare",
+      departments: ["Clinical Services", "Nursing", "Diagnostics", "Pharmacy", "Administration", "Medical Records"],
+      roles: [
+        {
+          department: "Clinical Services",
+          category: "Healthcare Professionals",
+          titles: ["Doctor", "Nurse Practitioner"],
+        },
+        { department: "Administration", category: "Healthcare Administration", titles: ["Hospital Administrator"] },
+      ],
+    },
+    {
+      name: "Pharmaceutical",
+      departments: [
+        "Research & Development",
+        "Quality Control",
+        "Regulatory Affairs",
+        "Production",
+        "Sales & Marketing",
+      ],
+      roles: [
+        { department: "Research & Development", category: "R&D", titles: ["Research Scientist"] },
+        { department: "Sales & Marketing", category: "Pharma Sales", titles: ["Medical Representative"] },
+      ],
+    },
+    {
+      name: "Medical Devices",
+      departments: [
+        "Research & Development",
+        "Quality Assurance",
+        "Regulatory Affairs",
+        "Manufacturing",
+        "Sales & Marketing",
+      ],
+      roles: [
+        { department: "Research & Development", category: "R&D", titles: ["R&D Engineer"] },
+        { department: "Sales & Marketing", category: "Medical Sales", titles: ["Medical Device Sales Representative"] },
+      ],
+    },
+    {
+      name: "Manufacturing",
+      departments: ["Production", "Quality Control", "Supply Chain", "Maintenance", "Planning", "Engineering"],
+      roles: [
+        { department: "Production", category: "Operations", titles: ["Production Supervisor", "Plant Manager"] },
+        { department: "Engineering", category: "Engineering", titles: ["Mechanical Engineer", "Electrical Engineer"] },
+      ],
+    },
+    {
+      name: "Automobile",
+      departments: [
+        "Design & Development",
+        "Manufacturing",
+        "Quality Control",
+        "Sales & Marketing",
+        "After Sales Service",
+      ],
+      roles: [
+        {
+          department: "Design & Development",
+          category: "Automotive Engineering",
+          titles: ["Automotive Design Engineer"],
+        },
+        { department: "Sales & Marketing", category: "Automotive Sales", titles: ["Car Sales Executive"] },
+      ],
+    },
+    {
+      name: "Consumer Electronics",
+      departments: [
+        "Product Development",
+        "Manufacturing",
+        "Quality Control",
+        "Sales & Marketing",
+        "Technical Support",
+      ],
+      roles: [
+        {
+          department: "Product Development",
+          category: "Electronics Engineering",
+          titles: ["Product Development Engineer"],
+        },
+        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Associate"] },
+      ],
+    },
+    {
+      name: "FMCG",
+      departments: ["Sales & Marketing", "Supply Chain", "Production", "Quality Control", "Brand Management"],
+      roles: [
+        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Executive", "Field Sales Manager"] },
+        {
+          department: "Brand Management",
+          category: "Brand Management",
+          titles: ["Brand Manager", "Senior Brand Manager", "Brand Head"],
+        },
+      ],
+    },
+    {
+      name: "Retail",
+      departments: [
+        "Store Operations",
+        "Merchandising",
+        "Visual Merchandising",
+        "Customer Service",
+        "Inventory Management",
+      ],
+      roles: [
+        {
+          department: "Store Operations",
+          category: "Retail Operations",
+          titles: ["Store Manager", "Assistant Store Manager"],
+        },
+        { department: "Customer Service", category: "Customer Service", titles: ["Retail Associate"] },
+      ],
+    },
+    {
+      name: "E-commerce",
+      departments: ["Operations", "Marketing", "Customer Service", "Logistics", "Product Management", "Technology"],
+      roles: [
+        { department: "Operations", category: "Operations", titles: ["E-commerce Operations Manager"] },
+        { department: "Marketing", category: "Digital Marketing", titles: ["E-commerce Marketing Specialist"] },
+      ],
+    },
+    {
+      name: "Telecommunications",
+      departments: ["Network Operations", "Customer Service", "Sales", "Technical Support", "IT Infrastructure"],
+      roles: [
+        { department: "Network Operations", category: "Network Engineering", titles: ["Network Engineer"] },
+        { department: "Customer Service", category: "Customer Service", titles: ["Telecom Customer Support"] },
+      ],
+    },
+    {
+      name: "Media & Entertainment",
+      departments: ["Content Creation", "Production", "Marketing", "Distribution", "Digital Media"],
+      roles: [
+        { department: "Content Creation", category: "Content", titles: ["Content Creator", "Scriptwriter"] },
+        { department: "Marketing", category: "Marketing", titles: ["Marketing Manager"] },
+      ],
+    },
+    {
+      name: "Education",
+      departments: ["Teaching", "Administration", "Curriculum Development", "Student Services", "IT Support"],
+      roles: [
+        { department: "Teaching", category: "Teaching", titles: ["Teacher", "Professor"] },
+        { department: "Administration", category: "Educational Administration", titles: ["School Administrator"] },
+      ],
+    },
+    {
+      name: "Real Estate",
+      departments: ["Sales", "Marketing", "Property Management", "Project Management", "Legal & Compliance"],
+      roles: [
+        { department: "Sales", category: "Real Estate Sales", titles: ["Real Estate Agent"] },
+        { department: "Property Management", category: "Property Management", titles: ["Property Manager"] },
+      ],
+    },
+    {
+      name: "Construction",
+      departments: ["Project Management", "Civil Engineering", "Quality Control", "Safety", "Procurement"],
+      roles: [
+        {
+          department: "Project Management",
+          category: "Construction Management",
+          titles: ["Project Manager", "Site Engineer"],
+        },
+        { department: "Civil Engineering", category: "Engineering", titles: ["Civil Engineer"] },
+      ],
+    },
+    {
+      name: "Travel & Tourism",
+      departments: ["Sales & Reservations", "Operations", "Tour Operations", "Customer Service", "Marketing"],
+      roles: [
+        { department: "Sales & Reservations", category: "Travel Sales", titles: ["Travel Agent"] },
+        { department: "Tour Operations", category: "Tour Management", titles: ["Tour Operator"] },
+      ],
+    },
+    {
+      name: "Hospitality",
+      departments: ["Front Office", "Food & Beverage", "Housekeeping", "Kitchen", "Sales & Marketing"],
+      roles: [
+        { department: "Front Office", category: "Hotel Management", titles: ["Front Desk Manager"] },
+        { department: "Food & Beverage", category: "Culinary", titles: ["Chef", "F&B Manager"] },
+      ],
+    },
+    {
+      name: "Logistics & Supply Chain",
+      departments: ["Warehousing", "Transportation", "Inventory Management", "Procurement", "Supply Planning"],
+      roles: [
+        { department: "Warehousing", category: "Logistics Operations", titles: ["Warehouse Manager"] },
+        { department: "Transportation", category: "Transportation Management", titles: ["Logistics Coordinator"] },
+      ],
+    },
+    {
+      name: "Oil & Gas",
+      departments: ["Exploration", "Production", "Refining", "Operations", "Engineering", "Safety"],
+      roles: [
+        { department: "Production", category: "Oil & Gas Operations", titles: ["Field Operations Manager"] },
+        { department: "Engineering", category: "Petroleum Engineering", titles: ["Petroleum Engineer"] },
+      ],
+    },
+    {
+      name: "Power & Energy",
+      departments: ["Operations", "Maintenance", "Engineering", "Project Management", "Safety"],
+      roles: [
+        { department: "Operations", category: "Power Plant Operations", titles: ["Plant Operator"] },
+        { department: "Engineering", category: "Power Systems Engineering", titles: ["Power Systems Engineer"] },
+      ],
+    },
+    {
+      name: "Government / PSU",
+      departments: ["Administration", "Public Relations", "Finance", "Human Resources", "Technical Services"],
+      roles: [
+        { department: "Administration", category: "Public Administration", titles: ["Administrative Officer"] },
+        { department: "Finance", category: "Government Finance", titles: ["Accountant"] },
+      ],
+    },
+    {
+      name: "NGO / Non-Profit",
+      departments: ["Program Management", "Fund Raising", "Communications", "Field Operations", "Administration"],
+      roles: [
+        { department: "Program Management", category: "Program Management", titles: ["Program Manager"] },
+        { department: "Fund Raising", category: "Fundraising", titles: ["Fundraiser"] },
+      ],
+    },
+    {
+      name: "Legal",
+      departments: ["Corporate Law", "Litigation", "Compliance", "Legal Advisory", "Contracts"],
+      roles: [
+        { department: "Corporate Law", category: "Corporate Law", titles: ["Corporate Lawyer"] },
+        { department: "Litigation", category: "Litigation", titles: ["Litigation Lawyer"] },
+      ],
+    },
+  ]
+
   const indianCities = [
     { city: "Mumbai", state: "Maharashtra" },
     { city: "Delhi", state: "Delhi" },
@@ -1167,198 +1580,6 @@ function Step3EmploymentAndSkills({
     { city: "Vadodara", state: "Gujarat" },
     { city: "Ghaziabad", state: "Uttar Pradesh" },
   ]
-
-  const industries = [
-    "IT Services & Consulting",
-    "Software Product",
-    "Internet",
-    "Banking",
-    "Financial Services",
-    "Insurance",
-    "BPO / Call Centre",
-    "Analytics / KPO / Research",
-    "Healthcare",
-    "Pharmaceutical",
-    "Medical Devices",
-    "Manufacturing",
-    "Automobile",
-    "Consumer Electronics",
-    "FMCG",
-    "Retail",
-    "E-commerce",
-    "Telecommunications",
-    "Media & Entertainment",
-    "Education",
-    "Real Estate",
-    "Construction",
-    "Travel & Tourism",
-    "Hospitality",
-    "Logistics & Supply Chain",
-    "Oil & Gas",
-    "Power & Energy",
-    "Government / PSU",
-    "NGO / Non-Profit",
-    "Legal",
-  ]
-
-  const departments: Record<string, string[]> = {
-    "IT Services & Consulting": [
-      "Software Development",
-      "Web Development",
-      "Mobile Development",
-      "Cloud Services",
-      "IT Support",
-      "Consulting",
-      "System Administration",
-      "Network Administration",
-    ],
-    "Software Product": [
-      "Product Development",
-      "Software Engineering",
-      "QA/Testing",
-      "DevOps",
-      "Product Management",
-      "Technical Support",
-    ],
-    Internet: [
-      "Digital Marketing",
-      "SEO/SEM",
-      "Content Development",
-      "Web Development",
-      "Product Management",
-      "Business Development",
-    ],
-    Banking: [
-      "Retail Banking",
-      "Corporate Banking",
-      "Investment Banking",
-      "Credit & Risk",
-      "Operations",
-      "Compliance",
-      "Customer Service",
-    ],
-    "Financial Services": [
-      "Financial Analysis",
-      "Portfolio Management",
-      "Trading",
-      "Risk Management",
-      "Compliance",
-      "Operations",
-    ],
-    Insurance: [
-      "Underwriting",
-      "Claims Processing",
-      "Sales & Distribution",
-      "Actuarial",
-      "Risk Management",
-      "Customer Service",
-    ],
-    "BPO / Call Centre": [
-      "Customer Service",
-      "Technical Support",
-      "Sales",
-      "Back Office Operations",
-      "Quality Assurance",
-      "Training",
-    ],
-    "Analytics / KPO / Research": [
-      "Data Analysis",
-      "Business Intelligence",
-      "Market Research",
-      "Financial Analysis",
-      "Research & Development",
-    ],
-    Healthcare: ["Clinical Services", "Nursing", "Diagnostics", "Pharmacy", "Administration", "Medical Records"],
-    Pharmaceutical: [
-      "Research & Development",
-      "Quality Control",
-      "Regulatory Affairs",
-      "Production",
-      "Sales & Marketing",
-    ],
-    "Medical Devices": [
-      "Research & Development",
-      "Quality Assurance",
-      "Regulatory Affairs",
-      "Manufacturing",
-      "Sales & Marketing",
-    ],
-    Manufacturing: ["Production", "Quality Control", "Supply Chain", "Maintenance", "Planning", "Engineering"],
-    Automobile: [
-      "Design & Development",
-      "Manufacturing",
-      "Quality Control",
-      "Sales & Marketing",
-      "After Sales Service",
-    ],
-    "Consumer Electronics": [
-      "Product Development",
-      "Manufacturing",
-      "Quality Control",
-      "Sales & Marketing",
-      "Technical Support",
-    ],
-    FMCG: ["Sales & Marketing", "Supply Chain", "Production", "Quality Control", "Brand Management"],
-    Retail: ["Store Operations", "Merchandising", "Visual Merchandising", "Customer Service", "Inventory Management"],
-    "E-commerce": ["Operations", "Marketing", "Customer Service", "Logistics", "Product Management", "Technology"],
-    Telecommunications: ["Network Operations", "Customer Service", "Sales", "Technical Support", "IT Infrastructure"],
-    "Media & Entertainment": ["Content Creation", "Production", "Marketing", "Distribution", "Digital Media"],
-    Education: ["Teaching", "Administration", "Curriculum Development", "Student Services", "IT Support"],
-    "Real Estate": ["Sales", "Marketing", "Property Management", "Project Management", "Legal & Compliance"],
-    Construction: ["Project Management", "Civil Engineering", "Quality Control", "Safety", "Procurement"],
-    "Travel & Tourism": ["Sales & Reservations", "Operations", "Tour Operations", "Customer Service", "Marketing"],
-    Hospitality: ["Front Office", "Food & Beverage", "Housekeeping", "Kitchen", "Sales & Marketing"],
-    "Logistics & Supply Chain": [
-      "Warehousing",
-      "Transportation",
-      "Inventory Management",
-      "Procurement",
-      "Supply Planning",
-    ],
-    "Oil & Gas": ["Exploration", "Production", "Refining", "Operations", "Engineering", "Safety"],
-    "Power & Energy": ["Operations", "Maintenance", "Engineering", "Project Management", "Safety"],
-    "Government / PSU": ["Administration", "Public Relations", "Finance", "Human Resources", "Technical Services"],
-    "NGO / Non-Profit": ["Program Management", "Fund Raising", "Communications", "Field Operations", "Administration"],
-    Legal: ["Corporate Law", "Litigation", "Compliance", "Legal Advisory", "Contracts"],
-  }
-
-  const rolesByCategory: Record<string, string[]> = {
-    "Software Development": [
-      "Software Engineer",
-      "Senior Software Engineer",
-      "Tech Lead",
-      "Principal Engineer",
-      "Software Architect",
-    ],
-    "Web Development": ["Frontend Developer", "Backend Developer", "Full Stack Developer", "Web Developer"],
-    "Digital Marketing": [
-      "Digital Marketing Executive",
-      "SEO Specialist",
-      "SEM Specialist",
-      "Social Media Manager",
-      "Head - Digital Marketing",
-    ],
-    "Brand Management": ["Brand Manager", "Senior Brand Manager", "Brand Head"],
-    Recruitment: ["Recruiter", "Senior Recruiter", "Talent Acquisition Manager", "HR Business Partner"],
-    "Data Analysis": ["Data Analyst", "Senior Data Analyst", "Analytics Manager", "Data Scientist"],
-    Accounting: ["Accountant", "Senior Accountant", "Accounts Manager", "Finance Controller"],
-    "Customer Service": ["Customer Support Executive", "Customer Success Manager", "Support Team Lead"],
-    "UI/UX Design": ["UI Designer", "UX Designer", "Product Designer", "Design Lead"],
-    "Inside Sales": ["Sales Executive", "Inside Sales Representative", "Sales Manager"],
-    "Field Sales": ["Territory Sales Manager", "Regional Sales Manager", "Area Sales Manager"],
-  }
-
-  const availableDepartments = formData.industry
-    ? departments[formData.industry] || [
-        "Operations",
-        "Sales & Marketing",
-        "Finance",
-        "Human Resources",
-        "Administration",
-        "IT",
-        "Customer Service",
-      ]
-    : []
 
   const filteredSkills = allSkills.filter(
     (skill) =>
@@ -1394,6 +1615,10 @@ function Step3EmploymentAndSkills({
     durationTo: "",
     annualSalary: "",
     noticePeriod: "",
+    industry: "", // Initialize industry
+    department: "", // Initialize department
+    roleCategory: "", // Initialize roleCategory
+    jobRole: "", // Initialize jobRole
   })
 
   // State for additional employment entries being edited/added
@@ -1427,6 +1652,10 @@ function Step3EmploymentAndSkills({
       durationTo: "",
       annualSalary: "",
       noticePeriod: "",
+      industry: "",
+      department: "",
+      roleCategory: "",
+      jobRole: "",
     })
   }
 
@@ -1462,12 +1691,6 @@ function Step3EmploymentAndSkills({
     setShowAdditionalEmploymentForm(false)
   }
 
-  const editAdditionalEmploymentEntry = (index: number) => {
-    setCurrentAdditionalEntry(formData.additionalEmployment[index])
-    setEditingAdditionalIndex(index)
-    setShowAdditionalEmploymentForm(true)
-  }
-
   const deleteAdditionalEmploymentEntry = (index: number) => {
     const updated = formData.additionalEmployment.filter((_, i) => i !== index)
     updateFormData("additionalEmployment", updated)
@@ -1490,6 +1713,16 @@ function Step3EmploymentAndSkills({
       return
     }
 
+    // if (!formData.roleCategory) { // This validation is now handled within the form logic
+    //   alert("Please select a role category")
+    //   return
+    // }
+
+    // if (!formData.jobRole) { // This validation is now handled within the form logic
+    //   alert("Please select a job role")
+    //   return
+    // }
+
     if (formData.workStatus === "experienced") {
       // Changed currentEmployment?.currentCompany to currentEmployment?.companyName to match the type
       if (!formData.currentEmployment?.companyName) {
@@ -1504,16 +1737,6 @@ function Step3EmploymentAndSkills({
 
       if (!formData.totalExperienceYears || Number.parseInt(formData.totalExperienceYears) === 0) {
         alert("Please enter your total years of experience")
-        return
-      }
-
-      if (!formData.roleCategory) {
-        alert("Please select a role category")
-        return
-      }
-
-      if (!formData.jobRole) {
-        alert("Please select a job role")
         return
       }
     }
@@ -1596,416 +1819,6 @@ function Step3EmploymentAndSkills({
         </div>
       </CardHeader>
       <CardContent className="pt-6 space-y-6 max-h-[600px] overflow-y-auto">
-        {formData.workStatus !== "fresher" && (
-          <>
-            {/* Current Employment Form */}
-            {showCurrentEmploymentForm && (
-              <div className="space-y-6 border rounded-lg p-4 bg-muted/20">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">
-                    {formData.currentEmployment ? "Edit Current Employment" : "Your Current Employment"}
-                  </h3>
-                  {formData.currentEmployment && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowCurrentEmploymentForm(false)
-                        setEditingCurrentIndex(null)
-                        setCurrentEntry({
-                          currentlyEmployed: "",
-                          companyName: "",
-                          currentJobTitle: "",
-                          currentCity: "",
-                          currentState: "",
-                          durationFrom: "",
-                          durationTo: "",
-                          annualSalary: "",
-                          noticePeriod: "",
-                        })
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm" htmlFor="currentlyEmployed">
-                    Are you currently employed?*
-                  </Label>
-                  <div className="flex gap-3">
-                    <Button
-                      type="button"
-                      variant={currentEntry.currentlyEmployed === "yes" ? "default" : "outline"}
-                      onClick={() => setCurrentEntry({ ...currentEntry, currentlyEmployed: "yes" })}
-                    >
-                      Yes
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={currentEntry.currentlyEmployed === "no" ? "default" : "outline"}
-                      onClick={() => setCurrentEntry({ ...currentEntry, currentlyEmployed: "no" })}
-                    >
-                      No
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-sm" htmlFor="companyName">
-                      {currentEntry.currentlyEmployed === "yes" ? "Current company" : "Previous company"}*
-                    </Label>
-                    <Input
-                      id="companyName"
-                      value={currentEntry.companyName}
-                      onChange={(e) => setCurrentEntry({ ...currentEntry, companyName: e.target.value })}
-                      placeholder="Eg. Amazon"
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm" htmlFor="currentJobTitle">
-                      {currentEntry.currentlyEmployed === "yes" ? "Current job title" : "Previous job title"}*
-                    </Label>
-                    <Input
-                      id="currentJobTitle"
-                      value={currentEntry.currentJobTitle}
-                      onChange={(e) => setCurrentEntry({ ...currentEntry, currentJobTitle: e.target.value })}
-                      placeholder="Eg. Software Developer"
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2 relative">
-                    <Label className="text-sm" htmlFor="currentCity">
-                      Current city*
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="currentCity"
-                        value={currentEntry.currentCity}
-                        onChange={(e) => {
-                          setCurrentEntry({ ...currentEntry, currentCity: e.target.value })
-                          setShowCityDropdown(true)
-                        }}
-                        onFocus={() => setShowCityDropdown(true)}
-                        placeholder="Select city"
-                        className="h-10 text-sm rounded-full"
-                      />
-                      {currentEntry.currentCity && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCurrentEntry({ ...currentEntry, currentCity: "", currentState: "" })
-                          }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                    {showCityDropdown && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                        {indianCities
-                          .filter((c) => c.city.toLowerCase().includes(currentEntry.currentCity.toLowerCase()))
-                          .map((c) => (
-                            <button
-                              key={c.city}
-                              type="button"
-                              onClick={() => {
-                                setCurrentEntry({ ...currentEntry, currentCity: c.city, currentState: c.state })
-                                setShowCityDropdown(false)
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                            >
-                              {c.city}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">State</Label>
-                    <Input
-                      value={currentEntry.currentState}
-                      disabled
-                      placeholder="Auto-filled"
-                      className="h-10 text-sm text-muted-foreground rounded-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Duration*</Label>
-                  <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                    <MonthYearPicker
-                      value={currentEntry.durationFrom}
-                      onChange={(value) => setCurrentEntry({ ...currentEntry, durationFrom: value })}
-                      placeholder="Start date"
-                      className="h-10 text-sm rounded-full"
-                    />
-                    <span className="text-xs text-muted-foreground font-medium">To</span>
-                    <MonthYearPicker
-                      value={currentEntry.durationTo}
-                      onChange={(value) => setCurrentEntry({ ...currentEntry, durationTo: value })}
-                      placeholder="Present"
-                      disabled={currentEntry.currentlyEmployed === "yes"}
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Annual salary*</Label>
-                  <div className="flex gap-2">
-                    <select className="w-20 rounded-full border border-input bg-background px-3 py-2 text-sm">
-                      <option>₹</option>
-                    </select>
-                    <Input
-                      id="annualSalary"
-                      type="text"
-                      value={currentEntry.annualSalary ? Number(currentEntry.annualSalary).toLocaleString("en-IN") : ""}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/,/g, "")
-                        if (/^\d*$/.test(value)) {
-                          setCurrentEntry({ ...currentEntry, annualSalary: value })
-                        }
-                      }}
-                      placeholder="Eg. 5,64,000"
-                      className="flex-1 h-10 text-sm rounded-full"
-                    />
-                    <span className="flex items-center text-sm text-muted-foreground">per year</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Notice period*</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {["15 Days or less", "1 Month", "2 Months", "3 Months", "More than 3 Months"].map((period) => (
-                      <Button
-                        key={period}
-                        type="button"
-                        variant={currentEntry.noticePeriod === period ? "default" : "outline"}
-                        onClick={() => setCurrentEntry({ ...currentEntry, noticePeriod: period })}
-                        className="rounded-full text-sm px-3 py-1.5"
-                      >
-                        {period}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={handleSaveCurrentEmployment}
-                  className="w-full md:w-auto md:px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
-                >
-                  {formData.currentEmployment ? "Update Employment Entry" : "Save Current Employment"}
-                </Button>
-              </div>
-            )}
-
-            {/* Display current employment if it exists and form is hidden */}
-            {!showCurrentEmploymentForm && formData.currentEmployment && (
-              <div className="border rounded-lg p-4 space-y-2">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium text-sm">{formData.currentEmployment.currentJobTitle}</p>
-                    <p className="text-xs text-muted-foreground">{formData.currentEmployment.companyName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formData.currentEmployment.currentCity}, {formData.currentEmployment.currentState}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formData.currentEmployment.durationFrom} to{" "}
-                      {formData.currentEmployment.currentlyEmployed === "yes"
-                        ? "Present"
-                        : formData.currentEmployment.durationTo}
-                    </p>
-                    <p className="text-xs">₹ {formData.currentEmployment.annualSalary} per year</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={editCurrentEmploymentEntry}>
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Additional Employment Section */}
-            <div className="space-y-4">
-              <h3 className="font-medium text-sm">Previous Employment</h3>
-              {formData.additionalEmployment.length > 0 && (
-                <div className="space-y-4">
-                  {formData.additionalEmployment.map((entry, index) => (
-                    <div key={index} className="border rounded-lg p-4 space-y-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium text-sm">{entry.jobTitle}</p>
-                          <p className="text-xs text-muted-foreground">{entry.companyName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {entry.fromDate} to {entry.toDate}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => editAdditionalEmploymentEntry(index)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteAdditionalEmploymentEntry(index)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add/Edit additional employment form */}
-              {showAdditionalEmploymentForm && (
-                <div className="space-y-6 border rounded-lg p-4 bg-muted/20">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium text-sm">
-                      {editingAdditionalIndex !== null ? "Edit Previous Employment" : "Add Previous Employment"}
-                    </h3>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowAdditionalEmploymentForm(false)
-                        setEditingAdditionalIndex(null)
-                        setCurrentAdditionalEntry({
-                          companyName: "",
-                          jobTitle: "",
-                          fromDate: "",
-                          toDate: "",
-                        })
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm" htmlFor="companyName">
-                        Company name*
-                      </Label>
-                      <Input
-                        id="companyName"
-                        value={currentAdditionalEntry.companyName}
-                        onChange={(e) =>
-                          setCurrentAdditionalEntry({ ...currentAdditionalEntry, companyName: e.target.value })
-                        }
-                        placeholder="Eg. Microsoft"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm" htmlFor="jobTitle">
-                        Job title*
-                      </Label>
-                      <Input
-                        id="jobTitle"
-                        value={currentAdditionalEntry.jobTitle}
-                        onChange={(e) =>
-                          setCurrentAdditionalEntry({ ...currentAdditionalEntry, jobTitle: e.target.value })
-                        }
-                        placeholder="Eg. Senior Developer"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">Duration*</Label>
-                    <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                      <MonthYearPicker
-                        value={currentAdditionalEntry.fromDate}
-                        onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, fromDate: value })}
-                        placeholder="Start date"
-                        className="h-10 text-sm rounded-full"
-                      />
-                      <span className="text-xs text-muted-foreground font-medium">To</span>
-                      <MonthYearPicker
-                        value={currentAdditionalEntry.toDate}
-                        onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, toDate: value })}
-                        placeholder="End date"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-                  </div>
-
-                  <Button type="button" onClick={handleSaveAdditionalEmployment} className="w-full h-10 rounded-full">
-                    {editingAdditionalIndex !== null ? "Update Previous Employment" : "Add Previous Employment"}
-                  </Button>
-                </div>
-              )}
-
-              {!showAdditionalEmploymentForm && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAdditionalEmploymentForm(true)}
-                  className="w-full h-10 rounded-full"
-                >
-                  + Add Previous Employment
-                </Button>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Total experience */}
-        <div className="space-y-2">
-          <Label className="text-sm">Total work experience*</Label>
-          <div className="flex gap-3">
-            <select
-              value={formData.totalExperienceYears}
-              onChange={(e) => updateFormData("totalExperienceYears", e.target.value)}
-              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select year</option>
-              {Array.from({ length: 51 }, (_, i) => (
-                <option key={i} value={i}>
-                  {i} Year{i !== 1 ? "s" : ""}
-                </option>
-              ))}
-            </select>
-            <select
-              value={formData.totalExperienceMonths}
-              onChange={(e) => updateFormData("totalExperienceMonths", e.target.value)}
-              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select month</option>
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i} value={i}>
-                  {i} Month{i !== 1 ? "s" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
         {/* Key Skills - MANDATORY FOR ALL */}
         <div>
           <Label className="text-sm">
@@ -2098,11 +1911,569 @@ function Step3EmploymentAndSkills({
                   onClick={() => addSkill(skill.skill_name)}
                   className="rounded-full text-xs px-3 py-1.5"
                 >
-                  {skill.skill_name}
+                  + {skill.skill_name}
                 </Button>
               ))}
             </div>
           )}
+        </div>
+
+        {formData.workStatus !== "fresher" && (
+          <>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium text-base">Employment History</h3>
+              </div>
+
+              {formData.currentEmployment && !showCurrentEmploymentForm && (
+                <div className="border rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-medium text-sm">{formData.currentEmployment.currentJobTitle}</p>
+                      <p className="text-xs text-muted-foreground">{formData.currentEmployment.companyName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.currentEmployment.currentCity}, {formData.currentEmployment.currentState}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.currentEmployment.durationFrom} to{" "}
+                        {formData.currentEmployment.currentlyEmployed === "yes"
+                          ? "Present"
+                          : formData.currentEmployment.durationTo}
+                      </p>
+                      <p className="text-xs">₹ {formData.currentEmployment.annualSalary} per year</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="ghost" size="sm" onClick={editCurrentEmploymentEntry}>
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!formData.currentEmployment && !showCurrentEmploymentForm && (
+                <div className="space-y-3">
+                  <Label className="text-sm">Are you currently employed?*</Label>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setCurrentEntry({ ...currentEntry, currentlyEmployed: "yes" })
+                        setShowCurrentEmploymentForm(true)
+                      }}
+                      className="rounded-full"
+                    >
+                      Yes
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setCurrentEntry({ ...currentEntry, currentlyEmployed: "no" })
+                        setShowCurrentEmploymentForm(true)
+                      }}
+                      className="rounded-full"
+                    >
+                      No
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {showCurrentEmploymentForm && (
+                <div className="space-y-6 border rounded-lg p-4 bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-sm">
+                      {currentEntry.currentlyEmployed === "yes"
+                        ? "Current Employment Details"
+                        : "Previous Employment Details"}
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowCurrentEmploymentForm(false)
+                        setCurrentEntry({
+                          currentlyEmployed: "",
+                          companyName: "",
+                          currentJobTitle: "",
+                          currentCity: "",
+                          currentState: "",
+                          durationFrom: "",
+                          durationTo: "",
+                          annualSalary: "",
+                          noticePeriod: "",
+                          industry: "",
+                          department: "",
+                          roleCategory: "",
+                          jobRole: "",
+                        })
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm" htmlFor="companyName">
+                        {currentEntry.currentlyEmployed === "yes" ? "Current company" : "Previous company"}*
+                      </Label>
+                      <Input
+                        id="companyName"
+                        value={currentEntry.companyName}
+                        onChange={(e) => setCurrentEntry({ ...currentEntry, companyName: e.target.value })}
+                        placeholder="Eg. Amazon"
+                        className="h-10 text-sm rounded-full"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm" htmlFor="currentJobTitle">
+                        {currentEntry.currentlyEmployed === "yes" ? "Current job title" : "Previous job title"}*
+                      </Label>
+                      <Input
+                        id="currentJobTitle"
+                        value={currentEntry.currentJobTitle}
+                        onChange={(e) => setCurrentEntry({ ...currentEntry, currentJobTitle: e.target.value })}
+                        placeholder="Eg. Software Developer"
+                        className="h-10 text-sm rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2 relative">
+                      <Label className="text-sm" htmlFor="currentCity">
+                        City*
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="currentCity"
+                          value={currentEntry.currentCity}
+                          onChange={(e) => {
+                            setCurrentEntry({ ...currentEntry, currentCity: e.target.value })
+                            setShowCityDropdown(true)
+                          }}
+                          onFocus={() => setShowCityDropdown(true)}
+                          placeholder="Select city"
+                          className="h-10 text-sm rounded-full"
+                        />
+                        {currentEntry.currentCity && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentEntry({ ...currentEntry, currentCity: "", currentState: "" })
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                      {showCityDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          {indianCities
+                            .filter((c) => c.city.toLowerCase().includes(currentEntry.currentCity.toLowerCase()))
+                            .map((c) => (
+                              <button
+                                key={c.city}
+                                type="button"
+                                onClick={() => {
+                                  setCurrentEntry({ ...currentEntry, currentCity: c.city, currentState: c.state })
+                                  setShowCityDropdown(false)
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                              >
+                                {c.city}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">State</Label>
+                      <Input
+                        value={currentEntry.currentState}
+                        disabled
+                        placeholder="Auto-filled"
+                        className="h-10 text-sm text-muted-foreground rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Duration*</Label>
+                    <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                      <MonthYearPicker
+                        value={currentEntry.durationFrom}
+                        onChange={(value) => setCurrentEntry({ ...currentEntry, durationFrom: value })}
+                        placeholder="MM/YY"
+                      />
+                      <span className="text-gray-400 text-sm">to</span>
+                      {currentEntry.currentlyEmployed === "yes" ? (
+                        <div className="h-10 px-3 border rounded-full bg-gray-50 flex items-center text-sm text-gray-500">
+                          Present
+                        </div>
+                      ) : (
+                        <MonthYearPicker
+                          value={currentEntry.durationTo}
+                          onChange={(value) => setCurrentEntry({ ...currentEntry, durationTo: value })}
+                          placeholder="MM/YY"
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm" htmlFor="annualSalary">
+                        Annual salary (in ₹)*
+                      </Label>
+                      <Input
+                        id="annualSalary"
+                        value={currentEntry.annualSalary}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/,/g, "")
+                          if (/^\d*$/.test(value)) {
+                            const formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                            setCurrentEntry({ ...currentEntry, annualSalary: formatted })
+                          }
+                        }}
+                        placeholder="Eg. 5,00,000"
+                        className="h-10 text-sm rounded-full"
+                      />
+                    </div>
+
+                    {currentEntry.currentlyEmployed === "yes" && (
+                      <div className="space-y-2">
+                        <Label className="text-sm" htmlFor="noticePeriod">
+                          Notice period
+                        </Label>
+                        <select
+                          id="noticePeriod"
+                          value={currentEntry.noticePeriod}
+                          onChange={(e) => setCurrentEntry({ ...currentEntry, noticePeriod: e.target.value })}
+                          className="w-full h-10 px-3 border rounded-full text-sm"
+                        >
+                          <option value="">Select</option>
+                          <option value="Immediate">Immediate</option>
+                          <option value="15 Days">15 Days</option>
+                          <option value="1 Month">1 Month</option>
+                          <option value="2 Months">2 Months</option>
+                          <option value="3 Months">3 Months</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm">Industry*</Label>
+                      <div className="relative">
+                        <Input
+                          value={currentEntry.industry || formData.industry}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setCurrentEntry({ ...currentEntry, industry: value })
+                            setShowIndustryDropdown(true)
+                            // Update formData for dependent dropdowns if industry changes
+                            updateFormData({ department: "", roleCategory: "", jobRole: "" })
+                          }}
+                          onFocus={() => setShowIndustryDropdown(true)}
+                          placeholder="Type to search industry..."
+                          className="h-10 text-sm rounded-full"
+                        />
+                        {showIndustryDropdown && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {industries
+                              .filter((ind) =>
+                                ind.name
+                                  .toLowerCase()
+                                  .includes((currentEntry.industry || formData.industry).toLowerCase()),
+                              )
+                              .map((ind) => (
+                                <button
+                                  key={ind.name}
+                                  type="button"
+                                  onClick={() => {
+                                    setCurrentEntry({ ...currentEntry, industry: ind.name })
+                                    updateFormData({
+                                      industry: ind.name,
+                                      department: "",
+                                      roleCategory: "",
+                                      jobRole: "",
+                                    })
+                                    setShowIndustryDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                                >
+                                  {ind.name}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {(currentEntry.industry || formData.industry) && (
+                      <div className="space-y-2">
+                        <Label className="text-sm">Department*</Label>
+                        <select
+                          value={formData.department}
+                          onChange={(e) => {
+                            updateFormData({ department: e.target.value, roleCategory: "", jobRole: "" })
+                          }}
+                          className="w-full h-10 px-3 border rounded-full text-sm"
+                        >
+                          <option value="">Select department</option>
+                          {industries
+                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
+                            ?.departments.map((dept) => (
+                              <option key={dept} value={dept}>
+                                {dept}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {formData.department && (
+                      <div className="space-y-2">
+                        <Label className="text-sm">Role Category*</Label>
+                        <select
+                          value={formData.roleCategory || ""}
+                          onChange={(e) => {
+                            updateFormData({ roleCategory: e.target.value, jobRole: "" })
+                          }}
+                          className="w-full h-10 px-3 border rounded-full text-sm"
+                        >
+                          <option value="">Select role category</option>
+                          {industries
+                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
+                            ?.roles.filter((role) => role.department === formData.department)
+                            .map((role) => (
+                              <option key={role.category} value={role.category}>
+                                {role.category}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {formData.roleCategory && (
+                      <div className="space-y-2">
+                        <Label className="text-sm">Job Title*</Label>
+                        <select
+                          value={formData.jobRole || ""}
+                          onChange={(e) => {
+                            updateFormData({ jobRole: e.target.value })
+                          }}
+                          className="w-full h-10 px-3 border rounded-full text-sm"
+                        >
+                          <option value="">Select job title</option>
+                          {industries
+                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
+                            ?.roles.find(
+                              (role) =>
+                                role.department === formData.department && role.category === formData.roleCategory,
+                            )
+                            ?.titles.map((title) => (
+                              <option key={title} value={title}>
+                                {title}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleSaveCurrentEmployment}
+                    className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
+                  >
+                    {currentEntry.currentlyEmployed === "yes" ? "Save Current Employment" : "Save Previous Employment"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {formData.currentEmployment && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-sm">Previous Employment History</h3>
+                  {!showAdditionalEmploymentForm && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAdditionalEmploymentForm(true)}
+                      className="h-8 px-3 text-xs rounded-full"
+                    >
+                      + Add
+                    </Button>
+                  )}
+                </div>
+
+                {formData.additionalEmployment.length > 0 && (
+                  <div className="space-y-4">
+                    {formData.additionalEmployment.map((entry, index) => (
+                      <div key={index} className="border rounded-lg p-4 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-sm">{entry.jobTitle}</p>
+                            <p className="text-xs text-muted-foreground">{entry.companyName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {entry.fromDate} to {entry.toDate}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setCurrentAdditionalEntry(entry)
+                                setEditingAdditionalIndex(index)
+                                setShowAdditionalEmploymentForm(true)
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                updateFormData({
+                                  additionalEmployment: formData.additionalEmployment.filter((_, i) => i !== index),
+                                })
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {showAdditionalEmploymentForm && (
+                  <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium text-sm">Add Previous Employment</h3>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowAdditionalEmploymentForm(false)
+                          setEditingAdditionalIndex(null)
+                          setCurrentAdditionalEntry({
+                            companyName: "",
+                            jobTitle: "",
+                            fromDate: "",
+                            toDate: "",
+                          })
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm">Company name*</Label>
+                        <Input
+                          value={currentAdditionalEntry.companyName}
+                          onChange={(e) =>
+                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, companyName: e.target.value })
+                          }
+                          placeholder="Eg. Google"
+                          className="h-10 text-sm rounded-full"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm">Job title*</Label>
+                        <Input
+                          value={currentAdditionalEntry.jobTitle}
+                          onChange={(e) =>
+                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, jobTitle: e.target.value })
+                          }
+                          placeholder="Eg. Product Manager"
+                          className="h-10 text-sm rounded-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Duration*</Label>
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                        <MonthYearPicker
+                          value={currentAdditionalEntry.fromDate}
+                          onChange={(value) =>
+                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, fromDate: value })
+                          }
+                          placeholder="MM/YY"
+                        />
+                        <span className="text-gray-400 text-sm">to</span>
+                        <MonthYearPicker
+                          value={currentAdditionalEntry.toDate}
+                          onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, toDate: value })}
+                          placeholder="MM/YY"
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleSaveAdditionalEmployment}
+                      className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
+                    >
+                      {editingAdditionalIndex !== null ? "Update Entry" : "Add Entry"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Total experience */}
+        <div className="space-y-2">
+          <Label className="text-sm">Total work experience*</Label>
+          <div className="flex gap-3">
+            <select
+              value={formData.totalExperienceYears}
+              onChange={(e) => updateFormData("totalExperienceYears", e.target.value)}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+            >
+              <option value="">Select year</option>
+              {Array.from({ length: 51 }, (_, i) => (
+                <option key={i} value={i}>
+                  {i} Year{i !== 1 ? "s" : ""}
+                </option>
+              ))}
+            </select>
+            <select
+              value={formData.totalExperienceMonths}
+              onChange={(e) => updateFormData("totalExperienceMonths", e.target.value)}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+            >
+              <option value="">Select month</option>
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i} value={i}>
+                  {i} Month{i !== 1 ? "s" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="space-y-2 relative">
@@ -2146,14 +2517,14 @@ function Step3EmploymentAndSkills({
             <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
               {industries
                 .filter((industry) =>
-                  industry.toLowerCase().includes((formData.industry || industrySearch).toLowerCase()),
+                  industry.name.toLowerCase().includes((formData.industry || industrySearch).toLowerCase()),
                 )
                 .map((industry) => (
                   <button
-                    key={industry}
+                    key={industry.name}
                     type="button"
                     onClick={() => {
-                      updateFormData("industry", industry)
+                      updateFormData("industry", industry.name)
                       setIndustrySearch("")
                       setShowIndustryDropdown(false)
                       // Reset dependent fields
@@ -2163,7 +2534,7 @@ function Step3EmploymentAndSkills({
                     }}
                     className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
                   >
-                    {industry}
+                    {industry.name}
                   </button>
                 ))}
             </div>
@@ -2184,15 +2555,17 @@ function Step3EmploymentAndSkills({
                 updateFormData("roleCategory", "")
                 updateFormData("jobRole", "")
               }}
-              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
               disabled={!formData.industry}
             >
               <option value="">Select department</option>
-              {availableDepartments.map((dept) => (
-                <option key={dept} value={dept}>
-                  {dept}
-                </option>
-              ))}
+              {industries
+                .find((ind) => ind.name === formData.industry)
+                ?.departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
             </select>
           </div>
         )}
@@ -2212,11 +2585,14 @@ function Step3EmploymentAndSkills({
               className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
             >
               <option value="">Select role category</option>
-              {Object.keys(rolesByCategory).map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
+              {industries
+                .find((ind) => ind.name === formData.industry)
+                ?.roles.filter((role) => role.department === formData.department)
+                .map((role) => (
+                  <option key={role.category} value={role.category}>
+                    {role.category}
+                  </option>
+                ))}
             </select>
           </div>
         )}
@@ -2232,12 +2608,17 @@ function Step3EmploymentAndSkills({
               onChange={(e) => updateFormData("jobRole", e.target.value)}
               className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
             >
-              <option value="">Select job role</option>
-              {rolesByCategory[formData.roleCategory]?.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
+              <option value="">Select job title</option>
+              {industries
+                .find((ind) => ind.name === formData.industry)
+                ?.roles.find(
+                  (role) => role.department === formData.department && role.category === formData.roleCategory,
+                )
+                ?.titles.map((title) => (
+                  <option key={title} value={title}>
+                    {title}
+                  </option>
+                ))}
             </select>
           </div>
         )}
