@@ -11,7 +11,7 @@ interface UseSessionTimeoutProps {
 }
 
 export function useSessionTimeout({
-  timeoutMs = 60000, // 1 minute for testing
+  timeoutMs = 900000, // 15 minutes
   warningMs = 10000, // 10 seconds warning
   onTimeout,
   onWarning,
