@@ -20,13 +20,22 @@ export function useSessionTimeout({
   const [showWarning, setShowWarning] = useState(false)
   const [secondsRemaining, setSecondsRemaining] = useState(0)
 
-  // Refs to hold timer IDs
+  // Refs to hold timer IDs and prevent re-initialization
   const warningTimerRef = useRef<NodeJS.Timeout | null>(null)
   const logoutTimerRef = useRef<NodeJS.Timeout | null>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const isInitializedRef = useRef(false)
+  const isMountedRef = useRef(true)
 
-  const clearSessionTimers = useCallback(() => {
+  const onTimeoutRef = useRef(onTimeout)
+  const onWarningRef = useRef(onWarning)
+
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout
+    onWarningRef.current = onWarning
+  }, [onTimeout, onWarning])
+
+  const clearSessionTimers = () => {
     if (warningTimerRef.current) {
       clearTimeout(warningTimerRef.current)
       warningTimerRef.current = null
@@ -35,30 +44,31 @@ export function useSessionTimeout({
       clearTimeout(logoutTimerRef.current)
       logoutTimerRef.current = null
     }
-  }, [])
+  }
 
-  const clearCountdown = useCallback(() => {
+  const clearCountdown = () => {
     if (countdownIntervalRef.current) {
+      console.log("[v0] 🛑 Clearing countdown interval")
       clearInterval(countdownIntervalRef.current)
       countdownIntervalRef.current = null
     }
-  }, [])
+  }
 
-  const handleAutoLogout = useCallback(() => {
+  const handleAutoLogout = () => {
     console.log("[v0] 🚪 Auto-logout triggered")
     clearCountdown()
     clearSessionTimers()
     setShowWarning(false)
 
-    if (onTimeout) {
-      onTimeout()
+    if (onTimeoutRef.current) {
+      onTimeoutRef.current()
     }
 
     // Redirect to login with timeout parameter
     router.push("/employer/login?timeout=true")
-  }, [router, onTimeout, clearCountdown, clearSessionTimers])
+  }
 
-  const startCountdown = useCallback(() => {
+  const startCountdown = () => {
     const warningSeconds = Math.floor(warningMs / 1000)
     console.log("[v0] ⏰ Starting countdown from", warningSeconds, "seconds")
 
@@ -68,32 +78,37 @@ export function useSessionTimeout({
     // Clear any existing countdown
     clearCountdown()
 
-    // Start new countdown interval
     countdownIntervalRef.current = setInterval(() => {
       remaining -= 1
-      console.log("[v0] ⏱️ Countdown:", remaining, "seconds remaining")
+      console.log("[v0] ⏱️ Countdown tick:", remaining, "seconds remaining")
+
+      if (!isMountedRef.current) {
+        console.log("[v0] ⚠️ Component unmounted - stopping countdown")
+        clearCountdown()
+        return
+      }
 
       setSecondsRemaining(remaining)
 
       if (remaining <= 0) {
-        console.log("[v0] ⏰ Countdown finished - logging out")
+        console.log("[v0] ⏰ Countdown finished - auto-logout now")
         clearCountdown()
         handleAutoLogout()
       }
     }, 1000)
 
-    if (onWarning) {
-      onWarning()
+    if (onWarningRef.current) {
+      onWarningRef.current()
     }
-  }, [warningMs, onWarning, handleAutoLogout, clearCountdown])
+  }
 
-  const showWarningModal = useCallback(() => {
+  const showWarningModal = () => {
     console.log("[v0] ⚠️ Showing session warning modal")
     setShowWarning(true)
     startCountdown()
-  }, [startCountdown])
+  }
 
-  const resetSessionTimer = useCallback(() => {
+  const resetSessionTimer = () => {
     // Don't reset if warning is showing
     if (showWarning) {
       console.log("[v0] ⛔ Warning active - ignoring activity")
@@ -109,29 +124,36 @@ export function useSessionTimeout({
 
     // Set warning timer
     warningTimerRef.current = setTimeout(() => {
-      showWarningModal()
+      if (isMountedRef.current) {
+        showWarningModal()
+      }
     }, warningDelay)
 
     // Set logout timer (backup in case countdown fails)
     logoutTimerRef.current = setTimeout(() => {
-      handleAutoLogout()
+      if (isMountedRef.current) {
+        console.log("[v0] 🕐 Backup logout timer triggered")
+        handleAutoLogout()
+      }
     }, timeoutMs)
-  }, [timeoutMs, warningMs, showWarning, showWarningModal, handleAutoLogout, clearSessionTimers])
+  }
 
   const extendSession = useCallback(() => {
     console.log("[v0] ✅ Session extended by user")
     setShowWarning(false)
     clearCountdown()
     resetSessionTimer()
-  }, [resetSessionTimer, clearCountdown])
+  }, [])
 
   useEffect(() => {
     if (isInitializedRef.current) {
+      console.log("[v0] ⏭️ Already initialized - skipping")
       return
     }
 
     console.log("[v0] 🚀 Initializing session timeout")
     isInitializedRef.current = true
+    isMountedRef.current = true
 
     // Track user activity
     const activityEvents = ["mousedown", "keydown", "touchstart", "click"]
@@ -143,16 +165,20 @@ export function useSessionTimeout({
     // Start initial timer
     resetSessionTimer()
 
-    // Cleanup
+    // Cleanup on unmount only
     return () => {
-      console.log("[v0] 🧹 Cleaning up session timeout")
+      console.log("[v0] 🧹 Cleaning up session timeout on unmount")
+      isMountedRef.current = false
+
       activityEvents.forEach((event) => {
         window.removeEventListener(event, resetSessionTimer)
       })
+
       clearSessionTimers()
       clearCountdown()
+      isInitializedRef.current = false
     }
-  }, [resetSessionTimer, clearSessionTimers, clearCountdown])
+  }, []) // Empty dependency array - run once on mount only
 
   return {
     showWarning,
