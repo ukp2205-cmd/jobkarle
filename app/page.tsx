@@ -556,7 +556,9 @@ export default function HomePage() {
           <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
             <TrendingUp className="w-10 h-10 sm:w-12 sm:h-12 text-blue-600 mb-3 sm:mb-4" />
             <h3 className="text-lg sm:text-xl font-semibold mb-2">Career Growth</h3>
-            <p className="text-sm sm:text-base text-gray-600">Access resources and tools to advance your career</p>
+            <p className="text-sm sm:text-base text-gray-600">
+              Unlock opportunities that match your skills and aspirations
+            </p>
           </div>
           <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
             <Award className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 mb-3 sm:mb-4" />
