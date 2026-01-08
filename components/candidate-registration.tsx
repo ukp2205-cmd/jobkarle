@@ -1165,14 +1165,14 @@ function Step3EmploymentAndSkills({
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
   const [loadingSkills, setLoadingSkills] = useState(true)
   const [showCityDropdown, setShowCityDropdown] = useState(false)
-  const [isSaving, setIsSaving] = React.useState(false) // Added for saving state
-  const [selectedRoleCategory, setSelectedRoleCategory] = useState<string>("") // Added for the fix
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [selectedRoleCategory, setSelectedRoleCategory] = useState<string>("")
 
   // Fetch skills from Supabase
   useState(() => {
     const fetchSkills = async () => {
       setLoadingSkills(true)
-      const { data, error } = await getSupabase().from("skills").select("*").order("skill_name") // Corrected from supabase to getSupabase()
+      const { data, error } = await getSupabase().from("skills").select("*").order("skill_name")
       if (error) {
         console.error("Error fetching skills:", error)
       } else {
@@ -1626,21 +1626,6 @@ function Step3EmploymentAndSkills({
 
   const suggestedSkills = allSkills.filter((skill) => !formData.skillsForRole.includes(skill.skill_name)).slice(0, 10)
 
-  const addSkill = (skillName: string) => {
-    if (!formData.skillsForRole.includes(skillName)) {
-      updateFormData("skillsForRole", [...formData.skillsForRole, skillName])
-    }
-    setSkillSearch("")
-    setShowSkillDropdown(false)
-  }
-
-  const removeSkill = (skillName: string) => {
-    updateFormData(
-      "skillsForRole",
-      formData.skillsForRole.filter((s) => s !== skillName),
-    )
-  }
-
   // State for current employment entry being edited/added
   const [currentEntry, setCurrentEntry] = useState<EmploymentEntry>({
     currentlyEmployed: "",
@@ -1655,7 +1640,7 @@ function Step3EmploymentAndSkills({
   })
 
   // State for additional employment entries being edited/added
-  const [currentAdditionalEntry, setCurrentAdditionalEntry] = useState<AdditionalEmploymentEntry>({
+  const [additionalEntry, setAdditionalEntry] = useState<AdditionalEmploymentEntry>({
     companyName: "",
     jobTitle: "",
     fromDate: "",
@@ -1668,6 +1653,14 @@ function Step3EmploymentAndSkills({
 
   const handleSaveCurrentEmployment = () => {
     // Basic validation could be added here
+    if (!currentEntry.companyName || !currentEntry.currentJobTitle || !currentEntry.durationFrom) {
+      alert("Please fill in Company Name, Job Title, and Duration From.")
+      return
+    }
+    if (currentEntry.currentlyEmployed === "no" && !currentEntry.durationTo) {
+      alert("Please fill in Duration To.")
+      return
+    }
     updateFormData("currentEmployment", currentEntry)
     setShowCurrentEmploymentForm(false)
     // If editing, reset index
@@ -1688,6 +1681,22 @@ function Step3EmploymentAndSkills({
     })
   }
 
+  const cancelCurrentEmploymentEntry = () => {
+    setShowCurrentEmploymentForm(false)
+    setCurrentEntry({
+      currentlyEmployed: "",
+      companyName: "",
+      currentJobTitle: "",
+      currentCity: "",
+      currentState: "",
+      durationFrom: "",
+      durationTo: "",
+      annualSalary: "",
+      noticePeriod: "",
+    })
+    setEditingCurrentIndex(null)
+  }
+
   const editCurrentEmploymentEntry = () => {
     // This function is called when the 'Edit' button is clicked for current employment.
     // It sets the form to be visible and pre-fills the current employment data.
@@ -1700,24 +1709,34 @@ function Step3EmploymentAndSkills({
 
   const handleSaveAdditionalEmployment = () => {
     // Basic validation could be added here
+    if (
+      !additionalEntry.companyName ||
+      !additionalEntry.jobTitle ||
+      !additionalEntry.fromDate ||
+      !additionalEntry.toDate
+    ) {
+      alert("Please fill in Company Name, Job Title, and both From/To dates.")
+      return
+    }
     if (editingAdditionalIndex !== null) {
       // Update existing
       const updated = [...formData.additionalEmployment]
-      updated[editingAdditionalIndex] = currentAdditionalEntry
+      updated[editingAdditionalIndex] = additionalEntry
       updateFormData("additionalEmployment", updated)
       setEditingAdditionalIndex(null)
     } else {
       // Add new
-      updateFormData("additionalEmployment", [...formData.additionalEmployment, currentAdditionalEntry])
+      updateFormData("additionalEmployment", [...formData.additionalEmployment, additionalEntry])
     }
     // Reset form
-    setCurrentAdditionalEntry({
+    setAdditionalEntry({
       companyName: "",
       jobTitle: "",
       fromDate: "",
       toDate: "",
     })
     setShowAdditionalEmploymentForm(false)
+    setEditingAdditionalIndex(null)
   }
 
   const deleteAdditionalEmploymentEntry = (index: number) => {
@@ -2319,7 +2338,7 @@ function Step3EmploymentAndSkills({
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                setCurrentAdditionalEntry(entry)
+                                setAdditionalEntry(entry)
                                 setEditingAdditionalIndex(index)
                                 setShowAdditionalEmploymentForm(true)
                               }}
@@ -2331,9 +2350,7 @@ function Step3EmploymentAndSkills({
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                updateFormData({
-                                  additionalEmployment: formData.additionalEmployment.filter((_, i) => i !== index),
-                                })
+                                deleteAdditionalEmploymentEntry(index) // Call delete function
                               }}
                             >
                               Remove
@@ -2356,7 +2373,7 @@ function Step3EmploymentAndSkills({
                         onClick={() => {
                           setShowAdditionalEmploymentForm(false)
                           setEditingAdditionalIndex(null)
-                          setCurrentAdditionalEntry({
+                          setAdditionalEntry({
                             companyName: "",
                             jobTitle: "",
                             fromDate: "",
@@ -2372,10 +2389,8 @@ function Step3EmploymentAndSkills({
                       <div className="space-y-2">
                         <Label className="text-sm">Company name*</Label>
                         <Input
-                          value={currentAdditionalEntry.companyName}
-                          onChange={(e) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, companyName: e.target.value })
-                          }
+                          value={additionalEntry.companyName}
+                          onChange={(e) => setAdditionalEntry({ ...additionalEntry, companyName: e.target.value })}
                           placeholder="Eg. Google"
                           className="h-10 text-sm rounded-full"
                         />
@@ -2384,10 +2399,8 @@ function Step3EmploymentAndSkills({
                       <div className="space-y-2">
                         <Label className="text-sm">Job title*</Label>
                         <Input
-                          value={currentAdditionalEntry.jobTitle}
-                          onChange={(e) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, jobTitle: e.target.value })
-                          }
+                          value={additionalEntry.jobTitle}
+                          onChange={(e) => setAdditionalEntry({ ...additionalEntry, jobTitle: e.target.value })}
                           placeholder="Eg. Product Manager"
                           className="h-10 text-sm rounded-full"
                         />
@@ -2398,16 +2411,14 @@ function Step3EmploymentAndSkills({
                       <Label className="text-sm">Duration*</Label>
                       <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
                         <MonthYearPicker
-                          value={currentAdditionalEntry.fromDate}
-                          onChange={(value) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, fromDate: value })
-                          }
+                          value={additionalEntry.fromDate}
+                          onChange={(value) => setAdditionalEntry({ ...additionalEntry, fromDate: value })}
                           placeholder="MM/YY"
                         />
                         <span className="text-gray-400 text-sm">to</span>
                         <MonthYearPicker
-                          value={currentAdditionalEntry.toDate}
-                          onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, toDate: value })}
+                          value={additionalEntry.toDate}
+                          onChange={(value) => setAdditionalEntry({ ...additionalEntry, toDate: value })}
                           placeholder="MM/YY"
                         />
                       </div>
