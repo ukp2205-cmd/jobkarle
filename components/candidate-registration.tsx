@@ -14,6 +14,31 @@ import Link from "next/link"
 
 const getSupabase = () => createClient()
 
+const validatePassword = (password: string): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = []
+
+  if (password.length < 8) {
+    errors.push("At least 8 characters")
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    errors.push("At least 1 uppercase letter")
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push("At least 1 number")
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push("At least 1 special character (!@#$%^&*)")
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  }
+}
+
 const formatIndianNumber = (value: string): string => {
   // Remove all non-digits
   const digits = value.replace(/\D/g, "")
@@ -317,7 +342,8 @@ export default function CandidateRegistration() {
   const renderStep = () => {
     switch (step) {
       case 1:
-        return <Step1Initial {...stepProps} />
+        // Renamed Step1Initial to Step1BasicInfo
+        return <Step1BasicInfo {...stepProps} />
       case 2:
         return <Step2OTP {...stepProps} />
       case 3:
@@ -334,7 +360,7 @@ export default function CandidateRegistration() {
       //   // For the purpose of this merge, we'll map step 6 to the combined component if needed.
       //   return <Step5HeadlineAndPreferences {...stepProps} />
       default:
-        return <Step1Initial {...stepProps} />
+        return <Step1BasicInfo {...stepProps} />
     }
   }
 
@@ -487,7 +513,8 @@ export default function CandidateRegistration() {
   )
 }
 
-function Step1Initial({
+// Renamed Step1Initial to Step1BasicInfo
+function Step1BasicInfo({
   formData,
   updateFormData,
   nextStep,
@@ -498,10 +525,27 @@ function Step1Initial({
 }: StepProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [passwordValidation, setPasswordValidation] = useState<{ isValid: boolean; errors: string[] }>({
+    isValid: false,
+    errors: [],
+  })
+
+  const handlePasswordChange = (value: string) => {
+    updateFormData("password", value)
+    setPasswordValidation(validatePassword(value))
+  }
 
   // Updated handleSubmit
   const handleSubmit = async () => {
     if (isLoading) return
+
+    // Validate password before submitting
+    const { isValid: isPasswordValid } = validatePassword(formData.password)
+    if (!isPasswordValid) {
+      alert("Password does not meet the requirements. Please check the criteria.")
+      setPasswordValidation(validatePassword(formData.password)) // Ensure validation message is shown
+      return
+    }
 
     setIsLoading(true)
     console.log("[v0] Step1 handleSubmit called")
@@ -691,7 +735,7 @@ function Step1Initial({
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
-                  onChange={(e) => updateFormData("password", e.target.value)}
+                  onChange={(e) => handlePasswordChange(e.target.value)}
                   placeholder="Create a password"
                   className={`mt-1 h-12 rounded-full px-4 pr-12 text-sm ${errors.password ? "border-red-500" : ""}`}
                   required
@@ -708,10 +752,39 @@ function Step1Initial({
                   )}
                 </button>
               </div>
-              {formData.password && formData.password.length >= 6 && (
-                <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
-                  keep your account protected and secure. <Check className="w-3 h-3" />
-                </p>
+              {formData.password && (
+                <div className="mt-2 space-y-1">
+                  {passwordValidation.isValid ? (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Strong password
+                    </p>
+                  ) : (
+                    <div className="text-xs space-y-1">
+                      <p className="text-gray-600 font-medium">Password must contain:</p>
+                      {[
+                        { met: formData.password.length >= 8, text: "At least 8 characters" },
+                        { met: /[A-Z]/.test(formData.password), text: "At least 1 uppercase letter" },
+                        { met: /[0-9]/.test(formData.password), text: "At least 1 number" },
+                        {
+                          met: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
+                          text: "At least 1 special character (!@#$%^&*)",
+                        },
+                      ].map((req, idx) => (
+                        <p
+                          key={idx}
+                          className={`flex items-center gap-1 ${req.met ? "text-green-600" : "text-gray-500"}`}
+                        >
+                          {req.met ? (
+                            <Check className="w-3 h-3" />
+                          ) : (
+                            <span className="w-3 h-3 rounded-full border border-gray-300" />
+                          )}
+                          {req.text}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
             </div>
