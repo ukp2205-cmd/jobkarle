@@ -1,23 +1,37 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Eye, EyeOff, Briefcase, ArrowRight, CheckCircle2 } from "lucide-react"
+import { Eye, EyeOff, Briefcase, ArrowRight, CheckCircle2, Clock } from "lucide-react"
 import { loginCandidate } from "@/app/actions/candidate-auth-actions"
 import Link from "next/link"
 
 export function CandidateLoginForm({ redirectUrl }: { redirectUrl?: string }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
+
+  const isTimeout = searchParams.get("timeout") === "true"
+
+  useEffect(() => {
+    if (isTimeout) {
+      const timer = setTimeout(() => {
+        const url = new URL(window.location.href)
+        url.searchParams.delete("timeout")
+        router.replace(url.pathname + url.search)
+      }, 8000)
+      return () => clearTimeout(timer)
+    }
+  }, [isTimeout, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,6 +102,18 @@ export function CandidateLoginForm({ redirectUrl }: { redirectUrl?: string }) {
             </div>
 
             <form onSubmit={handleLogin} className="space-y-5">
+              {isTimeout && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <Clock className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-semibold text-red-900 mb-1">Session Expired</h4>
+                      <p className="text-sm text-red-700">Your session expired. Please login again to continue.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {error && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
                   <span className="font-medium">⚠️</span>
