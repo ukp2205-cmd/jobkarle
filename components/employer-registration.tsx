@@ -47,6 +47,13 @@ interface FormData {
   cityDetail: string
   pincode: string
   acceptTerms: boolean
+  skills: string[]
+  yearsOfExperience: string
+  monthsOfExperience: string
+  industry: string
+  department: string
+  roleCategory: string
+  jobTitle: string
 }
 
 const INDIAN_STATES = [
@@ -398,6 +405,139 @@ const CITIES_BY_STATE: Record<string, string[]> = {
   ],
 }
 
+const industryDepartmentRoleMapping: Record<string, Record<string, Record<string, string[]>>> = {
+  "IT Services & Consulting": {
+    Engineering: {
+      "Software Development": [
+        "Frontend Developer",
+        "Backend Developer",
+        "Full Stack Developer",
+        "Mobile App Developer",
+        "DevOps Engineer",
+      ],
+      "Quality Assurance": ["QA Engineer", "Test Automation Engineer", "Manual Tester", "Performance Tester"],
+      "Data & Analytics": ["Data Scientist", "Data Engineer", "Data Analyst", "ML Engineer", "AI Specialist"],
+    },
+    "Product Management": {
+      "Product Strategy": ["Product Manager", "Senior Product Manager", "Product Owner", "Technical Product Manager"],
+      "Product Operations": ["Product Operations Manager", "Product Analyst"],
+    },
+    Design: {
+      "UI/UX Design": ["UI Designer", "UX Designer", "Product Designer", "UX Researcher", "Interaction Designer"],
+      "Graphic Design": ["Graphic Designer", "Visual Designer", "Brand Designer"],
+    },
+  },
+  Banking: {
+    Operations: {
+      "Branch Operations": ["Branch Manager", "Operations Manager", "Customer Service Manager"],
+      Treasury: ["Treasury Manager", "Treasury Analyst", "Dealer"],
+    },
+    "Risk & Compliance": {
+      "Risk Management": ["Risk Manager", "Credit Risk Analyst", "Market Risk Analyst"],
+      Compliance: ["Compliance Officer", "AML Officer", "KYC Analyst"],
+    },
+    "Sales & Business Development": {
+      "Retail Banking": ["Relationship Manager", "Sales Officer", "Business Development Manager"],
+      "Corporate Banking": ["Corporate Relationship Manager", "Corporate Sales Manager"],
+    },
+  },
+  Healthcare: {
+    "Medical Services": {
+      Clinical: ["Doctor", "Specialist", "Consultant", "Physician", "Surgeon"],
+      Nursing: ["Staff Nurse", "Senior Nurse", "Nursing Supervisor", "ICU Nurse"],
+    },
+    Operations: {
+      "Hospital Administration": ["Hospital Administrator", "Operations Manager", "Facility Manager"],
+      "Medical Records": ["Medical Records Officer", "Health Information Manager"],
+    },
+    Pharmacy: {
+      Dispensing: ["Pharmacist", "Senior Pharmacist", "Clinical Pharmacist"],
+      "Drug Information": ["Drug Information Specialist", "Pharmacy Manager"],
+    },
+  },
+  Manufacturing: {
+    Production: {
+      "Production Management": ["Production Manager", "Production Supervisor", "Production Engineer"],
+      "Shop Floor": ["Machine Operator", "Assembly Line Worker", "Quality Inspector"],
+    },
+    "Quality Control": {
+      "Quality Assurance": ["QA Manager", "Quality Engineer", "QC Inspector"],
+      "Process Improvement": ["Six Sigma Specialist", "Lean Manufacturing Specialist"],
+    },
+    "Supply Chain": {
+      Procurement: ["Procurement Manager", "Purchase Officer", "Vendor Manager"],
+      Logistics: ["Logistics Manager", "Warehouse Manager", "Supply Chain Analyst"],
+    },
+  },
+  "E-commerce": {
+    Technology: {
+      Engineering: ["Software Engineer", "Full Stack Developer", "Mobile Developer", "Platform Engineer"],
+      Product: ["Product Manager", "Technical Product Manager", "Product Analyst"],
+    },
+    Operations: {
+      "Marketplace Operations": ["Operations Manager", "Category Manager", "Seller Management"],
+      "Customer Support": ["Customer Support Manager", "Support Associate", "Customer Success Manager"],
+    },
+    Marketing: {
+      "Digital Marketing": ["Digital Marketing Manager", "SEO Specialist", "SEM Specialist", "Social Media Manager"],
+      "Content Marketing": ["Content Manager", "Content Writer", "Copy Writer"],
+    },
+  },
+  Retail: {
+    "Store Operations": {
+      "Store Management": ["Store Manager", "Assistant Store Manager", "Department Manager"],
+      Sales: ["Sales Associate", "Sales Executive", "Cashier"],
+    },
+    Merchandising: {
+      "Visual Merchandising": ["Visual Merchandiser", "Display Designer"],
+      Buying: ["Buyer", "Merchandise Planner", "Category Manager"],
+    },
+    "Customer Service": {
+      "Service Desk": ["Customer Service Representative", "Service Desk Manager"],
+      "Returns & Exchange": ["Returns Coordinator", "Exchange Specialist"],
+    },
+  },
+  Telecommunications: {
+    "Network Operations": {
+      "Network Engineering": ["Network Engineer", "NOC Engineer", "Network Architect"],
+      "Network Planning": ["Network Planner", "RF Engineer", "Transmission Engineer"],
+    },
+    "Customer Service": {
+      "Customer Care": ["Customer Care Executive", "Technical Support Engineer", "Helpdesk Support"],
+      Sales: ["Sales Executive", "Relationship Manager", "Enterprise Sales Manager"],
+    },
+    Technology: {
+      "IT Operations": ["IT Manager", "System Administrator", "Database Administrator"],
+      "Software Development": ["Software Developer", "Application Engineer", "Solutions Architect"],
+    },
+  },
+}
+
+const popularSkills = [
+  "JavaScript",
+  "Python",
+  "Java",
+  "React",
+  "Node.js",
+  "SQL",
+  "AWS",
+  "Docker",
+  "Project Management",
+  "Data Analysis",
+  "Machine Learning",
+  "Communication",
+  "Leadership",
+  "Problem Solving",
+  "Team Management",
+  "Sales",
+  "Marketing",
+  "Customer Service",
+  "Financial Analysis",
+  "Excel",
+  "PowerPoint",
+  "SAP",
+]
+
 function OTPVerificationStep({
   mobileNumber,
   email,
@@ -597,10 +737,21 @@ export default function EmployerRegistration() {
     pincode: "",
     acceptTerms: false,
     mobileVerified: false,
+    skills: [],
+    yearsOfExperience: "",
+    monthsOfExperience: "",
+    industry: "",
+    department: "",
+    roleCategory: "",
+    jobTitle: "",
   })
 
   const [selectedState, setSelectedState] = useState<string>("")
   const [selectedStateDetail, setSelectedStateDetail] = useState<string>("")
+  const [skillSearch, setSkillSearch] = useState("")
+  const [showSkillDropdown, setShowSkillDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
 
   const handleInputChange = (field: string, value: any) => {
     if (field === "state") {
@@ -714,6 +865,12 @@ export default function EmployerRegistration() {
       return
     }
 
+    // Add validation for required fields in step 3
+    if (!formData.industry || !formData.department || !formData.roleCategory || !formData.jobTitle) {
+      alert("Please select Industry, Department, Role Category, and Job Title.")
+      return
+    }
+
     if (!formData.acceptTerms) {
       alert("Please accept the Terms and Conditions")
       return
@@ -740,6 +897,14 @@ export default function EmployerRegistration() {
         stateDetail: formData.stateDetail,
         cityDetail: formData.cityDetail,
         pincode: formData.pincode,
+        // Pass new fields to the API
+        skills: formData.skills,
+        yearsOfExperience: formData.yearsOfExperience,
+        monthsOfExperience: formData.monthsOfExperience,
+        industry: formData.industry,
+        department: formData.department,
+        roleCategory: formData.roleCategory,
+        jobTitle: formData.jobTitle,
       })
 
       if (result.success) {
@@ -1150,6 +1315,260 @@ export default function EmployerRegistration() {
                   />
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Skills</Label>
+                      <div className="space-y-3">
+                        {/* Skill input with autosuggest */}
+                        <div className="relative">
+                          <Input
+                            value={skillSearch}
+                            onChange={(e) => {
+                              setSkillSearch(e.target.value)
+                              setShowSkillDropdown(e.target.value.length > 0)
+                            }}
+                            onBlur={() => setTimeout(() => setShowSkillDropdown(false), 200)}
+                            placeholder="Type a skill or select from popular skills..."
+                            className="h-10 rounded-full text-sm"
+                          />
+                          {showSkillDropdown && skillSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-auto">
+                              {popularSkills
+                                .filter(
+                                  (skill) =>
+                                    skill.toLowerCase().includes(skillSearch.toLowerCase()) &&
+                                    !formData.skills.includes(skill),
+                                )
+                                .map((skill) => (
+                                  <button
+                                    key={skill}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!formData.skills.includes(skill)) {
+                                        handleInputChange("skills", [...formData.skills, skill])
+                                      }
+                                      setSkillSearch("")
+                                      setShowSkillDropdown(false)
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                                  >
+                                    {skill}
+                                  </button>
+                                ))}
+                              {skillSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (skillSearch && !formData.skills.includes(skillSearch)) {
+                                      handleInputChange("skills", [...formData.skills, skillSearch])
+                                    }
+                                    setSkillSearch("")
+                                    setShowSkillDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-blue-600 border-t"
+                                >
+                                  + Add "{skillSearch}"
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Popular skills for quick selection */}
+                        <div>
+                          <p className="text-xs text-gray-500 mb-2">Popular Skills:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {popularSkills.slice(0, 8).map((skill) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => {
+                                  if (!formData.skills.includes(skill)) {
+                                    handleInputChange("skills", [...formData.skills, skill])
+                                  }
+                                }}
+                                disabled={formData.skills.includes(skill)}
+                                className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {skill}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Selected skills */}
+                        {formData.skills.length > 0 && (
+                          <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg">
+                            {formData.skills.map((skill) => (
+                              <span
+                                key={skill}
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-white border border-gray-300 rounded-full text-sm"
+                              >
+                                {skill}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleInputChange(
+                                      "skills",
+                                      formData.skills.filter((s) => s !== skill),
+                                    )
+                                  }
+                                  className="ml-1 text-gray-500 hover:text-red-600"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Total Experience</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="50"
+                            value={formData.yearsOfExperience}
+                            onChange={(e) => handleInputChange("yearsOfExperience", e.target.value)}
+                            placeholder="Years"
+                            className="h-10 rounded-full text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Years</p>
+                        </div>
+                        <div>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="11"
+                            value={formData.monthsOfExperience}
+                            onChange={(e) => handleInputChange("monthsOfExperience", e.target.value)}
+                            placeholder="Months"
+                            className="h-10 rounded-full text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Months</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Industry *</Label>
+                      <div className="relative">
+                        <Input
+                          value={industrySearch || formData.industry}
+                          onChange={(e) => {
+                            setIndustrySearch(e.target.value)
+                            handleInputChange("industry", "")
+                            handleInputChange("department", "")
+                            handleInputChange("roleCategory", "")
+                            handleInputChange("jobTitle", "")
+                            setShowIndustryDropdown(e.target.value.length > 0)
+                          }}
+                          onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
+                          placeholder="Type to search industry..."
+                          className="h-10 rounded-full text-sm"
+                        />
+                        {showIndustryDropdown && industrySearch && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                            {Object.keys(industryDepartmentRoleMapping)
+                              .filter((industry) => industry.toLowerCase().includes(industrySearch.toLowerCase()))
+                              .map((industry) => (
+                                <button
+                                  key={industry}
+                                  type="button"
+                                  onClick={() => {
+                                    handleInputChange("industry", industry)
+                                    setIndustrySearch("")
+                                    setShowIndustryDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                                >
+                                  {industry}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Department *</Label>
+                        <Select
+                          value={formData.department}
+                          onValueChange={(value) => {
+                            handleInputChange("department", value)
+                            handleInputChange("roleCategory", "")
+                            handleInputChange("jobTitle", "")
+                          }}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(industryDepartmentRoleMapping[formData.industry] || {}).map((dept) => (
+                              <SelectItem key={dept} value={dept}>
+                                {dept}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {formData.department && formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Role Category *</Label>
+                        <Select
+                          value={formData.roleCategory}
+                          onValueChange={(value) => {
+                            handleInputChange("roleCategory", value)
+                            handleInputChange("jobTitle", "")
+                          }}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select role category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(
+                              industryDepartmentRoleMapping[formData.industry]?.[formData.department] || {},
+                            ).map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {formData.roleCategory && formData.department && formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Job Title *</Label>
+                        <Select
+                          value={formData.jobTitle}
+                          onValueChange={(value) => handleInputChange("jobTitle", value)}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select job title" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(
+                              industryDepartmentRoleMapping[formData.industry]?.[formData.department]?.[
+                                formData.roleCategory
+                              ] || []
+                            ).map((title) => (
+                              <SelectItem key={title} value={title}>
+                                {title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
                     <div>
                       <Label
                         htmlFor="website"
