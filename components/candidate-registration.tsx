@@ -1911,16 +1911,7 @@ function Step3EmploymentAndSkills({
                   setShowSkillsForRoleDropdown(true)
                 }}
                 onFocus={() => setShowSkillsForRoleDropdown(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && skillInputForRole.trim()) {
-                    e.preventDefault()
-                    if (!formData.skillsForRole.includes(skillInputForRole.trim())) {
-                      updateFormData({ skillsForRole: [...formData.skillsForRole, skillInputForRole.trim()] })
-                    }
-                    setSkillInputForRole("")
-                    setShowSkillsForRoleDropdown(false)
-                  }
-                }}
+                onBlur={() => setTimeout(() => setShowSkillsForRoleDropdown(false), 200)}
                 placeholder="Type to search skills..."
                 className="h-10 text-sm rounded-full"
               />
@@ -1982,16 +1973,7 @@ function Step3EmploymentAndSkills({
                   setShowSkillsYouKnowDropdown(true)
                 }}
                 onFocus={() => setShowSkillsYouKnowDropdown(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && skillInputYouKnow.trim()) {
-                    e.preventDefault()
-                    if (!formData.skillsYouKnow.includes(skillInputYouKnow.trim())) {
-                      updateFormData({ skillsYouKnow: [...formData.skillsYouKnow, skillInputYouKnow.trim()] })
-                    }
-                    setSkillInputYouKnow("")
-                    setShowSkillsYouKnowDropdown(false)
-                  }
-                }}
+                onBlur={() => setTimeout(() => setShowSkillsYouKnowDropdown(false), 200)}
                 placeholder="Type to search skills..."
                 className="h-10 text-sm rounded-full"
               />
@@ -2490,6 +2472,7 @@ function Step3EmploymentAndSkills({
                   setShowIndustryDropdown(true)
                 }}
                 onFocus={() => setShowIndustryDropdown(true)}
+                onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
                 placeholder="Type to search industry..."
                 className="h-10 text-sm rounded-full"
               />
