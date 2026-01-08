@@ -32,10 +32,6 @@ type EmploymentEntry = {
   durationTo: string
   annualSalary: string
   noticePeriod: string
-  industry?: string // Added to EmploymentEntry
-  department?: string // Added to EmploymentEntry
-  roleCategory?: string // Added to EmploymentEntry
-  jobRole?: string // Added to EmploymentEntry
 }
 
 type AdditionalEmploymentEntry = {
@@ -501,6 +497,22 @@ export default function CandidateRegistration() {
   )
 }
 
+const validatePassword = (password: string): { isValid: boolean; message: string } => {
+  if (password.length < 8) {
+    return { isValid: false, message: "Password must be at least 8 characters long" }
+  }
+  if (!/[A-Z]/.test(password)) {
+    return { isValid: false, message: "Password must contain at least one uppercase letter" }
+  }
+  if (!/[0-9]/.test(password)) {
+    return { isValid: false, message: "Password must contain at least one number" }
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    return { isValid: false, message: "Password must contain at least one special character" }
+  }
+  return { isValid: true, message: "" }
+}
+
 function Step1Initial({
   formData,
   updateFormData,
@@ -519,6 +531,28 @@ function Step1Initial({
 
     setIsLoading(true)
     console.log("[v0] Step1 handleSubmit called")
+
+    // Basic validation for required fields
+    const newErrors: Record<string, string> = {}
+    if (!formData.fullName) newErrors.fullName = "Full name is required"
+    if (!formData.email) newErrors.email = "Email is required"
+    if (!formData.password) newErrors.password = "Password is required"
+    if (!formData.mobileNumber) newErrors.mobileNumber = "Mobile number is required"
+    if (!formData.workStatus) newErrors.workStatus = "Work status is required"
+
+    // Validate password separately using the helper function
+    if (formData.password) {
+      const passwordValidation = validatePassword(formData.password)
+      if (!passwordValidation.isValid) {
+        newErrors.password = passwordValidation.message
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
+      setIsLoading(false)
+      return
+    }
 
     try {
       // Check if email already exists
@@ -705,29 +739,33 @@ function Step1Initial({
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
-                  onChange={(e) => updateFormData("password", e.target.value)}
-                  placeholder="Create a password"
-                  className={`mt-1 h-12 rounded-full px-4 pr-12 text-sm ${errors.password ? "border-red-500" : ""}`}
+                  onChange={(e) => {
+                    updateFormData("password", e.target.value)
+                    const validation = validatePassword(e.target.value)
+                    if (!validation.isValid) {
+                      setErrors({ ...errors, password: validation.message })
+                    } else {
+                      const newErrors = { ...errors }
+                      delete newErrors.password
+                      setErrors(newErrors)
+                    }
+                  }}
                   required
+                  placeholder="Create a strong password"
+                  className="pr-10 h-10 text-sm rounded-full"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-gray-400" />
-                  ) : (
-                    <Eye className="w-4 h-4 text-gray-400" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formData.password && formData.password.length >= 6 && (
-                <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
-                  keep your account protected and secure. <Check className="w-3 h-3" />
-                </p>
-              )}
               {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+              <p className="text-xs text-gray-500 mt-1">
+                Must contain: 1 uppercase, 1 number, 1 special character (min. 8 characters)
+              </p>
             </div>
 
             {/* Mobile Number */}
@@ -1114,7 +1152,6 @@ function Step2OTP({ formData, updateFormData, nextStep, prevStep, setIsLoading, 
   )
 }
 
-// Renamed from Step3EmploymentCombined to Step3EmploymentAndSkills to reflect its functionality
 function Step3EmploymentAndSkills({
   formData,
   updateFormData,
@@ -1575,7 +1612,7 @@ function Step3EmploymentAndSkills({
     { city: "Indore", state: "Madhya Pradesh" },
     { city: "Thane", state: "Maharashtra" },
     { city: "Bhopal", state: "Madhya Pradesh" },
-    { city: "Visakhakhakhapatnam", state: "Andhra Pradesh" },
+    { city: "Visakhakhakhakhakhakhakhakhakhakham", state: "Andhra Pradesh" },
     { city: "Patna", state: "Bihar" },
     { city: "Vadodara", state: "Gujarat" },
     { city: "Ghaziabad", state: "Uttar Pradesh" },
@@ -1615,10 +1652,6 @@ function Step3EmploymentAndSkills({
     durationTo: "",
     annualSalary: "",
     noticePeriod: "",
-    industry: "", // Initialize industry
-    department: "", // Initialize department
-    roleCategory: "", // Initialize roleCategory
-    jobRole: "", // Initialize jobRole
   })
 
   // State for additional employment entries being edited/added
@@ -1652,10 +1685,6 @@ function Step3EmploymentAndSkills({
       durationTo: "",
       annualSalary: "",
       noticePeriod: "",
-      industry: "",
-      department: "",
-      roleCategory: "",
-      jobRole: "",
     })
   }
 
@@ -1801,6 +1830,55 @@ function Step3EmploymentAndSkills({
     }
   }
 
+  const commonSkills = [
+    "JavaScript",
+    "Python",
+    "Java",
+    "React",
+    "Node.js",
+    "Angular",
+    "Vue.js",
+    "TypeScript",
+    "HTML",
+    "CSS",
+    "SQL",
+    "MongoDB",
+    "PostgreSQL",
+    "MySQL",
+    "AWS",
+    "Azure",
+    "Docker",
+    "Kubernetes",
+    "Git",
+    "CI/CD",
+    "REST APIs",
+    "GraphQL",
+    "Redux",
+    "Express.js",
+    "Django",
+    "Flask",
+    "Spring Boot",
+    "Machine Learning",
+    "Data Analysis",
+    "Excel",
+    "Power BI",
+    "Tableau",
+    "Communication",
+    "Leadership",
+    "Project Management",
+    "Problem Solving",
+    "Team Collaboration",
+    "Agile",
+    "Scrum",
+    "Testing",
+    "Debugging",
+  ]
+
+  const [showSkillsForRoleDropdown, setShowSkillsForRoleDropdown] = useState(false)
+  const [showSkillsYouKnowDropdown, setShowSkillsYouKnowDropdown] = useState(false)
+  const [skillInputForRole, setSkillInputForRole] = useState("")
+  const [skillInputYouKnow, setSkillInputYouKnow] = useState("")
+
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader className="border-b">
@@ -1819,103 +1897,150 @@ function Step3EmploymentAndSkills({
         </div>
       </CardHeader>
       <CardContent className="pt-6 space-y-6 max-h-[600px] overflow-y-auto">
-        {/* Key Skills - MANDATORY FOR ALL */}
-        <div>
-          <Label className="text-sm">
-            Key skills<span className="text-red-500">*</span>
-          </Label>
-          <p className="text-xs text-gray-500 mb-2">
-            {/* Updated description for freshers */}
-            {formData.workStatus === "fresher"
-              ? "Add skills you've learned through education, projects, or self-study"
-              : "Add skills relevant to your current or desired role"}
-          </p>
-          {formData.skillsForRole.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 mb-3">
-              {formData.skillsForRole.map((skill) => (
+        <div className="space-y-6 bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold">Skills</h3>
+
+          {/* Skills for Role - Autosuggest */}
+          <div className="space-y-2">
+            <Label className="text-sm">Key Skills for Your Role*</Label>
+            <div className="relative">
+              <Input
+                value={skillInputForRole}
+                onChange={(e) => {
+                  setSkillInputForRole(e.target.value)
+                  setShowSkillsForRoleDropdown(true)
+                }}
+                onFocus={() => setShowSkillsForRoleDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && skillInputForRole.trim()) {
+                    e.preventDefault()
+                    if (!formData.skillsForRole.includes(skillInputForRole.trim())) {
+                      updateFormData({ skillsForRole: [...formData.skillsForRole, skillInputForRole.trim()] })
+                    }
+                    setSkillInputForRole("")
+                    setShowSkillsForRoleDropdown(false)
+                  }
+                }}
+                placeholder="Type to search skills..."
+                className="h-10 text-sm rounded-full"
+              />
+              {showSkillsForRoleDropdown && skillInputForRole && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {commonSkills
+                    .filter(
+                      (skill) =>
+                        skill.toLowerCase().includes(skillInputForRole.toLowerCase()) &&
+                        !formData.skillsForRole.includes(skill),
+                    )
+                    .map((skill) => (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => {
+                          if (!formData.skillsForRole.includes(skill)) {
+                            updateFormData({ skillsForRole: [...formData.skillsForRole, skill] })
+                          }
+                          setSkillInputForRole("")
+                          setShowSkillsForRoleDropdown(false)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                      >
+                        {skill}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {formData.skillsForRole.map((skill, index) => (
                 <span
-                  key={skill}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-xs"
+                  key={index}
+                  className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm flex items-center gap-2"
                 >
                   {skill}
-                  <X className="w-4 h-4 cursor-pointer hover:text-blue-900" onClick={() => removeSkill(skill)} />
+                  <button
+                    type="button"
+                    onClick={() => updateFormData({ skillsForRole: formData.skillsForRole.filter((s) => s !== skill) })}
+                    className="hover:text-blue-900"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
             </div>
-          )}
-
-          <div className="relative">
-            <Input
-              value={skillSearch}
-              onChange={(e) => {
-                setSkillSearch(e.target.value)
-                setShowSkillDropdown(true)
-              }}
-              className="relative h-10 text-sm rounded-full"
-              onFocus={() => setShowSkillDropdown(true)}
-              placeholder="Search or add skills..."
-            />
-            {skillSearch && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSkillSearch("")
-                  setShowSkillDropdown(false)
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-            {showSkillDropdown && (
-              <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {loadingSkills ? (
-                  <div className="p-3 text-center text-gray-500 text-sm">Loading skills...</div>
-                ) : filteredSkills.length > 0 ? (
-                  filteredSkills.map((skill) => (
-                    <button
-                      key={skill.id}
-                      type="button"
-                      onClick={() => addSkill(skill.skill_name)}
-                      className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                    >
-                      {skill.skill_name}
-                    </button>
-                  ))
-                ) : (
-                  <div className="p-3 text-center text-gray-500 text-sm">No skills found.</div>
-                )}
-                {/* Add a button to manually add a skill if it doesn't exist */}
-                {skillSearch &&
-                  !filteredSkills.some((s) => s.skill_name.toLowerCase() === skillSearch.toLowerCase()) && (
-                    <button
-                      type="button"
-                      onClick={() => addSkill(skillSearch)}
-                      className="w-full text-left px-4 py-2 hover:bg-muted font-semibold text-blue-600 text-sm"
-                    >
-                      + Add "{skillSearch}"
-                    </button>
-                  )}
-              </div>
-            )}
+            <p className="text-xs text-gray-500">Add skills that are relevant to your job role</p>
           </div>
 
-          {/* Suggested skills */}
-          {!skillSearch && suggestedSkills.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {suggestedSkills.map((skill) => (
-                <Button
-                  key={skill.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addSkill(skill.skill_name)}
-                  className="rounded-full text-xs px-3 py-1.5"
+          {/* Skills You Know - Autosuggest */}
+          <div className="space-y-2">
+            <Label className="text-sm">Other Skills You Know</Label>
+            <div className="relative">
+              <Input
+                value={skillInputYouKnow}
+                onChange={(e) => {
+                  setSkillInputYouKnow(e.target.value)
+                  setShowSkillsYouKnowDropdown(true)
+                }}
+                onFocus={() => setShowSkillsYouKnowDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && skillInputYouKnow.trim()) {
+                    e.preventDefault()
+                    if (!formData.skillsYouKnow.includes(skillInputYouKnow.trim())) {
+                      updateFormData({ skillsYouKnow: [...formData.skillsYouKnow, skillInputYouKnow.trim()] })
+                    }
+                    setSkillInputYouKnow("")
+                    setShowSkillsYouKnowDropdown(false)
+                  }
+                }}
+                placeholder="Type to search skills..."
+                className="h-10 text-sm rounded-full"
+              />
+              {showSkillsYouKnowDropdown && skillInputYouKnow && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {commonSkills
+                    .filter(
+                      (skill) =>
+                        skill.toLowerCase().includes(skillInputYouKnow.toLowerCase()) &&
+                        !formData.skillsYouKnow.includes(skill),
+                    )
+                    .map((skill) => (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => {
+                          if (!formData.skillsYouKnow.includes(skill)) {
+                            updateFormData({ skillsYouKnow: [...formData.skillsYouKnow, skill] })
+                          }
+                          setSkillInputYouKnow("")
+                          setShowSkillsYouKnowDropdown(false)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                      >
+                        {skill}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {formData.skillsYouKnow.map((skill, index) => (
+                <span
+                  key={index}
+                  className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-sm flex items-center gap-2"
                 >
-                  + {skill.skill_name}
-                </Button>
+                  {skill}
+                  <button
+                    type="button"
+                    onClick={() => updateFormData({ skillsYouKnow: formData.skillsYouKnow.filter((s) => s !== skill) })}
+                    className="hover:text-purple-900"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
               ))}
             </div>
-          )}
+            <p className="text-xs text-gray-500">Add any additional skills you possess</p>
+          </div>
         </div>
 
         {formData.workStatus !== "fresher" && (
@@ -2005,10 +2130,6 @@ function Step3EmploymentAndSkills({
                           durationTo: "",
                           annualSalary: "",
                           noticePeriod: "",
-                          industry: "",
-                          department: "",
-                          roleCategory: "",
-                          jobRole: "",
                         })
                       }}
                     >
@@ -2165,127 +2286,6 @@ function Step3EmploymentAndSkills({
                           <option value="1 Month">1 Month</option>
                           <option value="2 Months">2 Months</option>
                           <option value="3 Months">3 Months</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm">Industry*</Label>
-                      <div className="relative">
-                        <Input
-                          value={currentEntry.industry || formData.industry}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setCurrentEntry({ ...currentEntry, industry: value })
-                            setShowIndustryDropdown(true)
-                            // Update formData for dependent dropdowns if industry changes
-                            updateFormData({ department: "", roleCategory: "", jobRole: "" })
-                          }}
-                          onFocus={() => setShowIndustryDropdown(true)}
-                          placeholder="Type to search industry..."
-                          className="h-10 text-sm rounded-full"
-                        />
-                        {showIndustryDropdown && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                            {industries
-                              .filter((ind) =>
-                                ind.name
-                                  .toLowerCase()
-                                  .includes((currentEntry.industry || formData.industry).toLowerCase()),
-                              )
-                              .map((ind) => (
-                                <button
-                                  key={ind.name}
-                                  type="button"
-                                  onClick={() => {
-                                    setCurrentEntry({ ...currentEntry, industry: ind.name })
-                                    updateFormData({
-                                      industry: ind.name,
-                                      department: "",
-                                      roleCategory: "",
-                                      jobRole: "",
-                                    })
-                                    setShowIndustryDropdown(false)
-                                  }}
-                                  className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                                >
-                                  {ind.name}
-                                </button>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {(currentEntry.industry || formData.industry) && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Department*</Label>
-                        <select
-                          value={formData.department}
-                          onChange={(e) => {
-                            updateFormData({ department: e.target.value, roleCategory: "", jobRole: "" })
-                          }}
-                          className="w-full h-10 px-3 border rounded-full text-sm"
-                        >
-                          <option value="">Select department</option>
-                          {industries
-                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
-                            ?.departments.map((dept) => (
-                              <option key={dept} value={dept}>
-                                {dept}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {formData.department && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Role Category*</Label>
-                        <select
-                          value={formData.roleCategory || ""}
-                          onChange={(e) => {
-                            updateFormData({ roleCategory: e.target.value, jobRole: "" })
-                          }}
-                          className="w-full h-10 px-3 border rounded-full text-sm"
-                        >
-                          <option value="">Select role category</option>
-                          {industries
-                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
-                            ?.roles.filter((role) => role.department === formData.department)
-                            .map((role) => (
-                              <option key={role.category} value={role.category}>
-                                {role.category}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {formData.roleCategory && (
-                      <div className="space-y-2">
-                        <Label className="text-sm">Job Title*</Label>
-                        <select
-                          value={formData.jobRole || ""}
-                          onChange={(e) => {
-                            updateFormData({ jobRole: e.target.value })
-                          }}
-                          className="w-full h-10 px-3 border rounded-full text-sm"
-                        >
-                          <option value="">Select job title</option>
-                          {industries
-                            .find((ind) => ind.name === (currentEntry.industry || formData.industry))
-                            ?.roles.find(
-                              (role) =>
-                                role.department === formData.department && role.category === formData.roleCategory,
-                            )
-                            ?.titles.map((title) => (
-                              <option key={title} value={title}>
-                                {title}
-                              </option>
-                            ))}
                         </select>
                       </div>
                     )}
@@ -2476,152 +2476,169 @@ function Step3EmploymentAndSkills({
           </div>
         </div>
 
-        <div className="space-y-2 relative">
-          <Label className="text-sm">
-            Industry<span className="text-red-500">*</span>
-          </Label>
-          <div className="relative">
-            <Input
-              value={formData.industry || industrySearch}
-              onChange={(e) => {
-                setIndustrySearch(e.target.value)
-                updateFormData("industry", "")
-                setShowIndustryDropdown(true)
-                // Reset dependent fields
-                updateFormData("department", "")
-                updateFormData("roleCategory", "")
-                updateFormData("jobRole", "")
-              }}
-              onFocus={() => setShowIndustryDropdown(true)}
-              placeholder="Type to search industries"
-              className="h-10 text-sm rounded-full"
-            />
-            {(formData.industry || industrySearch) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIndustrySearch("")
-                  updateFormData("industry", "")
-                  updateFormData("department", "")
-                  updateFormData("roleCategory", "")
-                  updateFormData("jobRole", "")
-                  setShowIndustryDropdown(false)
+        <div className="space-y-6 bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold">Industry & Role Details</h3>
+
+          <div className="space-y-2">
+            <Label className="text-sm">Industry*</Label>
+            <div className="relative">
+              <Input
+                value={formData.industry}
+                onChange={(e) => {
+                  const value = e.target.value
+                  updateFormData({ industry: value, department: "", roleCategory: "", jobRole: "" })
+                  setShowIndustryDropdown(true)
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          {showIndustryDropdown && (
-            <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-              {industries
-                .filter((industry) =>
-                  industry.name.toLowerCase().includes((formData.industry || industrySearch).toLowerCase()),
-                )
-                .map((industry) => (
-                  <button
-                    key={industry.name}
-                    type="button"
-                    onClick={() => {
-                      updateFormData("industry", industry.name)
-                      setIndustrySearch("")
-                      setShowIndustryDropdown(false)
-                      // Reset dependent fields
-                      updateFormData("department", "")
-                      updateFormData("roleCategory", "")
-                      updateFormData("jobRole", "")
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                  >
-                    {industry.name}
-                  </button>
-                ))}
+                onFocus={() => setShowIndustryDropdown(true)}
+                placeholder="Type to search industry..."
+                className="h-10 text-sm rounded-full"
+              />
+              {showIndustryDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {industries
+                    .filter((ind) => ind.name.toLowerCase().includes(formData.industry.toLowerCase()))
+                    .map((ind) => (
+                      <button
+                        key={ind.name}
+                        type="button"
+                        onClick={() => {
+                          updateFormData({ industry: ind.name, department: "", roleCategory: "", jobRole: "" })
+                          setShowIndustryDropdown(false)
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                      >
+                        {ind.name}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
+          </div>
+
+          {formData.industry && (
+            <div className="space-y-2">
+              <Label className="text-sm">Department*</Label>
+              <select
+                value={formData.department}
+                onChange={(e) => {
+                  updateFormData({ department: e.target.value, roleCategory: "", jobRole: "" })
+                }}
+                className="w-full h-10 px-3 border rounded-full text-sm"
+              >
+                <option value="">Select department</option>
+                {industries
+                  .find((ind) => ind.name === formData.industry)
+                  ?.departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {formData.department && (
+            <>
+              <div className="space-y-2">
+                <Label className="text-sm">Role Category*</Label>
+                <select
+                  value={formData.roleCategory}
+                  onChange={(e) => {
+                    updateFormData({ roleCategory: e.target.value, jobRole: "" })
+                  }}
+                  className="w-full h-10 px-3 border rounded-full text-sm"
+                >
+                  <option value="">Select role category</option>
+                  {Array.from(
+                    new Set(
+                      industries
+                        .find((ind) => ind.name === formData.industry)
+                        ?.roles.filter((r) => r.department === formData.department)
+                        .map((r) => r.category) || [],
+                    ),
+                  ).map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {formData.roleCategory && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Job Title*</Label>
+                  <select
+                    value={formData.jobRole}
+                    onChange={(e) => updateFormData({ jobRole: e.target.value })}
+                    className="w-full h-10 px-3 border rounded-full text-sm"
+                  >
+                    <option value="">Select job title</option>
+                    {industries
+                      .find((ind) => ind.name === formData.industry)
+                      ?.roles.filter(
+                        (r) => r.department === formData.department && r.category === formData.roleCategory,
+                      )
+                      .flatMap((r) => r.titles)
+                      .map((title) => (
+                        <option key={title} value={title}>
+                          {title}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Department - Only show when industry is selected */}
-        {formData.industry && (
-          <div className="space-y-2">
-            <Label className="text-sm">
-              Department<span className="text-red-500">*</span>
-            </Label>
-            <select
-              id="department"
-              value={formData.department}
-              onChange={(e) => {
-                updateFormData("department", e.target.value)
-                updateFormData("roleCategory", "")
-                updateFormData("jobRole", "")
-              }}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-              disabled={!formData.industry}
-            >
-              <option value="">Select department</option>
-              {industries
-                .find((ind) => ind.name === formData.industry)
-                ?.departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-            </select>
-          </div>
-        )}
+        <div className="space-y-6 bg-white p-6 rounded-lg border">
+          <h3 className="text-lg font-semibold">Employment History</h3>
 
-        {/* Role Category - Only show when department is selected */}
-        {formData.department && (
-          <div className="space-y-2">
-            <Label className="text-sm">
-              Role category<span className="text-red-500">*</span>
-            </Label>
-            <select
-              value={formData.roleCategory}
-              onChange={(e) => {
-                updateFormData("roleCategory", e.target.value)
-                updateFormData("jobRole", "")
-              }}
-              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select role category</option>
-              {industries
-                .find((ind) => ind.name === formData.industry)
-                ?.roles.filter((role) => role.department === formData.department)
-                .map((role) => (
-                  <option key={role.category} value={role.category}>
-                    {role.category}
-                  </option>
-                ))}
-            </select>
-          </div>
-        )}
+          {/* ... existing employment fields WITHOUT industry/department/roleCategory/jobRole ... */}
 
-        {/* Job Role - Only show when role category is selected */}
-        {formData.roleCategory && (
-          <div className="space-y-2">
-            <Label className="text-sm">
-              Job role<span className="text-red-500">*</span>
-            </Label>
-            <select
-              value={formData.jobRole}
-              onChange={(e) => updateFormData("jobRole", e.target.value)}
-              className="w-full rounded-full border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select job title</option>
-              {industries
-                .find((ind) => ind.name === formData.industry)
-                ?.roles.find(
-                  (role) => role.department === formData.department && role.category === formData.roleCategory,
-                )
-                ?.titles.map((title) => (
-                  <option key={title} value={title}>
-                    {title}
-                  </option>
-                ))}
-            </select>
+          {/* Remove the entire industry/department section from inside employment history */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label className="text-sm" htmlFor="annualSalary">
+                Annual salary (in ₹)*
+              </Label>
+              <Input
+                id="annualSalary"
+                value={currentEntry.annualSalary}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/,/g, "")
+                  if (/^\d*$/.test(value)) {
+                    // Indian number system formatting (lakhs)
+                    const num = Number.parseInt(value)
+                    let formatted = ""
+                    if (num >= 100000) {
+                      // Display in lakhs
+                      formatted = value
+                        .replace(/\B(?=(\d{2})+(?!\d)(?=\d{5}))/g, ",")
+                        .replace(/(?<=\d{5})\B(?=(\d{3})+(?!\d))/g, ",")
+                    } else {
+                      formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                    }
+                    setCurrentEntry({ ...currentEntry, annualSalary: formatted })
+                  }
+                }}
+                placeholder="Eg. 10,00,000 (10 Lakhs)"
+                className="h-10 text-sm rounded-full"
+              />
+            </div>
+
+            {/* ... existing notice period ... */}
           </div>
-        )}
+
+          {/* Save button */}
+          <Button
+            type="button"
+            onClick={handleSaveCurrentEmployment}
+            className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
+          >
+            {currentEntry.currentlyEmployed === "yes" ? "Save Current Employment" : "Save Previous Employment"}
+          </Button>
+        </div>
 
         <div className="flex justify-between pt-4 border-t">
           <Button type="button" onClick={prevStep} variant="outline" className="rounded-full px-8 bg-transparent h-10">
@@ -2674,24 +2691,83 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
   ]
 
   const specializationOptions = [
+    // Computer Science related
     "Computer Science",
+    "Software Engineering",
     "Information Technology",
-    "Electronics and Communication",
-    "Mechanical Engineering",
-    "Civil Engineering",
-    "Electrical Engineering",
     "Artificial Intelligence",
-    "Data Science",
     "Machine Learning",
-    "Cybersecurity",
+    "Data Science",
+    "Cyber Security",
+    "Cloud Computing",
+    "DevOps",
+    "Web Development",
+    "Mobile Development",
+    "Game Development",
+    "Computer Networks",
+    "Database Management",
+
+    // Electronics and Communication related
+    "Electronics Engineering",
+    "Communication Engineering",
+    "VLSI Design",
+    "Signal Processing",
+    "Embedded Systems",
+
+    // Mechanical Engineering related
+    "Mechanical Engineering",
+    "Automotive Engineering",
+    "Aerospace Engineering",
+    "Industrial Engineering",
+    "Manufacturing Engineering",
+    "Mechatronics",
+
+    // Civil Engineering related
+    "Civil Engineering",
+    "Structural Engineering",
+    "Geotechnical Engineering",
+    "Transportation Engineering",
+    "Environmental Engineering",
+
+    // Electrical Engineering related
+    "Electrical Engineering",
+    "Power Systems",
+    "Control Systems",
+    "Instrumentation Engineering",
+
+    // Commerce and Management related
     "Finance",
+    "Accounting",
     "Marketing",
     "Human Resources",
     "Operations Management",
-    "Mathematics",
+    "International Business",
+    "Business Analytics",
+    "Supply Chain Management",
+    "Entrepreneurship",
+
+    // Science related
     "Physics",
     "Chemistry",
+    "Mathematics",
+    "Statistics",
     "Biology",
+    "Biotechnology",
+    "Biochemistry",
+    "Environmental Science",
+
+    // Arts and Humanities related
+    "Economics",
+    "Psychology",
+    "Sociology",
+    "Political Science",
+    "History",
+    "English Literature",
+    "Philosophy",
+
+    // Other
+    "General",
+    "Other",
   ]
 
   const [customCourse, setCustomCourse] = useState("")
@@ -3021,6 +3097,7 @@ function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevSte
             </p>
           )}
         </div>
+        {/* End of Certifications Section */}
 
         <div className="space-y-4 border-t pt-4 mt-6">
           <div className="flex items-center justify-between">
@@ -3213,7 +3290,7 @@ function Step5PersonalAndPreferences({
     "Indore",
     "Thane",
     "Bhopal",
-    "Visakhakhapatnam",
+    "Visakhakhakhakhakhakhakhakhakhakham",
     "Patna",
     "Vadodara",
     "Ghaziabad",
