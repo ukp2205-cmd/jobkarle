@@ -1623,8 +1623,8 @@ function Step3EmploymentAndSkills({
   }
 
   const handleSkillSelect = (skill: Skill) => {
-    if (!formData.skillsYouKnow.includes(skill.skill_name)) {
-      updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skill.skill_name])
+    if (!formData.skillsForRole.includes(skill.skill_name)) {
+      updateFormData("skillsForRole", [...formData.skillsForRole, skill.skill_name])
     }
     setSkillSearch("")
     setShowSkillDropdown(false)
@@ -1632,8 +1632,8 @@ function Step3EmploymentAndSkills({
 
   const removeSkill = (skillToRemove: string) => {
     updateFormData(
-      "skillsYouKnow",
-      formData.skillsYouKnow.filter((skill) => skill !== skillToRemove),
+      "skillsForRole",
+      formData.skillsForRole.filter((skill) => skill !== skillToRemove),
     )
   }
 
@@ -1647,7 +1647,8 @@ function Step3EmploymentAndSkills({
       const dataToSave = {
         totalExperienceYears: formData.totalExperienceYears,
         totalExperienceMonths: formData.totalExperienceMonths,
-        skillsYouKnow: formData.skillsYouKnow,
+        skillsForRole: formData.skillsForRole,
+        skillsYouKnow: formData.skillsYouKnow, // Added for completeness if skillsYouKnow is also to be saved
         // Include currentEmployment and additionalEmployment if they need to be directly saved here,
         // or if they are part of a larger candidate profile update.
         currentEmployment: formData.currentEmployment,
@@ -1766,325 +1767,45 @@ function Step3EmploymentAndSkills({
     firstInputRef.current?.focus()
   }, [])
 
+  // Check if current employment form should be shown
+  const showCurrentEmploymentForm = formData.workStatus === "experienced"
+
+  // Handler for saving current employment details
+  const handleSaveCurrentEmployment = () => {
+    // Add validation if necessary
+    nextStep() // Assuming saving is implicit or handled by the main save button
+  }
+
   return (
-    <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
+    <Card className="w-full max-w-4xl mx-auto p-6 md:p-8 border-gray-200">
       <CardHeader className="border-b pb-4">
-        <CardTitle className="text-2xl font-bold">Employment Details & Skills</CardTitle>
-        <p className="text-sm text-muted-foreground mt-1">Tell us about your experience and the skills you possess.</p>
+        <CardTitle className="text-2xl font-bold">Skills & Employment Details</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Add your key skills and professional experience</p>
       </CardHeader>
       <CardContent className="pt-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Total Experience */}
-          <div>
-            <Label htmlFor="totalExperienceYears" className="text-sm">
-              Total Experience
-            </Label>
-            <div className="flex gap-2 mt-1">
-              <div className="flex-1 relative">
-                <Input
-                  id="totalExperienceYears"
-                  type="text"
-                  value={formData.totalExperienceYears}
-                  onChange={(e) => handleTotalExperienceChange("years", e.target.value)}
-                  placeholder="Years"
-                  className="h-10 rounded-lg pl-3"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Years</span>
-              </div>
-              <div className="flex-1 relative">
-                <Input
-                  id="totalExperienceMonths"
-                  type="text"
-                  value={formData.totalExperienceMonths}
-                  onChange={(e) => handleTotalExperienceChange("months", e.target.value)}
-                  placeholder="Months"
-                  className="h-10 rounded-lg pl-3"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Months</span>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              For example, if you have 2 years and 5 months of experience, enter 2 and 5.
-            </p>
-          </div>
-
-          {/* Industry */}
+        {/* Skills Section */}
+        <div>
+          <Label htmlFor="skillsForRole" className="text-base font-semibold mb-3 block">
+            Skills (Key Skills for Role)
+          </Label>
           <div className="relative">
-            <Label htmlFor="industry" className="text-sm">
-              Industry<span className="text-red-500">*</span>
-            </Label>
             <Input
-              id="industry"
-              type="text"
-              value={formData.industry}
-              onChange={(e) => {
-                updateFormData("industry", e.target.value)
-                setIndustrySearch(e.target.value) // Update search term for filtering
-              }}
-              onFocus={() => setShowIndustryDropdown(true)}
-              placeholder="Select your industry"
-              className="mt-1 h-10 rounded-lg"
-            />
-            {showIndustryDropdown && filteredIndustries.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {filteredIndustries.map((industry) => (
-                  <div
-                    key={industry.name}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleIndustrySelect(industry.name)}
-                  >
-                    {industry.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Department */}
-          <div className="relative">
-            <Label htmlFor="department" className="text-sm">
-              Department<span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="department"
-              type="text"
-              value={formData.department}
-              onChange={(e) => handleDepartmentSelect(e.target.value)}
-              onFocus={() => {
-                if (formData.industry) setShowCityDropdown(true) // Assuming this meant to toggle a department/role dropdown
-              }}
-              placeholder={formData.industry ? "Select your department" : "Select industry first"}
-              disabled={!formData.industry}
-              className="mt-1 h-10 rounded-lg"
-            />
-            {formData.industry && showCityDropdown && departmentsInSelectedIndustry.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {departmentsInSelectedIndustry.map((dept) => (
-                  <div
-                    key={dept}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleDepartmentSelect(dept)}
-                  >
-                    {dept}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Role Category */}
-          <div className="relative">
-            <Label htmlFor="roleCategory" className="text-sm">
-              Role Category<span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="roleCategory"
-              type="text"
-              value={formData.roleCategory}
-              onChange={(e) => handleRoleCategorySelect(e.target.value)}
-              onFocus={() => {
-                if (formData.department) setShowCityDropdown(true) // Assuming this meant to toggle a role category dropdown
-              }}
-              placeholder={formData.department ? "Select your role category" : "Select department first"}
-              disabled={!formData.department}
-              className="mt-1 h-10 rounded-lg"
-            />
-            {formData.department && showCityDropdown && uniqueRoleCategories.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {uniqueRoleCategories.map((category) => (
-                  <div
-                    key={category}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleRoleCategorySelect(category)}
-                  >
-                    {category}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Job Role */}
-          <div className="relative">
-            <Label htmlFor="jobRole" className="text-sm">
-              Job Role<span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="jobRole"
-              type="text"
-              value={formData.jobRole}
-              onChange={(e) => handleJobRoleSelect(e.target.value)}
-              onFocus={() => {
-                if (formData.roleCategory) setShowCityDropdown(true) // Assuming this meant to toggle a job role dropdown
-              }}
-              placeholder={formData.roleCategory ? "Select your job role" : "Select role category first"}
-              disabled={!formData.roleCategory}
-              className="mt-1 h-10 rounded-lg"
-            />
-            {formData.roleCategory && showCityDropdown && jobRolesInSelectedCategory.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {jobRolesInSelectedCategory.map((role) => (
-                  <div
-                    key={role}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleJobRoleSelect(role)}
-                  >
-                    {role}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Current Employment Details (if experienced) */}
-          {formData.workStatus === "experienced" && (
-            <>
-              {/* Company Name */}
-              <div>
-                <Label htmlFor="currentCompanyName" className="text-sm">
-                  Current Company Name
-                </Label>
-                <Input
-                  id="currentCompanyName"
-                  type="text"
-                  value={formData.currentEmployment?.companyName || ""}
-                  onChange={(e) => handleInputChange("current", null, "companyName", e.target.value)}
-                  placeholder="Enter company name"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-
-              {/* Current Job Title */}
-              <div>
-                <Label htmlFor="currentJobTitle" className="text-sm">
-                  Current Job Title
-                </Label>
-                <Input
-                  id="currentJobTitle"
-                  type="text"
-                  value={formData.currentEmployment?.currentJobTitle || ""}
-                  onChange={(e) => handleInputChange("current", null, "currentJobTitle", e.target.value)}
-                  placeholder="Enter job title"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-
-              {/* Current City & State */}
-              <div className="relative">
-                <Label htmlFor="currentCity" className="text-sm">
-                  Current Location (City, State)
-                </Label>
-                <Input
-                  id="currentCity"
-                  type="text"
-                  value={`${formData.currentEmployment?.currentCity || ""}${formData.currentEmployment?.currentCity && formData.currentEmployment?.currentState ? ", " : ""}${formData.currentEmployment?.currentState || ""}`}
-                  onChange={(e) => {
-                    const [city, state] = e.target.value.split(",").map((s) => s.trim())
-                    handleInputChange("current", null, "currentCity", city)
-                    handleInputChange("current", null, "currentState", state)
-                  }}
-                  onFocus={() => setShowCityDropdown(true)}
-                  placeholder="Enter city and state"
-                  className="mt-1 h-10 rounded-lg"
-                />
-                {showCityDropdown && (
-                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {indianCities.map((loc) => (
-                      <div
-                        key={`${loc.city}-${loc.state}`}
-                        className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                        onClick={() => handleCitySelect(loc.city, loc.state)}
-                      >
-                        {loc.city}, {loc.state}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Duration From */}
-              <div>
-                <Label htmlFor="durationFrom" className="text-sm">
-                  Duration From (MM/YY)
-                </Label>
-                <Input
-                  id="durationFrom"
-                  type="text"
-                  value={formData.currentEmployment?.durationFrom || ""}
-                  onChange={(e) => handleInputChange("current", null, "durationFrom", e.target.value)}
-                  placeholder="MM/YY"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-
-              {/* Duration To */}
-              <div>
-                <Label htmlFor="durationTo" className="text-sm">
-                  Duration To (MM/YY)
-                </Label>
-                <Input
-                  id="durationTo"
-                  type="text"
-                  value={formData.currentEmployment?.durationTo || ""}
-                  onChange={(e) => handleInputChange("current", null, "durationTo", e.target.value)}
-                  placeholder="MM/YY"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-
-              {/* Annual Salary */}
-              <div>
-                <Label htmlFor="annualSalary" className="text-sm">
-                  Annual Salary (INR)
-                </Label>
-                <Input
-                  id="annualSalary"
-                  type="text"
-                  value={formData.currentEmployment?.annualSalary || ""}
-                  onChange={(e) =>
-                    handleInputChange("current", null, "annualSalary", formatIndianNumber(e.target.value))
-                  }
-                  placeholder="Enter salary"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-
-              {/* Notice Period */}
-              <div>
-                <Label htmlFor="noticePeriod" className="text-sm">
-                  Notice Period
-                </Label>
-                <Input
-                  id="noticePeriod"
-                  type="text"
-                  value={formData.currentEmployment?.noticePeriod || ""}
-                  onChange={(e) => handleInputChange("current", null, "noticePeriod", e.target.value)}
-                  placeholder="e.g., 30 days, 60 days"
-                  className="mt-1 h-10 rounded-lg"
-                />
-              </div>
-            </>
-          )}
-
-          {/* Skills You Know */}
-          <div className="md:col-span-2 relative">
-            <Label htmlFor="skillsYouKnow" className="text-sm">
-              Skills You Know
-            </Label>
-            <Input
-              id="skillsYouKnow"
+              id="skillsForRole"
               type="text"
               value={skillSearch}
               onChange={(e) => {
                 setSkillSearch(e.target.value)
-                setShowSkillDropdown(true)
+                if (e.target.value.length > 0) {
+                  setShowSkillDropdown(true)
+                } else {
+                  setShowSkillDropdown(false)
+                }
               }}
-              onFocus={() => setShowSkillDropdown(true)}
-              placeholder="Search and add skills"
-              className="mt-1 h-10 rounded-lg"
-              ref={firstInputRef} // Assign ref to the first input field
+              placeholder="Type to search and add skills"
+              className="mt-1 h-10 rounded-full"
+              ref={firstInputRef}
             />
-            {showSkillDropdown && (
+            {showSkillDropdown && skillSearch.length > 0 && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                 {loadingSkills ? (
                   <div className="px-4 py-2 text-gray-500">Loading skills...</div>
@@ -2106,27 +1827,338 @@ function Step3EmploymentAndSkills({
                 )}
               </div>
             )}
-            <div className="flex flex-wrap gap-2 mt-2">
-              {formData.skillsYouKnow.map((skill) => (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {formData.skillsForRole.map((skill) => (
                 <span
                   key={skill}
-                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 cursor-pointer"
+                  className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 border border-blue-200"
                 >
                   {skill}
                   <button
                     type="button"
                     onClick={() => removeSkill(skill)}
-                    className="ml-1 font-semibold hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
+                    className="ml-2 text-blue-600 hover:text-blue-800 focus:outline-none"
                   >
-                    &times;
+                    ×
                   </button>
                 </span>
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Employment History Section */}
+        <div className="border-t pt-6">
+          <Label className="text-base font-semibold mb-3 block">Employment History</Label>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Total Experience */}
+            <div>
+              <Label htmlFor="totalExperienceYears" className="text-sm">
+                Total Experience
+              </Label>
+              <div className="flex gap-2 mt-1">
+                <div className="flex-1 relative">
+                  <Input
+                    id="totalExperienceYears"
+                    type="text"
+                    value={formData.totalExperienceYears}
+                    onChange={(e) => handleTotalExperienceChange("years", e.target.value)}
+                    placeholder="Years"
+                    className="h-10 rounded-lg pl-3"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Years</span>
+                </div>
+                <div className="flex-1 relative">
+                  <Input
+                    id="totalExperienceMonths"
+                    type="text"
+                    value={formData.totalExperienceMonths}
+                    onChange={(e) => handleTotalExperienceChange("months", e.target.value)}
+                    placeholder="Months"
+                    className="h-10 rounded-lg pl-3"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Months</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                For example, if you have 2 years and 5 months of experience, enter 2 and 5.
+              </p>
+            </div>
+
+            {/* Industry */}
+            <div className="relative">
+              <Label htmlFor="industry" className="text-sm">
+                Industry<span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="industry"
+                type="text"
+                value={formData.industry}
+                onChange={(e) => {
+                  updateFormData("industry", e.target.value)
+                  setIndustrySearch(e.target.value)
+                  if (e.target.value.length > 0) {
+                    setShowIndustryDropdown(true)
+                  } else {
+                    setShowIndustryDropdown(false)
+                  }
+                }}
+                placeholder="Type to search industry"
+                className="mt-1 h-10 rounded-full"
+              />
+              {showIndustryDropdown && formData.industry.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {industries
+                    .filter((ind) => ind.name.toLowerCase().includes(industrySearch.toLowerCase()))
+                    .map((industry) => (
+                      <div
+                        key={industry.name}
+                        className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                        onClick={() => {
+                          updateFormData("industry", industry.name)
+                          setShowIndustryDropdown(false)
+                          updateFormData("department", "")
+                          updateFormData("roleCategory", "")
+                          updateFormData("jobRole", "")
+                        }}
+                      >
+                        {industry.name}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* Department */}
+            <div className="relative">
+              <Label htmlFor="department" className="text-sm">
+                Department<span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="department"
+                type="text"
+                value={formData.department}
+                onChange={(e) => handleDepartmentSelect(e.target.value)}
+                onFocus={() => {
+                  if (formData.industry) setShowCityDropdown(true) // Assuming this meant to toggle a department/role dropdown
+                }}
+                placeholder={formData.industry ? "Select your department" : "Select industry first"}
+                disabled={!formData.industry}
+                className="mt-1 h-10 rounded-lg"
+              />
+              {formData.industry && showCityDropdown && departmentsInSelectedIndustry.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {departmentsInSelectedIndustry.map((dept) => (
+                    <div
+                      key={dept}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleDepartmentSelect(dept)}
+                    >
+                      {dept}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Role Category */}
+            <div className="relative">
+              <Label htmlFor="roleCategory" className="text-sm">
+                Role Category<span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="roleCategory"
+                type="text"
+                value={formData.roleCategory}
+                onChange={(e) => handleRoleCategorySelect(e.target.value)}
+                onFocus={() => {
+                  if (formData.department) setShowCityDropdown(true) // Assuming this meant to toggle a role category dropdown
+                }}
+                placeholder={formData.department ? "Select your role category" : "Select department first"}
+                disabled={!formData.department}
+                className="mt-1 h-10 rounded-lg"
+              />
+              {formData.department && showCityDropdown && uniqueRoleCategories.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {uniqueRoleCategories.map((category) => (
+                    <div
+                      key={category}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleRoleCategorySelect(category)}
+                    >
+                      {category}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Job Role */}
+            <div className="relative">
+              <Label htmlFor="jobRole" className="text-sm">
+                Job Role<span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="jobRole"
+                type="text"
+                value={formData.jobRole}
+                onChange={(e) => handleJobRoleSelect(e.target.value)}
+                onFocus={() => {
+                  if (formData.roleCategory) setShowCityDropdown(true) // Assuming this meant to toggle a job role dropdown
+                }}
+                placeholder={formData.roleCategory ? "Select your job role" : "Select role category first"}
+                disabled={!formData.roleCategory}
+                className="mt-1 h-10 rounded-lg"
+              />
+              {formData.roleCategory && showCityDropdown && jobRolesInSelectedCategory.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {jobRolesInSelectedCategory.map((role) => (
+                    <div
+                      key={role}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleJobRoleSelect(role)}
+                    >
+                      {role}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Current Employment Details (if experienced) */}
+            {showCurrentEmploymentForm && (
+              <>
+                {/* Company Name */}
+                <div>
+                  <Label htmlFor="currentCompanyName" className="text-sm">
+                    Current Company Name
+                  </Label>
+                  <Input
+                    id="currentCompanyName"
+                    type="text"
+                    value={formData.currentEmployment?.companyName || ""}
+                    onChange={(e) => handleInputChange("current", null, "companyName", e.target.value)}
+                    placeholder="Enter company name"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+
+                {/* Current Job Title */}
+                <div>
+                  <Label htmlFor="currentJobTitle" className="text-sm">
+                    Current Job Title
+                  </Label>
+                  <Input
+                    id="currentJobTitle"
+                    type="text"
+                    value={formData.currentEmployment?.currentJobTitle || ""}
+                    onChange={(e) => handleInputChange("current", null, "currentJobTitle", e.target.value)}
+                    placeholder="Enter job title"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+
+                {/* Current City & State */}
+                <div className="relative">
+                  <Label htmlFor="currentCity" className="text-sm">
+                    Current Location (City, State)
+                  </Label>
+                  <Input
+                    id="currentCity"
+                    type="text"
+                    value={`${formData.currentEmployment?.currentCity || ""}${formData.currentEmployment?.currentCity && formData.currentEmployment?.currentState ? ", " : ""}${formData.currentEmployment?.currentState || ""}`}
+                    onChange={(e) => {
+                      const [city, state] = e.target.value.split(",").map((s) => s.trim())
+                      handleInputChange("current", null, "currentCity", city)
+                      handleInputChange("current", null, "currentState", state)
+                    }}
+                    onFocus={() => setShowCityDropdown(true)}
+                    placeholder="Enter city and state"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                  {showCityDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {indianCities.map((loc) => (
+                        <div
+                          key={`${loc.city}-${loc.state}`}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleCitySelect(loc.city, loc.state)}
+                        >
+                          {loc.city}, {loc.state}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Duration From */}
+                <div>
+                  <Label htmlFor="durationFrom" className="text-sm">
+                    Duration From (MM/YY)
+                  </Label>
+                  <Input
+                    id="durationFrom"
+                    type="text"
+                    value={formData.currentEmployment?.durationFrom || ""}
+                    onChange={(e) => handleInputChange("current", null, "durationFrom", e.target.value)}
+                    placeholder="MM/YY"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+
+                {/* Duration To */}
+                <div>
+                  <Label htmlFor="durationTo" className="text-sm">
+                    Duration To (MM/YY)
+                  </Label>
+                  <Input
+                    id="durationTo"
+                    type="text"
+                    value={formData.currentEmployment?.durationTo || ""}
+                    onChange={(e) => handleInputChange("current", null, "durationTo", e.target.value)}
+                    placeholder="MM/YY"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+
+                {/* Annual Salary */}
+                <div>
+                  <Label htmlFor="annualSalary" className="text-sm">
+                    Annual Salary (INR)
+                  </Label>
+                  <Input
+                    id="annualSalary"
+                    type="text"
+                    value={formData.currentEmployment?.annualSalary || ""}
+                    onChange={(e) =>
+                      handleInputChange("current", null, "annualSalary", formatIndianNumber(e.target.value))
+                    }
+                    placeholder="Enter salary"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+
+                {/* Notice Period */}
+                <div>
+                  <Label htmlFor="noticePeriod" className="text-sm">
+                    Notice Period
+                  </Label>
+                  <Input
+                    id="noticePeriod"
+                    type="text"
+                    value={formData.currentEmployment?.noticePeriod || ""}
+                    onChange={(e) => handleInputChange("current", null, "noticePeriod", e.target.value)}
+                    placeholder="e.g., 30 days, 60 days"
+                    className="mt-1 h-10 rounded-lg"
+                  />
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Additional Employment History (if experienced) */}
-          {formData.workStatus === "experienced" && (
+          {showCurrentEmploymentForm && (
             <div className="md:col-span-2">
               <div className="flex justify-between items-center mb-3">
                 <Label className="text-sm">Additional Employment History</Label>
