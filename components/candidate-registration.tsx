@@ -1213,411 +1213,36 @@ function Step3EmploymentAndSkills({
 
   // Updated industry and department structure to include roles and departments within industries
   const industries = [
-    {
-      name: "IT Services & Consulting",
-      departments: [
-        "Software Development",
-        "Web Development",
-        "Mobile Development",
-        "Cloud Services",
-        "IT Support",
-        "Consulting",
-        "System Administration",
-        "Network Administration",
-      ],
-      roles: [
-        {
-          department: "Software Development",
-          category: "Software Development",
-          titles: [
-            "Software Engineer",
-            "Senior Software Engineer",
-            "Tech Lead",
-            "Principal Engineer",
-            "Software Architect",
-          ],
-        },
-        {
-          department: "Web Development",
-          category: "Web Development",
-          titles: ["Frontend Developer", "Backend Developer", "Full Stack Developer", "Web Developer"],
-        },
-        {
-          department: "IT Support",
-          category: "Customer Service",
-          titles: ["IT Support Specialist", "Help Desk Technician"],
-        },
-      ],
-    },
-    {
-      name: "Software Product",
-      departments: [
-        "Product Development",
-        "Software Engineering",
-        "QA/Testing",
-        "DevOps",
-        "Product Management",
-        "Technical Support",
-      ],
-      roles: [
-        {
-          department: "Product Development",
-          category: "Software Development",
-          titles: ["Software Engineer", "Senior Software Engineer"],
-        },
-        {
-          department: "Product Management",
-          category: "Product Management",
-          titles: ["Product Manager", "Senior Product Manager"],
-        },
-      ],
-    },
-    {
-      name: "Internet",
-      departments: [
-        "Digital Marketing",
-        "Content Development",
-        "Web Development",
-        "Product Management",
-        "Business Development",
-      ],
-      roles: [
-        {
-          department: "Digital Marketing",
-          category: "Digital Marketing",
-          titles: [
-            "Digital Marketing Executive",
-            "SEO Specialist",
-            "SEM Specialist",
-            "Social Media Manager",
-            "Head - Digital Marketing",
-          ],
-        },
-        { department: "Product Management", category: "Product Management", titles: ["Product Manager"] },
-      ],
-    },
-    {
-      name: "Banking",
-      departments: [
-        "Retail Banking",
-        "Corporate Banking",
-        "Investment Banking",
-        "Credit & Risk",
-        "Operations",
-        "Compliance",
-        "Customer Service",
-      ],
-      roles: [
-        { department: "Retail Banking", category: "Banking Operations", titles: ["Bank Teller", "Loan Officer"] },
-        { department: "Credit & Risk", category: "Risk Management", titles: ["Credit Analyst", "Risk Manager"] },
-        { department: "Customer Service", category: "Customer Service", titles: ["Customer Service Representative"] },
-      ],
-    },
-    {
-      name: "Financial Services",
-      departments: [
-        "Financial Analysis",
-        "Portfolio Management",
-        "Trading",
-        "Risk Management",
-        "Compliance",
-        "Operations",
-      ],
-      roles: [
-        {
-          department: "Financial Analysis",
-          category: "Financial Analysis",
-          titles: ["Financial Analyst", "Senior Financial Analyst"],
-        },
-        { department: "Risk Management", category: "Risk Management", titles: ["Risk Analyst"] },
-      ],
-    },
-    {
-      name: "Insurance",
-      departments: [
-        "Underwriting",
-        "Claims Processing",
-        "Sales & Distribution",
-        "Actuarial",
-        "Risk Management",
-        "Customer Service",
-      ],
-      roles: [
-        {
-          department: "Underwriting",
-          category: "Insurance Underwriting",
-          titles: ["Underwriter", "Senior Underwriter"],
-        },
-        { department: "Claims Processing", category: "Claims Management", titles: ["Claims Adjuster"] },
-      ],
-    },
-    {
-      name: "BPO / Call Centre",
-      departments: [
-        "Customer Service",
-        "Technical Support",
-        "Sales",
-        "Back Office Operations",
-        "Quality Assurance",
-        "Training",
-      ],
-      roles: [
-        {
-          department: "Customer Service",
-          category: "Customer Service",
-          titles: ["Customer Service Representative", "Call Center Agent"],
-        },
-        { department: "Technical Support", category: "Technical Support", titles: ["Technical Support Specialist"] },
-      ],
-    },
-    {
-      name: "Analytics / KPO / Research",
-      departments: [
-        "Data Analysis",
-        "Business Intelligence",
-        "Market Research",
-        "Financial Analysis",
-        "Research & Development",
-      ],
-      roles: [
-        {
-          department: "Data Analysis",
-          category: "Data Analysis",
-          titles: ["Data Analyst", "Senior Data Analyst", "Analytics Manager", "Data Scientist"],
-        },
-        { department: "Market Research", category: "Market Research", titles: ["Market Research Analyst"] },
-      ],
-    },
-    {
-      name: "Healthcare",
-      departments: ["Clinical Services", "Nursing", "Diagnostics", "Pharmacy", "Administration", "Medical Records"],
-      roles: [
-        {
-          department: "Clinical Services",
-          category: "Healthcare Professionals",
-          titles: ["Doctor", "Nurse Practitioner"],
-        },
-        { department: "Administration", category: "Healthcare Administration", titles: ["Hospital Administrator"] },
-      ],
-    },
-    {
-      name: "Pharmaceutical",
-      departments: [
-        "Research & Development",
-        "Quality Control",
-        "Regulatory Affairs",
-        "Production",
-        "Sales & Marketing",
-      ],
-      roles: [
-        { department: "Research & Development", category: "R&D", titles: ["Research Scientist"] },
-        { department: "Sales & Marketing", category: "Pharma Sales", titles: ["Medical Representative"] },
-      ],
-    },
-    {
-      name: "Medical Devices",
-      departments: [
-        "Research & Development",
-        "Quality Assurance",
-        "Regulatory Affairs",
-        "Manufacturing",
-        "Sales & Marketing",
-      ],
-      roles: [
-        { department: "Research & Development", category: "R&D", titles: ["R&D Engineer"] },
-        { department: "Sales & Marketing", category: "Medical Sales", titles: ["Medical Device Sales Representative"] },
-      ],
-    },
-    {
-      name: "Manufacturing",
-      departments: ["Production", "Quality Control", "Supply Chain", "Maintenance", "Planning", "Engineering"],
-      roles: [
-        { department: "Production", category: "Operations", titles: ["Production Supervisor", "Plant Manager"] },
-        { department: "Engineering", category: "Engineering", titles: ["Mechanical Engineer", "Electrical Engineer"] },
-      ],
-    },
-    {
-      name: "Automobile",
-      departments: [
-        "Design & Development",
-        "Manufacturing",
-        "Quality Control",
-        "Sales & Marketing",
-        "After Sales Service",
-      ],
-      roles: [
-        {
-          department: "Design & Development",
-          category: "Automotive Engineering",
-          titles: ["Automotive Design Engineer"],
-        },
-        { department: "Sales & Marketing", category: "Automotive Sales", titles: ["Car Sales Executive"] },
-      ],
-    },
-    {
-      name: "Consumer Electronics",
-      departments: [
-        "Product Development",
-        "Manufacturing",
-        "Quality Control",
-        "Sales & Marketing",
-        "Technical Support",
-      ],
-      roles: [
-        {
-          department: "Product Development",
-          category: "Electronics Engineering",
-          titles: ["Product Development Engineer"],
-        },
-        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Associate"] },
-      ],
-    },
-    {
-      name: "FMCG",
-      departments: ["Sales & Marketing", "Supply Chain", "Production", "Quality Control", "Brand Management"],
-      roles: [
-        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Executive", "Field Sales Manager"] },
-        {
-          department: "Brand Management",
-          category: "Brand Management",
-          titles: ["Brand Manager", "Senior Brand Manager", "Brand Head"],
-        },
-      ],
-    },
-    {
-      name: "Retail",
-      departments: [
-        "Store Operations",
-        "Merchandising",
-        "Visual Merchandising",
-        "Customer Service",
-        "Inventory Management",
-      ],
-      roles: [
-        {
-          department: "Store Operations",
-          category: "Retail Operations",
-          titles: ["Store Manager", "Assistant Store Manager"],
-        },
-        { department: "Customer Service", category: "Customer Service", titles: ["Retail Associate"] },
-      ],
-    },
-    {
-      name: "E-commerce",
-      departments: ["Operations", "Marketing", "Customer Service", "Logistics", "Product Management", "Technology"],
-      roles: [
-        { department: "Operations", category: "Operations", titles: ["E-commerce Operations Manager"] },
-        { department: "Marketing", category: "Digital Marketing", titles: ["E-commerce Marketing Specialist"] },
-      ],
-    },
-    {
-      name: "Telecommunications",
-      departments: ["Network Operations", "Customer Service", "Sales", "Technical Support", "IT Infrastructure"],
-      roles: [
-        { department: "Network Operations", category: "Network Engineering", titles: ["Network Engineer"] },
-        { department: "Customer Service", category: "Customer Service", titles: ["Telecom Customer Support"] },
-      ],
-    },
-    {
-      name: "Media & Entertainment",
-      departments: ["Content Creation", "Production", "Marketing", "Distribution", "Digital Media"],
-      roles: [
-        { department: "Content Creation", category: "Content", titles: ["Content Creator", "Scriptwriter"] },
-        { department: "Marketing", category: "Marketing", titles: ["Marketing Manager"] },
-      ],
-    },
-    {
-      name: "Education",
-      departments: ["Teaching", "Administration", "Curriculum Development", "Student Services", "IT Support"],
-      roles: [
-        { department: "Teaching", category: "Teaching", titles: ["Teacher", "Professor"] },
-        { department: "Administration", category: "Educational Administration", titles: ["School Administrator"] },
-      ],
-    },
-    {
-      name: "Real Estate",
-      departments: ["Sales", "Marketing", "Property Management", "Project Management", "Legal & Compliance"],
-      roles: [
-        { department: "Sales", category: "Real Estate Sales", titles: ["Real Estate Agent"] },
-        { department: "Property Management", category: "Property Management", titles: ["Property Manager"] },
-      ],
-    },
-    {
-      name: "Construction",
-      departments: ["Project Management", "Civil Engineering", "Quality Control", "Safety", "Procurement"],
-      roles: [
-        {
-          department: "Project Management",
-          category: "Construction Management",
-          titles: ["Project Manager", "Site Engineer"],
-        },
-        { department: "Civil Engineering", category: "Engineering", titles: ["Civil Engineer"] },
-      ],
-    },
-    {
-      name: "Travel & Tourism",
-      departments: ["Sales & Reservations", "Operations", "Tour Operations", "Customer Service", "Marketing"],
-      roles: [
-        { department: "Sales & Reservations", category: "Travel Sales", titles: ["Travel Agent"] },
-        { department: "Tour Operations", category: "Tour Management", titles: ["Tour Operator"] },
-      ],
-    },
-    {
-      name: "Hospitality",
-      departments: ["Front Office", "Food & Beverage", "Housekeeping", "Kitchen", "Sales & Marketing"],
-      roles: [
-        { department: "Front Office", category: "Hotel Management", titles: ["Front Desk Manager"] },
-        { department: "Food & Beverage", category: "Culinary", titles: ["Chef", "F&B Manager"] },
-      ],
-    },
-    {
-      name: "Logistics & Supply Chain",
-      departments: ["Warehousing", "Transportation", "Inventory Management", "Procurement", "Supply Planning"],
-      roles: [
-        { department: "Warehousing", category: "Logistics Operations", titles: ["Warehouse Manager"] },
-        { department: "Transportation", category: "Transportation Management", titles: ["Logistics Coordinator"] },
-      ],
-    },
-    {
-      name: "Oil & Gas",
-      departments: ["Exploration", "Production", "Refining", "Operations", "Engineering", "Safety"],
-      roles: [
-        { department: "Production", category: "Oil & Gas Operations", titles: ["Field Operations Manager"] },
-        { department: "Engineering", category: "Petroleum Engineering", titles: ["Petroleum Engineer"] },
-      ],
-    },
-    {
-      name: "Power & Energy",
-      departments: ["Operations", "Maintenance", "Engineering", "Project Management", "Safety"],
-      roles: [
-        { department: "Operations", category: "Power Plant Operations", titles: ["Plant Operator"] },
-        { department: "Engineering", category: "Power Systems Engineering", titles: ["Power Systems Engineer"] },
-      ],
-    },
-    {
-      name: "Government / PSU",
-      departments: ["Administration", "Public Relations", "Finance", "Human Resources", "Technical Services"],
-      roles: [
-        { department: "Administration", category: "Public Administration", titles: ["Administrative Officer"] },
-        { department: "Finance", category: "Government Finance", titles: ["Accountant"] },
-      ],
-    },
-    {
-      name: "NGO / Non-Profit",
-      departments: ["Program Management", "Fund Raising", "Communications", "Field Operations", "Administration"],
-      roles: [
-        { department: "Program Management", category: "Program Management", titles: ["Program Manager"] },
-        { department: "Fund Raising", category: "Fundraising", titles: ["Fundraiser"] },
-      ],
-    },
-    {
-      name: "Legal",
-      departments: ["Corporate Law", "Litigation", "Compliance", "Legal Advisory", "Contracts"],
-      roles: [
-        { department: "Corporate Law", category: "Corporate Law", titles: ["Corporate Lawyer"] },
-        { department: "Litigation", category: "Litigation", titles: ["Litigation Lawyer"] },
-      ],
-    },
+    "IT Services & Consulting",
+    "Software Product",
+    "Internet",
+    "Banking",
+    "Financial Services",
+    "Insurance",
+    "BPO / Call Centre",
+    "Analytics / KPO / Research",
+    "Healthcare",
+    "Pharmaceutical",
+    "Medical Devices",
+    "Manufacturing",
+    "Automobile",
+    "Consumer Electronics",
+    "FMCG",
+    "Retail",
+    "E-commerce",
+    "Telecommunications",
+    "Media & Entertainment",
+    "Education",
+    "Real Estate",
+    "Construction",
+    "Travel & Tourism",
+    "Hospitality",
+    "Logistics & Supply Chain",
+    "Oil & Gas",
+    "Power & Energy",
+    "Government / PSU",
+    "NGO / Non-Profit",
+    "Legal",
   ]
 
   const indianCities = [
@@ -1750,34 +1375,34 @@ function Step3EmploymentAndSkills({
   }
 
   const filteredIndustries = industries.filter((industry) =>
-    industry.name.toLowerCase().includes(industrySearch.toLowerCase()),
+    industry.toLowerCase().includes(industrySearch.toLowerCase()),
   )
 
-  const selectedIndustryData = industries.find((ind) => ind.name === formData.industry)
-  const departmentsInSelectedIndustry = selectedIndustryData?.departments || []
+  // const selectedIndustryData = industries.find((ind) => ind.name === formData.industry)
+  // const departmentsInSelectedIndustry = selectedIndustryData?.departments || []
 
-  const selectedDepartmentData = selectedIndustryData?.roles.find((role) => role.department === formData.department)
+  // const selectedDepartmentData = selectedIndustryData?.roles.find((role) => role.department === formData.department)
   // This line was originally trying to get role categories but was incorrectly using `titles`
   // const roleCategoriesInSelectedDepartment = selectedDepartmentData?.titles || [];
 
   // Extract unique role categories from the selected department's roles
-  const uniqueRoleCategories =
-    selectedDepartmentData?.titles.reduce((acc, role) => {
-      const category = selectedIndustryData?.roles.find((r) => r.titles.includes(role))?.category
-      if (category && !acc.includes(category)) {
-        acc.push(category)
-      }
-      return acc
-    }, [] as string[]) || []
+  // const uniqueRoleCategories =
+  //   selectedDepartmentData?.titles.reduce((acc, role) => {
+  //     const category = selectedIndustryData?.roles.find((r) => r.titles.includes(role))?.category
+  //     if (category && !acc.includes(category)) {
+  //       acc.push(category)
+  //     }
+  //     return acc
+  //   }, [] as string[]) || [];
 
   // This line was incorrect as it was trying to find a title in the `titles` array as if it were a single role object
   // const selectedCategoryData = selectedDepartmentData?.titles.find(title => title === formData.jobRole);
   // Correctly get job roles based on department and role category
-  const jobRolesInSelectedCategory =
-    selectedIndustryData?.roles
-      .filter((role) => role.department === formData.department && uniqueRoleCategories.includes(role.category))
-      .flatMap((role) => role.titles.filter((title) => title.toLowerCase().includes(formData.jobRole.toLowerCase()))) ||
-    []
+  // const jobRolesInSelectedCategory =
+  //   selectedIndustryData?.roles
+  //     .filter((role) => role.department === formData.department && uniqueRoleCategories.includes(role.category))
+  //     .flatMap((role) => role.titles.filter((title) => title.toLowerCase().includes(formData.jobRole.toLowerCase()))) ||
+  //   [];
 
   const handleIndustrySelect = (industryName: string) => {
     updateFormData("industry", industryName)
@@ -1792,7 +1417,7 @@ function Step3EmploymentAndSkills({
     updateFormData("department", departmentName)
     updateFormData("roleCategory", "") // Reset role category
     updateFormData("jobRole", "") // Reset job role
-    setShowCityDropdown(true) // Assuming this is for department/role dropdowns, needs review for accurate state management
+    // setShowCityDropdown(true) // Assuming this is for department/role dropdowns, needs review for accurate state management
   }
 
   const handleRoleCategorySelect = (roleCategory: string) => {
@@ -1855,48 +1480,152 @@ function Step3EmploymentAndSkills({
       <CardContent className="pt-6 space-y-6">
         {/* Skills section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Skills</h3>
+          {/* Years of Experience */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="totalExperienceYears" className="text-sm">
+                Years of Experience <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="totalExperienceYears"
+                type="number"
+                min="0"
+                max="50"
+                value={formData.totalExperienceYears}
+                onChange={(e) => handleTotalExperienceChange("years", e.target.value)}
+                placeholder="Years"
+                className="mt-1 h-10 rounded-full"
+              />
+            </div>
+            <div>
+              <Label htmlFor="totalExperienceMonths" className="text-sm">
+                Months
+              </Label>
+              <Input
+                id="totalExperienceMonths"
+                type="number"
+                min="0"
+                max="11"
+                value={formData.totalExperienceMonths}
+                onChange={(e) => handleTotalExperienceChange("months", e.target.value)}
+                placeholder="Months"
+                className="mt-1 h-10 rounded-full"
+              />
+            </div>
+          </div>
 
-          {/* Skills You Know */}
+          {/* Industry Field - Autosuggest */}
           <div className="relative">
-            <Label htmlFor="skillsYouKnow" className="text-sm">
-              Skills You Know
+            <Label htmlFor="industry" className="text-sm">
+              Industry <span className="text-red-500">*</span>
             </Label>
             <Input
-              id="skillsYouKnow"
+              id="industry"
               type="text"
-              value={skillSearch}
+              value={formData.industry}
               onChange={(e) => {
-                setSkillSearch(e.target.value)
-                setShowSkillDropdown(e.target.value.length > 0)
+                updateFormData("industry", e.target.value)
+                setShowIndustryDropdown(e.target.value.length > 0)
               }}
-              placeholder="Search and add skills"
+              placeholder="Type to search industries"
               className="mt-1 h-10 rounded-full"
-              ref={firstInputRef}
             />
-            {showSkillDropdown && skillSearch.length > 0 && (
+            {showIndustryDropdown && formData.industry.length > 0 && (
               <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {loadingSkills ? (
-                  <div className="px-4 py-2 text-gray-500">Loading skills...</div>
-                ) : allSkills.length === 0 ? (
-                  <div className="px-4 py-2 text-gray-500">No skills found.</div>
-                ) : (
-                  allSkills
-                    .filter((skill) => skill.skill_name.toLowerCase().includes(skillSearch.toLowerCase()))
-                    .map((skill) => (
-                      <div
-                        key={skill.id}
-                        className="px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between items-center"
-                        onClick={() => handleSkillSelect(skill)}
-                      >
-                        <span>{skill.skill_name}</span>
-                        <span className="text-xs text-gray-500">{skill.category}</span>
-                      </div>
-                    ))
-                )}
+                {industries
+                  .filter((ind) => ind.toLowerCase().includes(formData.industry.toLowerCase()))
+                  .map((ind) => (
+                    <div
+                      key={ind}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                      onClick={() => {
+                        updateFormData("industry", ind)
+                        setShowIndustryDropdown(false)
+                      }}
+                    >
+                      {ind}
+                    </div>
+                  ))}
               </div>
             )}
-            <div className="flex flex-wrap gap-2 mt-2">
+          </div>
+
+          {/* Skills */}
+          <div>
+            <Label htmlFor="skills" className="text-sm">
+              Skills <span className="text-red-500">*</span>
+            </Label>
+            <p className="text-xs text-gray-500 mb-2">Select from suggestions or add your own</p>
+
+            {/* Skill Input with Autosuggest */}
+            <div className="relative">
+              <Input
+                id="skills"
+                type="text"
+                value={skillSearch}
+                onChange={(e) => {
+                  setSkillSearch(e.target.value)
+                  setShowSkillDropdown(e.target.value.length > 0)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && skillSearch.trim()) {
+                    e.preventDefault()
+                    // Add custom skill if user presses Enter
+                    if (!formData.skillsYouKnow.includes(skillSearch.trim())) {
+                      updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skillSearch.trim()])
+                    }
+                    setSkillSearch("")
+                    setShowSkillDropdown(false)
+                  }
+                }}
+                placeholder="Type to search or add custom skill"
+                className="mt-1 h-10 rounded-full"
+                ref={firstInputRef}
+              />
+              {showSkillDropdown && skillSearch.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {loadingSkills ? (
+                    <div className="px-4 py-2 text-gray-500">Loading skills...</div>
+                  ) : allSkills.length === 0 ? (
+                    <div className="px-4 py-2 text-gray-500">
+                      No matching skills. Press Enter to add "{skillSearch}"
+                    </div>
+                  ) : (
+                    <>
+                      {allSkills
+                        .filter((skill) => skill.skill_name.toLowerCase().includes(skillSearch.toLowerCase()))
+                        .map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between items-center"
+                            onClick={() => handleSkillSelect(skill)}
+                          >
+                            <span>{skill.skill_name}</span>
+                            <span className="text-xs text-gray-500">{skill.category}</span>
+                          </div>
+                        ))}
+                      {skillSearch.trim() && (
+                        <div
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                          onClick={() => {
+                            if (!formData.skillsYouKnow.includes(skillSearch.trim())) {
+                              updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skillSearch.trim()])
+                            }
+                            setSkillSearch("")
+                            setShowSkillDropdown(false)
+                          }}
+                        >
+                          + Add "{skillSearch.trim()}" as custom skill
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Skills */}
+            <div className="flex flex-wrap gap-2 mt-3">
               {formData.skillsYouKnow.map((skill) => (
                 <span
                   key={skill}
@@ -1913,6 +1642,40 @@ function Step3EmploymentAndSkills({
                 </span>
               ))}
             </div>
+
+            {/* Predefined Skills for Quick Selection */}
+            {formData.skillsYouKnow.length === 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 mb-2">Popular skills:</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "JavaScript",
+                    "Python",
+                    "Java",
+                    "React",
+                    "Node.js",
+                    "SQL",
+                    "AWS",
+                    "Communication",
+                    "Leadership",
+                    "Project Management",
+                  ].map((skill) => (
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => {
+                        if (!formData.skillsYouKnow.includes(skill)) {
+                          updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skill])
+                        }
+                      }}
+                      className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                    >
+                      + {skill}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
