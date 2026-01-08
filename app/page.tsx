@@ -572,10 +572,10 @@ export default function HomePage() {
       <section className="bg-gradient-to-r from-blue-600 to-purple-600 py-12 sm:py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 text-center">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4 px-2">
-            Ready to Get Started?
+            Start Your Success Journey Today
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-6 sm:mb-8 px-2">
-            Join thousands of job seekers and employers on JobKarle
+            Connect with opportunities that transform careers and businesses
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
             <Link href="/register" className="w-full sm:w-auto">
@@ -584,11 +584,7 @@ export default function HomePage() {
               </Button>
             </Link>
             <Link href="/employer/register" className="w-full sm:w-auto">
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full sm:w-auto bg-transparent text-white border-white hover:bg-white hover:text-blue-600 text-sm sm:text-base h-10 sm:h-11"
-              >
+              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-10 sm:h-11">
                 Post a Job
               </Button>
             </Link>
