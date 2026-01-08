@@ -541,9 +541,9 @@ export default function HomePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
           <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
             <Briefcase className="w-10 h-10 sm:w-12 sm:h-12 text-blue-600 mb-3 sm:mb-4" />
-            <h3 className="text-lg sm:text-xl font-semibold mb-2">Thousands of Jobs</h3>
+            <h3 className="text-lg sm:text-xl font-semibold mb-2">Extensive Job Listings</h3>
             <p className="text-sm sm:text-base text-gray-600">
-              Browse through thousands of job openings from top companies
+              Discover diverse career opportunities tailored to your profile
             </p>
           </div>
           <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
