@@ -461,6 +461,7 @@ export async function updateCandidateProfile(
     notice_period: string
     currently_employed: string
     skills_for_role: string[]
+    skills_you_know: string[]
     preferred_salary: string
     preferred_locations: string[]
     highest_qualification: string
@@ -484,6 +485,8 @@ export async function updateCandidateProfile(
       endDate?: string
       url?: string
     }>
+    profile_picture_url: string
+    employment_history: any[]
   }>,
 ) {
   const supabase = await createClient()

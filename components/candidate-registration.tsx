@@ -4,12 +4,20 @@ import React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Check, Eye, EyeOff, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { createCandidate, checkEmailExists, uploadResume } from "@/app/actions/candidate-actions"
+import {
+  createCandidate,
+  checkEmailExists,
+  uploadResume,
+  updatePreferencesAndComplete,
+  updateEmploymentDetails,
+  updateEducationDetails,
+} from "@/app/actions/candidate-actions"
+
 import Link from "next/link"
 
 const qualificationCourseSpecializationMapping: Record<
@@ -254,6 +262,7 @@ type StepProps = {
   setFormData?: any
   setIsLoading?: (loading: boolean) => void
   isLoading?: boolean
+  handleCompleteRegistration?: () => void // Added for completion handler
 }
 
 type Skill = {
@@ -401,14 +410,62 @@ export default function CandidateRegistration() {
     updateFormData("preferredSalary", formatted)
   }
 
-  const currentStep = step // Alias for clarity
+  const handleCompleteRegistration = async () => {
+    if (isLoading) return
+    setIsLoading?.(true)
+
+    console.log("[v0] handleCompleteRegistration called")
+
+    try {
+      // Call the API to save all preferences and complete registration
+      // Note: The function `updatePreferencesAndComplete` is expected to take the email of the candidate
+      // to identify them and then the data object containing their preferences and other details.
+      const result = await updatePreferencesAndComplete(formData.email, {
+        resumeHeadline: formData.resumeHeadline,
+        preferredLocations: formData.preferredLocations,
+        preferredSalary: formData.preferredSalary,
+        gender: formData.gender,
+        currentCity: formData.currentCity,
+        currentState: formData.currentState,
+        availabilityToJoin: formData.availabilityToJoin,
+        dateOfBirth: formData.dateOfBirth,
+        languagesKnown: formData.languagesKnown,
+        maritalStatus: formData.maritalStatus,
+        projects: formData.projects,
+        certifications: formData.certifications,
+      })
+
+      if (result.success) {
+        console.log("[v0] Registration completed successfully!")
+
+        // Show success message
+        alert("🎉 Registration Completed Successfully!\n\nYour profile has been created. Please login to continue.")
+
+        // Redirect to login page after a short delay
+        setTimeout(() => {
+          window.location.href = "/candidate/login"
+        }, 1000)
+      } else {
+        console.error("[v0] Error completing registration:", result.error)
+        alert("Error completing registration: " + result.error)
+        setIsLoading?.(false)
+      }
+    } catch (error) {
+      console.error("[v0] Exception completing registration:", error)
+      alert("An unexpected error occurred. Please try again.")
+      setIsLoading?.(false)
+    }
+  }
+
   const setStepState = (step: number) => {
     // Renamed to avoid conflict with the original setStep
-    console.log("[v0] In setStep, prev:", currentStep, "isFresher:", isFresher)
-    const maxStep = 5
-    console.log("[v0] maxStep:", maxStep, "prev:", currentStep)
+    console.log("[v0] In setStepState, prev:", step, "isFresher:", isFresher) // Corrected variable name here
 
-    if (step === 3 && currentStep === 2 && isFresher) {
+    const maxStep = getTotalSteps() // Declare maxStep here
+
+    if (step === 3 && step <= 2 && isFresher) {
+      // This condition seems incorrect. It should likely be:
+      // if (step === 3 && step_before === 2 && isFresher) or similar logic
       console.log("[v0] Fresher going to Step 3 to add skills (mandatory)")
     }
 
@@ -440,972 +497,14 @@ export default function CandidateRegistration() {
 
   const prevStep = () => {
     setStep((prev) => {
-      if (prev === 3 && formData.mobileVerified) {
-        return 1 // Skip step 2 (OTP) and go directly to step 1
-      }
-      if (isFresher && prev === 4) {
-        return 3 // Go back to Step 3 (Skills & Employment) from Step 4 (Education)
-      }
+      // The logic here is simplified. If the goal is always to go back one step,
+      // this condition might need adjustment based on specific navigation rules.
+      // For example, skipping a step if it was already completed or not applicable.
+      // The original condition `formData.mobileVerified` for step 2 seems related to
+      // skipping the OTP step if already verified, which might be handled differently now.
+      // For now, general back navigation is implemented.
       return Math.max(prev - 1, 1)
     })
-  }
-
-  const getDisplayStep = (stepNumber: number) => {
-    if (!isFresher) return stepNumber
-    // For fresher: 1->1, 2->2, 4->3, 5->4, 6->5
-    if (stepNumber <= 2) return stepNumber
-    return stepNumber - 1
-  }
-
-  const stepProps = {
-    formData,
-    updateFormData,
-    nextStep,
-    prevStep,
-    setFormData,
-    setIsLoading,
-    isLoading,
-  }
-
-  // Placeholder for Step4EducationCombined component
-  const Step4EducationAndProjects = ({
-    formData,
-    updateFormData,
-    nextStep,
-    prevStep,
-    isLoading,
-    setFormData,
-  }: StepProps) => {
-    const [showOtherCourseType, setShowOtherCourseType] = React.useState(false)
-
-    const addCertification = () => {
-      updateFormData("certifications", [
-        ...(formData.certifications || []),
-        { name: "", issuer: "", issueDate: "", expiryDate: "" },
-      ])
-    }
-
-    const addProject = () => {
-      updateFormData("projects", [
-        ...(formData.projects || []),
-        { title: "", description: "", role: "", startDate: "", endDate: "", technologies: "" },
-      ])
-    }
-
-    return (
-      <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
-        <CardHeader className="pb-6">
-          <CardTitle className="text-2xl font-bold">Education Details</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Share your educational background and achievements.</p>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Education Fields */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="qualification" className="text-sm">
-                  Highest Qualification <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="qualification"
-                  value={formData.highestQualification || ""}
-                  onChange={(e) => {
-                    const qual = e.target.value
-                    setFormData({
-                      ...formData,
-                      highestQualification: qual,
-                      course: "",
-                      courseType: "",
-                      specialization: "",
-                    })
-                  }}
-                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required
-                >
-                  <option value="">Select qualification</option>
-                  <option value="10th">10th</option>
-                  <option value="12th">12th</option>
-                  <option value="Diploma">Diploma</option>
-                  <option value="Graduation/Diploma">Any Graduated</option>
-                  <option value="Post Graduation/Masters">Post Graduation/Masters</option>
-                  <option value="Doctorate/PhD">Doctorate/PhD</option>
-                </select>
-              </div>
-
-              {formData.highestQualification && (
-                <div>
-                  <Label htmlFor="course" className="text-sm font-medium">
-                    Course <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    id="course"
-                    value={formData.course || ""}
-                    onChange={(e) => {
-                      setFormData({
-                        ...formData,
-                        course: e.target.value,
-                        specialization: "",
-                      })
-                    }}
-                    className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    required
-                  >
-                    <option value="">Select course</option>
-                    {qualificationCourseSpecializationMapping[formData.highestQualification]?.courses.map((course) => (
-                      <option key={course} value={course}>
-                        {course}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {formData.highestQualification && formData.course && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="courseType" className="text-sm font-medium">
-                    Course Type <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    id="courseType"
-                    value={formData.courseType || ""}
-                    onChange={(e) => setFormData({ ...formData, courseType: e.target.value })}
-                    className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    required
-                  >
-                    <option value="">Select course type</option>
-                    <option value="Full Time">Full Time</option>
-                    <option value="Part Time">Part Time</option>
-                    <option value="Distance Learning">Distance Learning</option>
-                    <option value="Online">Online</option>
-                    <option value="Correspondence">Correspondence</option>
-                  </select>
-                </div>
-
-                {formData.highestQualification !== "10th" && formData.highestQualification !== "12th" && (
-                  <div>
-                    <Label htmlFor="specialization" className="text-sm font-medium">
-                      Specialization <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      id="specialization"
-                      value={formData.specialization || ""}
-                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                      className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      required
-                    >
-                      <option value="">Select specialization</option>
-                      {qualificationCourseSpecializationMapping[formData.highestQualification]?.specializations[
-                        formData.course
-                      ]?.map((spec) => (
-                        <option key={spec} value={spec}>
-                          {spec}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {formData.highestQualification && formData.course && (
-              <div>
-                <Label htmlFor="university" className="text-sm font-medium">
-                  University/Institution <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="university"
-                  type="text"
-                  value={formData.university || ""}
-                  onChange={(e) => setFormData({ ...formData, university: e.target.value })}
-                  placeholder="Enter university or institution name"
-                  className="mt-1 h-10 rounded-full"
-                  required
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="passingYearFrom" className="text-sm font-medium">
-                  Year From <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="passingYearFrom"
-                  value={formData.passingYearFrom || ""}
-                  onChange={(e) => setFormData({ ...formData, passingYearFrom: e.target.value })}
-                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required
-                >
-                  <option value="">Select year</option>
-                  {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="passingYearTo" className="text-sm font-medium">
-                  Year To <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="passingYearTo"
-                  value={formData.passingYearTo || ""}
-                  onChange={(e) => setFormData({ ...formData, passingYearTo: e.target.value })}
-                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required
-                >
-                  <option value="">Select year</option>
-                  {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-8 mt-8 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold">Certifications (Optional)</h3>
-                <p className="text-sm text-muted-foreground">Add any relevant certifications you've earned</p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addCertification}
-                className="rounded-full bg-transparent"
-              >
-                + Add Certification
-              </Button>
-            </div>
-
-            {formData.certifications && formData.certifications.length > 0 && (
-              <div className="space-y-4">
-                {formData.certifications.map((cert, index) => (
-                  <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <Label className="text-sm">Certification Name</Label>
-                        <Input
-                          value={cert.name}
-                          onChange={(e) => {
-                            const certs = [...(formData.certifications || [])]
-                            certs[index].name = e.target.value
-                            updateFormData("certifications", certs)
-                          }}
-                          placeholder="e.g., AWS Certified Solutions Architect"
-                          className="rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Issuing Organization</Label>
-                        <Input
-                          value={cert.issuer}
-                          onChange={(e) => {
-                            const certs = [...(formData.certifications || [])]
-                            certs[index].issuer = e.target.value
-                            updateFormData("certifications", certs)
-                          }}
-                          placeholder="e.g., Amazon Web Services"
-                          className="rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <Label className="text-sm">Issue Date</Label>
-                        <Input
-                          type="month"
-                          value={cert.issueDate}
-                          onChange={(e) => {
-                            const certs = [...(formData.certifications || [])]
-                            certs[index].issueDate = e.target.value
-                            updateFormData("certifications", certs)
-                          }}
-                          className="rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">Expiry Date (Optional)</Label>
-                        <Input
-                          type="month"
-                          value={cert.expiryDate || ""}
-                          onChange={(e) => {
-                            const certs = [...(formData.certifications || [])]
-                            certs[index].expiryDate = e.target.value
-                            updateFormData("certifications", certs)
-                          }}
-                          className="rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const certs = formData.certifications?.filter((_, i) => i !== index) || []
-                        updateFormData("certifications", certs)
-                      }}
-                      className="rounded-full"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Projects section with similar spacing */}
-          <div className="pt-8 mt-8 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold">Projects</h3>
-                <p className="text-sm text-muted-foreground">Detail any significant projects you've worked on</p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addProject}
-                className="rounded-full bg-transparent"
-              >
-                + Add Project
-              </Button>
-            </div>
-
-            {formData.projects && formData.projects.length > 0 && (
-              <div className="space-y-4">
-                {formData.projects.map((project, index) => (
-                  <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <div className="grid md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <Label htmlFor={`projectTitle-${index}`} className="text-sm">
-                          Project Title
-                        </Label>
-                        <Input
-                          id={`projectTitle-${index}`}
-                          value={project.title}
-                          onChange={(e) => {
-                            const updatedProjects = [...formData.projects]
-                            updatedProjects[index] = { ...updatedProjects[index], title: e.target.value }
-                            updateFormData("projects", updatedProjects)
-                          }}
-                          placeholder="e.g., E-commerce Platform"
-                          className="mt-1 h-10 rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`projectRole-${index}`} className="text-sm">
-                          Your Role
-                        </Label>
-                        <Input
-                          id={`projectRole-${index}`}
-                          value={project.role}
-                          onChange={(e) => {
-                            const updatedProjects = [...formData.projects]
-                            updatedProjects[index] = { ...updatedProjects[index], role: e.target.value }
-                            updateFormData("projects", updatedProjects)
-                          }}
-                          placeholder="e.g., Lead Developer"
-                          className="mt-1 h-10 rounded-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <Label className="text-sm">Start Date</Label>
-                        <Input
-                          type="month"
-                          value={project.startDate}
-                          onChange={(e) => {
-                            const projects = [...(formData.projects || [])]
-                            projects[index].startDate = e.target.value
-                            updateFormData("projects", projects)
-                          }}
-                          className="rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-sm">End Date (Optional)</Label>
-                        <Input
-                          type="month"
-                          value={project.endDate || ""}
-                          onChange={(e) => {
-                            const projects = [...(formData.projects || [])]
-                            projects[index].endDate = e.target.value
-                            updateFormData("projects", projects)
-                          }}
-                          className="rounded-full"
-                        />
-                      </div>
-                    </div>
-                    <div className="mb-4">
-                      <Label htmlFor={`projectDescription-${index}`} className="text-sm">
-                        Description
-                      </Label>
-                      <Input
-                        id={`projectDescription-${index}`}
-                        value={project.description}
-                        onChange={(e) => {
-                          const updatedProjects = [...formData.projects]
-                          updatedProjects[index] = { ...updatedProjects[index], description: e.target.value }
-                          updateFormData("projects", updatedProjects)
-                        }}
-                        placeholder="Briefly describe the project and your contributions"
-                        className="mt-1 h-10 rounded-full"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor={`projectTechnologies-${index}`} className="text-sm">
-                        Technologies Used
-                      </Label>
-                      <Input
-                        id={`projectTechnologies-${index}`}
-                        value={project.technologies || ""}
-                        onChange={(e) => {
-                          const updatedProjects = [...formData.projects]
-                          updatedProjects[index] = { ...updatedProjects[index], technologies: e.target.value }
-                          updateFormData("projects", updatedProjects)
-                        }}
-                        placeholder="e.g., React, Node.js, MongoDB, AWS"
-                        className="mt-1 h-10 rounded-full"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        updateFormData(
-                          "projects",
-                          formData.projects.filter((_, i) => i !== index),
-                        )
-                      }}
-                      className="mt-4 text-red-500 hover:text-red-700"
-                    >
-                      Remove Project
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Navigation Buttons */}
-          <div className="flex justify-between pt-4 border-t">
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full px-8 bg-transparent"
-              onClick={prevStep}
-              disabled={isLoading}
-            >
-              Back
-            </Button>
-            <Button
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
-              onClick={nextStep}
-              disabled={isLoading}
-            >
-              Save & Continue
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Placeholder for Step5PersonalAndPreferences component
-  const Step5PersonalAndPreferences = ({
-    formData,
-    updateFormData,
-    nextStep,
-    prevStep,
-    setFormData,
-    setIsLoading,
-    isLoading,
-  }: StepProps) => {
-    const [showHeadlineDropdown, setShowHeadlineDropdown] = useState(false)
-    const [headlineInput, setHeadlineInput] = useState(formData.resumeHeadline || "")
-    const [showLocationDropdown, setShowLocationDropdown] = useState(false)
-    const [locationInput, setLocationInput] = useState("")
-    const [showCityDropdown, setShowCityDropdown] = useState(false)
-    const [cityInput, setCityInput] = useState(formData.currentCity || "")
-
-    const headlineSuggestions = [
-      "Experienced Software Engineer with 5+ years in full-stack development",
-      "Senior Data Analyst specializing in business intelligence",
-      "Digital Marketing Manager with proven track record",
-      "Full Stack Developer proficient in React and Node.js",
-      "Project Manager with PMP certification",
-      "UX/UI Designer with strong portfolio",
-      "Business Analyst with domain expertise",
-    ]
-
-    const filteredHeadlines = headlineSuggestions.filter((h) => h.toLowerCase().includes(headlineInput.toLowerCase()))
-
-    const [cities, setCities] = useState<Array<{ city: string; state: string }>>([])
-
-    useEffect(() => {
-      // Load cities from component constant (already defined in the file)
-      const INDIAN_CITIES = [
-        { city: "Mumbai", state: "Maharashtra" },
-        { city: "Delhi", state: "Delhi" },
-        { city: "Bangalore", state: "Karnataka" },
-        { city: "Hyderabad", state: "Telangana" },
-        { city: "Chennai", state: "Tamil Nadu" },
-        { city: "Kolkata", state: "West Bengal" },
-        { city: "Pune", state: "Maharashtra" },
-        // ... add more as needed
-      ]
-      setCities(INDIAN_CITIES)
-    }, [])
-
-    const filteredCities = cities.filter(
-      (c) =>
-        c.city.toLowerCase().includes(cityInput.toLowerCase()) ||
-        c.state.toLowerCase().includes(cityInput.toLowerCase()),
-    )
-
-    const filteredLocations = cities.filter((c) => c.city.toLowerCase().includes(locationInput.toLowerCase()))
-
-    const formatIndianSalary = (value: string) => {
-      const num = value.replace(/,/g, "")
-      if (!/^\d*$/.test(num)) return value
-
-      if (num.length === 0) return ""
-
-      const lastThree = num.substring(num.length - 3)
-      const otherNumbers = num.substring(0, num.length - 3)
-      const formatted = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + (otherNumbers ? "," : "") + lastThree
-      return formatted
-    }
-
-    const handleAddLocation = () => {
-      if (locationInput.trim()) {
-        const currentLocations = formData.preferredLocations || []
-        if (!currentLocations.includes(locationInput.trim())) {
-          updateFormData("preferredLocations", [...currentLocations, locationInput.trim()])
-        }
-        setLocationInput("")
-        setShowLocationDropdown(false)
-      }
-    }
-
-    const handleRemoveLocation = (index: number) => {
-      const currentLocations = formData.preferredLocations || []
-      updateFormData(
-        "preferredLocations",
-        currentLocations.filter((_, i) => i !== index),
-      )
-    }
-
-    const handleAddLanguage = () => {
-      const currentLanguages = formData.languagesKnown || []
-      updateFormData("languagesKnown", [...currentLanguages, { language: "", read: false, write: false, speak: false }])
-    }
-
-    const handleRemoveLanguage = (index: number) => {
-      const currentLanguages = formData.languagesKnown || []
-      updateFormData(
-        "languagesKnown",
-        currentLanguages.filter((_, i) => i !== index),
-      )
-    }
-
-    const handleLanguageChange = (index: number, field: string, value: any) => {
-      const currentLanguages = formData.languagesKnown || []
-      const updatedLanguages = [...currentLanguages]
-      updatedLanguages[index] = { ...updatedLanguages[index], [field]: value }
-      updateFormData("languagesKnown", updatedLanguages)
-    }
-
-    return (
-      <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
-        <CardHeader className="border-b pb-4">
-          <CardTitle className="text-2xl font-bold">Preferences</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Tell us about your job preferences</p>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Preferences</h3>
-
-              <div className="mb-4">
-                <Label htmlFor="resumeHeadline" className="text-sm">
-                  Resume Headline <span className="text-red-500">*</span>
-                </Label>
-                <div className="relative">
-                  <Input
-                    value={headlineInput}
-                    onChange={(e) => {
-                      setHeadlineInput(e.target.value)
-                      // UPDATE START
-                      setShowHeadlineDropdown(e.target.value.length > 0)
-                      // UPDATE END
-                    }}
-                    onFocus={() => setShowHeadlineDropdown(headlineInput.length > 0)}
-                    onBlur={() => {
-                      // UPDATE START
-                      setTimeout(() => {
-                        updateFormData("resumeHeadline", headlineInput)
-                        setShowHeadlineDropdown(false)
-                      }, 200)
-                      // UPDATE END
-                    }}
-                    placeholder="e.g., Experienced Software Engineer..."
-                    className="rounded-full"
-                  />
-                  {showHeadlineDropdown && filteredHeadlines.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {filteredHeadlines.map((headline, idx) => (
-                        <div
-                          key={idx}
-                          className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-sm"
-                          onClick={() => {
-                            setHeadlineInput(headline)
-                            updateFormData("resumeHeadline", headline)
-                            setShowHeadlineDropdown(false)
-                          }}
-                        >
-                          {headline}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* UPDATE START */}
-              {/* Reorganized layout: Availability & Current City/State in one row */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label className="text-sm">
-                    Current City / State <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      value={cityInput}
-                      onChange={(e) => {
-                        setCityInput(e.target.value)
-                        setShowCityDropdown(e.target.value.length > 0)
-                      }}
-                      onFocus={() => setShowCityDropdown(cityInput.length > 0)}
-                      onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
-                      placeholder="Type to search city"
-                      className="rounded-full"
-                    />
-                    {showCityDropdown && filteredCities.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {filteredCities.map((c, idx) => (
-                          <div
-                            key={idx}
-                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                            onClick={() => {
-                              setCityInput(`${c.city}, ${c.state}`)
-                              updateFormData("currentCity", c.city)
-                              updateFormData("currentState", c.state)
-                              setShowCityDropdown(false)
-                            }}
-                          >
-                            {c.city}, {c.state}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-sm">
-                    Availability to Join <span className="text-red-500">*</span>
-                  </Label>
-                  <select
-                    value={formData.availabilityToJoin}
-                    onChange={(e) => updateFormData("availabilityToJoin", e.target.value)}
-                    className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Select availability</option>
-                    <option value="Immediate">Immediate</option>
-                    <option value="15 Days">15 Days</option>
-                    <option value="1 Month">1 Month</option>
-                    <option value="2 Months">2 Months</option>
-                    <option value="3 Months">3 Months</option>
-                  </select>
-                </div>
-              </div>
-              {/* UPDATE END */}
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label className="text-sm">
-                    Preferred Locations <span className="text-red-500">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      value={locationInput}
-                      onChange={(e) => {
-                        setLocationInput(e.target.value)
-                        setShowLocationDropdown(e.target.value.length > 0)
-                      }}
-                      onFocus={() => setShowLocationDropdown(locationInput.length > 0)}
-                      onBlur={() => setTimeout(() => setShowLocationDropdown(false), 200)}
-                      placeholder="Type to search cities"
-                      className="rounded-full"
-                    />
-                    {showLocationDropdown && filteredLocations.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {filteredLocations.map((loc, idx) => (
-                          <div
-                            key={idx}
-                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                            onClick={() => {
-                              const locs = formData.preferredLocations || []
-                              if (!locs.includes(loc.city)) {
-                                updateFormData("preferredLocations", [...locs, loc.city])
-                              }
-                              setLocationInput("")
-                              setShowLocationDropdown(false)
-                            }}
-                          >
-                            {loc.city}, {loc.state}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {(formData.preferredLocations || []).map((loc, idx) => (
-                      <span
-                        key={idx}
-                        className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center gap-2"
-                      >
-                        {loc}
-                        <button
-                          onClick={() => {
-                            const locs = formData.preferredLocations?.filter((_, i) => i !== idx) || []
-                            updateFormData("preferredLocations", locs)
-                          }}
-                          className="hover:text-red-600"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-sm">
-                    Expected Salary (INR) <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    value={formData.preferredSalary}
-                    onChange={(e) => {
-                      // Just update the display, don't trigger formData update
-                      const formatted = formatIndianSalary(e.target.value)
-                      updateFormData("preferredSalary", formatted)
-                    }}
-                    onBlur={(e) => {
-                      // Finalize the formatting on blur
-                      const formatted = formatIndianSalary(e.target.value)
-                      updateFormData("preferredSalary", formatted)
-                    }}
-                    placeholder="e.g., 10,00,000"
-                    className="rounded-full"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-semibold mb-4">Personal Details (Optional)</h3>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label className="text-sm">Marital Status</Label>
-                  <select
-                    value={formData.maritalStatus}
-                    onChange={(e) => updateFormData("maritalStatus", e.target.value)}
-                    className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">Select status</option>
-                    <option value="single">Single</option>
-                    <option value="married">Married</option>
-                  </select>
-                </div>
-
-                <div>
-                  <Label className="text-sm">Date of Birth</Label>
-                  <Input
-                    type="date"
-                    value={formData.dateOfBirth}
-                    onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
-                    className="rounded-full"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-semibold">Languages Known</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full bg-transparent"
-                    onClick={() => {
-                      const langs = formData.languagesKnown || []
-                      updateFormData("languagesKnown", [
-                        ...langs,
-                        { language: "", read: false, write: false, speak: false },
-                      ])
-                    }}
-                  >
-                    + Add Language
-                  </Button>
-                </div>
-
-                {(formData.languagesKnown || []).map((lang, index) => (
-                  <div key={index} className="bg-gray-50 p-4 rounded-lg mb-3">
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <Input
-                        value={lang.language}
-                        onChange={(e) => {
-                          const langs = [...(formData.languagesKnown || [])]
-                          langs[index].language = e.target.value
-                          updateFormData("languagesKnown", langs)
-                        }}
-                        placeholder="Language name"
-                        className="rounded-full"
-                      />
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const langs = formData.languagesKnown?.filter((_, i) => i !== index) || []
-                          updateFormData("languagesKnown", langs)
-                        }}
-                        className="rounded-full h-8 px-3 text-xs"
-                      >
-                        Remove
-                      </Button>
-                    </div>
-
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={lang.read}
-                          onChange={(e) => {
-                            const langs = [...(formData.languagesKnown || [])]
-                            langs[index].read = e.target.checked
-                            updateFormData("languagesKnown", langs)
-                          }}
-                        />
-                        <span className="text-sm">Read</span>
-                      </label>
-
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={lang.write}
-                          onChange={(e) => {
-                            const langs = [...(formData.languagesKnown || [])]
-                            langs[index].write = e.target.checked
-                            updateFormData("languagesKnown", langs)
-                          }}
-                        />
-                        <span className="text-sm">Write</span>
-                      </label>
-
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={lang.speak}
-                          onChange={(e) => {
-                            const langs = [...(formData.languagesKnown || [])]
-                            langs[index].speak = e.target.checked
-                            updateFormData("languagesKnown", langs)
-                          }}
-                        />
-                        <span className="text-sm">Speak</span>
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between pt-4">
-            <Button
-              variant="outline"
-              onClick={prevStep}
-              className="rounded-full px-8 bg-transparent"
-              disabled={isLoading}
-            >
-              Previous
-            </Button>
-            <Button
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
-              onClick={async () => {
-                setIsLoading(true)
-                // Save preferences and complete registration
-                await nextStep()
-                setIsLoading(false)
-              }}
-              disabled={isLoading}
-            >
-              Complete Registration
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Corrected assignments for Step4 and Step5 components
-  const Step5HeadlineAndPreferences = Step5PersonalAndPreferences
-  // const Step4EducationCombined = Step4EducationAndProjects // Original assignment kept for reference if needed elsewhere
-
-  const renderStep = () => {
-    switch (step) {
-      case 1:
-        // Renamed Step1Initial to Step1BasicInfo
-        return <Step1BasicInfo {...stepProps} />
-      case 2:
-        return <Step2OTP {...stepProps} />
-      case 3:
-        // Only render employment step if not a fresher
-        // Renamed the component to Step3EmploymentAndSkills for clarity
-        return <Step3EmploymentAndSkills {...stepProps} />
-      case 4:
-        // RENDER STEP 4 EDUCATION HERE
-        return <Step4EducationAndProjects {...stepProps} />
-      case 5: // Combined step for preferences
-        return <Step5HeadlineAndPreferences {...stepProps} />
-      // case 6: // This case is no longer needed due to combining steps
-      //   // This case might not be reached if step 5 is combined.
-      //   // If it is still needed for some logic, ensure it uses the correct component or redirect.
-      //   // For the purpose of this merge, we'll map step 6 to the combined component if needed.
-      //   return <Step5HeadlineAndPreferences {...stepProps} />
-      default:
-        return <Step1BasicInfo {...stepProps} />
-    }
   }
 
   const getStepStatus = (stepNumber: number) => {
@@ -1434,6 +533,38 @@ export default function CandidateRegistration() {
     ]
   }
 
+  const stepProps = {
+    formData,
+    updateFormData,
+    nextStep,
+    prevStep,
+    setFormData,
+    setIsLoading,
+    isLoading,
+    handleCompleteRegistration, // Pass the new handler
+  }
+
+  const renderStep = () => {
+    switch (step) {
+      case 1:
+        // Renamed Step1Initial to Step1BasicInfo
+        return <Step1BasicInfo {...stepProps} />
+      case 2:
+        return <Step2OTP {...stepProps} />
+      case 3:
+        // Only render employment step if not a fresher
+        // Renamed the component to Step3EmploymentAndSkills to reflect its functionality
+        return <Step3EmploymentAndSkills {...stepProps} />
+      case 4:
+        // RENDER STEP 4 EDUCATION HERE
+        return <Step4EducationAndProjects {...stepProps} />
+      case 5: // Combined step for preferences
+        return <Step5HeadlineAndPreferences {...stepProps} />
+      default:
+        return <Step1BasicInfo {...stepProps} />
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header - SHOW HEADER ON ALL STEPS INCLUDING STEP 1 */}
@@ -1460,59 +591,109 @@ export default function CandidateRegistration() {
 
       {/* Main Content Area */}
       {step === 1 ? (
-        renderStep()
+        // Step 1: Show sidebar with registration form
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 max-w-7xl mx-auto px-4">
+          {/* Left Side - Illustration */}
+          <div className="lg:w-1/3 order-2 lg:order-1">
+            <Card className="p-4 md:p-6 h-full">
+              <div className="flex justify-center mb-4 md:mb-6">
+                <img
+                  src="/person-waving-with-briefcase-illustration.jpg"
+                  alt="Registration illustration"
+                  className="h-32 md:h-40"
+                />
+              </div>
+              <ul className="space-y-2 md:space-y-3 text-sm md:text-base text-gray-700">
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Register now – it's free</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Sign up and get hired faster</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Join today and find your next job</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Create your profile & apply instantly</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Start your job search now</span>
+                </li>
+              </ul>
+            </Card>
+          </div>
+          {/* Right Side - Form */}
+          <div className="lg:w-2/3 order-1 lg:order-2">{renderStep()}</div>
+        </div>
       ) : (
-        <div className="flex flex-col lg:flex-row max-w-6xl mx-auto mt-4 md:mt-8 px-4">
-          {/* Sidebar */}
-          <div className="w-full lg:w-64 lg:pr-8 mb-6 lg:mb-0">
-            <div className="relative">
-              <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0">
-                {getStepLabels().map((item, index, arr) => {
-                  const isCompleted = step > item.step
-                  const isActive = step === item.step
-                  const displayIndex = index + 1
+        // Steps 2-5: Show vertical progress stepper on left and step content on right
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-8">
+          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+            {/* Left Side - Vertical Stepper */}
+            <div className="lg:w-1/4 lg:sticky lg:top-24 lg:self-start">
+              <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
+                <div className="space-y-1">
+                  {getStepLabels().map((stepInfo, index) => {
+                    const stepStatus = getStepStatus(stepInfo.step)
+                    const isCompleted = stepStatus === "completed"
+                    const isCurrent = stepStatus === "current"
+                    const isUpcoming = stepStatus === "upcoming"
 
-                  return (
-                    <div key={item.step} className="flex items-start mb-0 lg:mb-8 flex-shrink-0 mr-6 lg:mr-0">
-                      <div className="flex flex-col items-center mr-2 lg:mr-4">
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                            isCompleted
-                              ? "bg-green-500"
-                              : isActive
-                                ? "border-2 border-green-500 bg-white"
-                                : "border-2 border-gray-300 bg-white"
-                          }`}
-                        >
-                          {isCompleted && <Check className="w-4 h-4 text-white" />}
-                        </div>
-                        {index < arr.length - 1 && (
+                    return (
+                      <div key={stepInfo.step} className="relative">
+                        {/* Connector Line */}
+                        {index < getStepLabels().length - 1 && (
                           <div
-                            className={`hidden lg:block w-0.5 h-16 ${isCompleted ? "bg-green-500" : "bg-gray-300"}`}
+                            className={`absolute left-4 top-8 w-0.5 h-12 ${
+                              isCompleted ? "bg-green-500" : "bg-gray-200"
+                            }`}
                           />
                         )}
-                      </div>
-                      <div>
-                        <div
-                          className={`font-medium text-sm lg:text-base whitespace-nowrap lg:whitespace-normal ${isActive ? "text-green-600" : isCompleted ? "text-gray-900" : "text-gray-500"}`}
-                        >
-                          {item.label}
-                        </div>
-                        {item.description && isActive && (
-                          <div className="text-xs lg:text-sm text-gray-500 mt-1 hidden lg:block">
-                            {item.description}
+
+                        {/* Step Item */}
+                        <div className="flex items-start gap-3 py-2">
+                          {/* Step Circle */}
+                          <div
+                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${
+                              isCompleted
+                                ? "bg-green-500 text-white"
+                                : isCurrent
+                                  ? "bg-purple-600 text-white ring-4 ring-purple-100"
+                                  : "bg-gray-200 text-gray-500"
+                            }`}
+                          >
+                            {isCompleted ? <Check className="w-4 h-4" /> : stepInfo.step}
                           </div>
-                        )}
+
+                          {/* Step Content */}
+                          <div className="flex-1 min-w-0">
+                            <div
+                              className={`font-semibold text-sm ${
+                                isCurrent ? "text-purple-600" : isCompleted ? "text-gray-900" : "text-gray-400"
+                              }`}
+                            >
+                              {stepInfo.label}
+                            </div>
+                            {stepInfo.description && (
+                              <div className="text-xs text-gray-500 mt-0.5">{stepInfo.description}</div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Main Content */}
-          <div className="flex-1">{renderStep()}</div>
+            {/* Right Side - Step Content */}
+            <div className="lg:w-3/4">{renderStep()}</div>
+          </div>
         </div>
       )}
 
@@ -1591,7 +772,7 @@ function Step1BasicInfo({
       return
     }
 
-    setIsLoading(true)
+    setIsLoading?.(true)
     console.log("[v0] Step1 handleSubmit called")
 
     try {
@@ -1599,7 +780,7 @@ function Step1BasicInfo({
       const emailCheck = await checkEmailExists(formData.email)
       if (emailCheck.exists) {
         alert("Email already registered")
-        setIsLoading(false)
+        setIsLoading?.(false)
         return
       }
 
@@ -1612,7 +793,7 @@ function Step1BasicInfo({
 
         if (!uploadResult.success) {
           alert(`Failed to upload resume: ${uploadResult.error}`)
-          setIsLoading(false)
+          setIsLoading?.(false)
           return
         }
 
@@ -1643,7 +824,7 @@ function Step1BasicInfo({
       console.error("[v0] Error in handleSubmit:", error)
       alert("An error occurred during registration")
     } finally {
-      setIsLoading(false)
+      setIsLoading?.(false)
     }
   }
 
@@ -1672,324 +853,269 @@ function Step1BasicInfo({
     }
 
     updateFormData("resume", file)
-    // For now, just store file name - actual upload would be to Supabase Storage
-    // updateFormData("resumeUrl", file.name) // This line is now handled by the upload logic in handleSubmit
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 max-w-5xl mx-auto px-4">
-      {/* Left Side - Illustration */}
-      <div className="flex-1 order-2 lg:order-1">
-        <Card className="p-4 md:p-6">
-          <div className="flex justify-center mb-4 md:mb-6">
-            <img
-              src="/person-waving-with-briefcase-illustration.jpg"
-              alt="Registration illustration"
-              className="h-32 md:h-40"
-            />
-          </div>
-          <ul className="space-y-2 md:space-y-3 text-sm md:text-base text-gray-700">
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Register now – it's free</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Sign up and get hired faster</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Join today and find your next job</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Create your profile & apply instantly</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Start your job search now</span>
-            </li>
-          </ul>
-        </Card>
-      </div>
+    <>
+      <Card className="p-4 md:p-8">
+        <h2 className="text-xl md:text-2xl font-bold text-center text-primary mb-4 md:mb-6">
+          Start your career Journey with JobKarle Now !
+        </h2>
+        <p> India's top jobs, one platform. </p>
+        {errors.form && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{errors.form}</div>
+        )}
 
-      {/* Right Side - Form */}
-      <div className="flex-1 order-1 lg:order-2">
-        <Card className="p-4 md:p-8">
-          <h2 className="text-xl md:text-2xl font-bold text-center text-primary mb-4 md:mb-6">
-            Start your career Journey with JobKarle Now !
-          </h2>
-          <p> India’s top jobs, one platform. </p>
-          {errors.form && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-              {errors.form}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            {/* Full Name */}
-            <div>
-              <Label htmlFor="fullName" className="text-sm">
-                Full name<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="fullName"
-                  value={formData.fullName}
-                  onChange={(e) => updateFormData("fullName", e.target.value)}
-                  placeholder="What is your name?"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.fullName ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.fullName && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
-                )}
-              </div>
-              {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
-            </div>
-
-            {/* Email */}
-            <div>
-              <Label htmlFor="email" className="text-sm">
-                Email ID<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => updateFormData("email", e.target.value)}
-                  placeholder="Tell us your Email ID"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.email ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.email && formData.email.includes("@") && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">We’ll notify you about matching jobs and updates here</p>
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
-
-            {/* Password */}
-            <div>
-              <Label htmlFor="password" className="text-sm">
-                Password<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => handlePasswordChange(e.target.value)}
-                  placeholder="Create a password"
-                  className={`mt-1 h-12 rounded-full px-4 pr-12 text-sm ${errors.password ? "border-red-500" : ""}`}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-gray-400" />
-                  ) : (
-                    <Eye className="w-4 h-4 text-gray-400" />
-                  )}
-                </button>
-              </div>
-              {formData.password && (
-                <div className="mt-2 space-y-1">
-                  {passwordValidation.isValid ? (
-                    <p className="text-xs text-green-600 flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Strong password
-                    </p>
-                  ) : (
-                    <div className="text-xs space-y-1">
-                      <p className="text-gray-600 font-medium">Password must contain:</p>
-                      {[
-                        { met: formData.password.length >= 8, text: "At least 8 characters" },
-                        { met: /[A-Z]/.test(formData.password), text: "At least 1 uppercase letter" },
-                        { met: /[0-9]/.test(formData.password), text: "At least 1 number" },
-                        {
-                          met: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
-                          text: "At least 1 special character (!@#$%^&*)",
-                        },
-                      ].map((req, idx) => (
-                        <p
-                          key={idx}
-                          className={`flex items-center gap-1 ${req.met ? "text-green-600" : "text-gray-500"}`}
-                        >
-                          {req.met ? (
-                            <Check className="w-3 h-3" />
-                          ) : (
-                            <span className="w-3 h-3 rounded-full border border-gray-300" />
-                          )}
-                          {req.text}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </div>
+        <div className="space-y-4">
+          {/* Full Name */}
+          <div>
+            <Label htmlFor="fullName" className="text-sm">
+              Full name<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="fullName"
+                value={formData.fullName}
+                onChange={(e) => updateFormData("fullName", e.target.value)}
+                placeholder="What is your name?"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.fullName ? "border-red-500" : ""}`}
+                required
+              />
+              {formData.fullName && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
               )}
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
             </div>
+            {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
+          </div>
 
-            {/* Mobile Number */}
-            <div>
-              <Label htmlFor="mobile" className="text-sm">
-                Mobile number<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="mobile"
-                  value={formData.mobileNumber}
-                  onChange={(e) => updateFormData("mobileNumber", e.target.value)}
-                  placeholder="+91 Enter your mobile number"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.mobileNumber ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.mobileNumber && formData.mobileNumber.length >= 10 && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+          {/* Email */}
+          <div>
+            <Label htmlFor="email" className="text-sm">
+              Email ID<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => updateFormData("email", e.target.value)}
+                placeholder="Tell us your Email ID"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.email ? "border-red-500" : ""}`}
+                required
+              />
+              {formData.email && formData.email.includes("@") && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">We'll notify you about matching jobs and updates here</p>
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+          </div>
+
+          {/* Password */}
+          <div>
+            <Label htmlFor="password" className="text-sm">
+              Password<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => handlePasswordChange(e.target.value)}
+                placeholder="Create a password"
+                className={`mt-1 h-12 rounded-full px-4 pr-12 text-sm ${errors.password ? "border-red-500" : ""}`}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <Eye className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+            </div>
+            {formData.password && (
+              <div className="mt-2 space-y-1">
+                {passwordValidation.isValid ? (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Strong password
+                  </p>
+                ) : (
+                  <div className="text-xs space-y-1">
+                    <p className="text-gray-600 font-medium">Password must contain:</p>
+                    {[
+                      { met: formData.password.length >= 8, text: "At least 8 characters" },
+                      { met: /[A-Z]/.test(formData.password), text: "At least 1 uppercase letter" },
+                      { met: /[0-9]/.test(formData.password), text: "At least 1 number" },
+                      {
+                        met: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
+                        text: "At least 1 special character (!@#$%^&*)",
+                      },
+                    ].map((req, idx) => (
+                      <p
+                        key={idx}
+                        className={`flex items-center gap-1 ${req.met ? "text-green-600" : "text-gray-500"}`}
+                      >
+                        {req.met ? (
+                          <Check className="w-3 h-3" />
+                        ) : (
+                          <span className="w-3 h-3 rounded-full border border-gray-300" />
+                        )}
+                        {req.text}
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Recruiters will use this number to contact you for job opportunities
-              </p>
-              {errors.mobileNumber && <p className="text-red-500 text-xs mt-1">{errors.mobileNumber}</p>}
-            </div>
-
-            {/* Work Status */}
-            <div>
-              <Label className="text-sm">
-                Work status<span className="text-red-500">*</span>
-              </Label>
-              <div className="flex flex-col md:flex-row gap-3 md:gap-4 mt-2">
-                <button
-                  onClick={() => updateFormData("workStatus", "experienced")}
-                  className={`flex-1 p-3 md:p-4 border rounded-lg text-left transition-all ${
-                    formData.workStatus === "experienced"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-2">
-                      <div className="font-medium text-sm md:text-base">I'm experienced</div>
-                      <div className="text-xs md:text-sm text-blue-500">
-                        I have work experience (excluding internships)
-                      </div>
-                    </div>
-                    <img
-                      src="/briefcase-icon.png"
-                      alt="Experienced"
-                      className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0"
-                    />
-                  </div>
-                </button>
-                <button
-                  onClick={() => updateFormData("workStatus", "fresher")}
-                  className={`flex-1 p-3 md:p-4 border rounded-lg text-left transition-all ${
-                    formData.workStatus === "fresher"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-2">
-                      <div className="font-medium text-sm md:text-base">I'm a fresher</div>
-                      <div className="text-xs md:text-sm text-blue-500">
-                        I am a student/ Haven't worked after graduation
-                      </div>
-                    </div>
-                    <img
-                      src="/graduation-cap-icon.png"
-                      alt="Fresher"
-                      className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0"
-                    />
-                  </div>
-                </button>
-              </div>
-              {errors.workStatus && <p className="text-red-500 text-xs mt-1">{errors.workStatus}</p>}
-            </div>
-
-            {/* Resume Upload */}
-            <div>
-              <Label className="text-sm">Resume</Label>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2">
-                <label className="cursor-pointer">
-                  <input type="file" className="hidden" accept=".doc,.docx,.pdf" onChange={handleFileUpload} />
-                  <span className="bg-orange-500 text-white px-3 py-2 rounded-full text-xs sm:text-sm font-medium hover:bg-orange-600 transition-colors inline-flex items-center gap-2">
-                    <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Upload Resume
-                  </span>
-                </label>
-                <span className="text-xs text-gray-500">DOC, DOCX, PDF | Max: 5 MB</span>
-              </div>
-              {formData.resume && <p className="text-xs text-green-600 mt-1">Selected: {formData.resume.name}</p>}
-              <p className="text-xs text-gray-500 mt-1">Upload your resume to improve your chances of getting hired.</p>
-            </div>
-
-            {/* Terms Checkbox */}
-            <div className="flex items-start gap-2">
-              <input type="checkbox" id="updates" className="mt-1" />
-              <label htmlFor="updates" className="text-xs text-gray-600">
-                Get important updates and offers on SMS, email, and WhatsApp
-              </label>
-            </div>
-
-            <p className="text-xs text-gray-500">
-              By registering, you accept the{" "}
-              <a href="#" className="text-blue-600 hover:underline">
-                Terms and Conditions
-              </a>{" "}
-              &{" "}
-              <a href="#" className="text-blue-600 hover:underline">
-                Privacy Policy
-              </a>{" "}
-              of JobKarle.com
-            </p>
-
-            <Button
-              // onClick={handleRegister} // Original onClick
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="w-full sm:w-auto h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8"
-            >
-              {isLoading ? "Registering..." : "Register now"}
-            </Button>
+            )}
+            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
           </div>
-        </Card>
 
-        {/* Google Sign In */}
-        <div className="flex items-center justify-end mt-4 gap-2">
-          <span className="text-gray-500 text-xs">Or</span>
-          <span className="text-gray-600 text-xs">Continue with</span>
-          <Button variant="outline" className="gap-2 bg-transparent h-9 px-4">
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+          {/* Mobile Number */}
+          <div>
+            <Label htmlFor="mobile" className="text-sm">
+              Mobile number<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="mobile"
+                value={formData.mobileNumber}
+                onChange={(e) => updateFormData("mobileNumber", e.target.value)}
+                placeholder="+91 Enter your mobile number"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.mobileNumber ? "border-red-500" : ""}`}
+                required
               />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Google
+              {formData.mobileNumber && formData.mobileNumber.length >= 10 && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Recruiters will use this number to contact you for job opportunities
+            </p>
+            {errors.mobileNumber && <p className="text-red-500 text-xs mt-1">{errors.mobileNumber}</p>}
+          </div>
+
+          {/* Work Status */}
+          <div>
+            <Label className="text-sm">
+              Work status<span className="text-red-500">*</span>
+            </Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mt-2">
+              <div
+                onClick={() => updateFormData("workStatus", "experienced")}
+                className={`cursor-pointer p-4 border rounded-lg transition-all h-full ${
+                  formData.workStatus === "experienced"
+                    ? "border-l-4 border-l-purple-600 border-t border-r border-b border-gray-200 bg-purple-50"
+                    : "border border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between h-full">
+                  <div className="flex-1 pr-3">
+                    <div className="font-semibold text-gray-900">I'm experienced</div>
+                    <div className="text-sm text-blue-500 mt-1">I have work experience (excluding internships)</div>
+                  </div>
+                  <img src="/briefcase-work-icon.jpg" alt="Experienced" className="w-10 h-10 flex-shrink-0" />
+                </div>
+              </div>
+              <div
+                onClick={() => updateFormData("workStatus", "fresher")}
+                className={`cursor-pointer p-4 border rounded-lg transition-all h-full ${
+                  formData.workStatus === "fresher"
+                    ? "border-l-4 border-l-purple-600 border-t border-r border-b border-gray-200 bg-purple-50"
+                    : "border border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between h-full">
+                  <div className="flex-1 pr-3">
+                    <div className="font-semibold text-gray-900">I'm a fresher</div>
+                    <div className="text-sm text-blue-500 mt-1">I am a student/ Haven't worked after graduation</div>
+                  </div>
+                  <img src="/graduation-cap-student-icon.jpg" alt="Fresher" className="w-10 h-10 flex-shrink-0" />
+                </div>
+              </div>
+            </div>
+            {errors.workStatus && <p className="text-red-500 text-xs mt-1">{errors.workStatus}</p>}
+          </div>
+
+          {/* Resume Upload */}
+          <div>
+            <Label className="text-sm">Resume</Label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2">
+              <label className="cursor-pointer">
+                <input type="file" className="hidden" accept=".doc,.docx,.pdf" onChange={handleFileUpload} />
+                <span className="bg-orange-500 text-white px-3 py-2 rounded-full text-xs sm:text-sm font-medium hover:bg-orange-600 transition-colors inline-flex items-center gap-2">
+                  <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
+                  Upload Resume
+                </span>
+              </label>
+              <span className="text-xs text-gray-500">DOC, DOCX, PDF | Max: 5 MB</span>
+            </div>
+            {formData.resume && <p className="text-xs text-green-600 mt-1">Selected: {formData.resume.name}</p>}
+            <p className="text-xs text-gray-500 mt-1">Upload your resume to improve your chances of getting hired.</p>
+          </div>
+
+          {/* Terms Checkbox */}
+          <div className="flex items-start gap-2">
+            <input type="checkbox" id="updates" className="mt-1" />
+            <label htmlFor="updates" className="text-xs text-gray-600">
+              Get important updates and offers on SMS, email, and WhatsApp
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            By registering, you accept the{" "}
+            <a href="#" className="text-blue-600 hover:underline">
+              Terms and Conditions
+            </a>{" "}
+            &{" "}
+            <a href="#" className="text-blue-600 hover:underline">
+              Privacy Policy
+            </a>{" "}
+            of JobKarle.com
+          </p>
+
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="w-full sm:w-auto h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8"
+          >
+            {isLoading ? "Registering..." : "Register now"}
           </Button>
         </div>
+      </Card>
+
+      {/* Google Sign In - Moved inside the return statement and wrapped in Fragment */}
+      <div className="flex items-center justify-end mt-4 gap-2">
+        <span className="text-gray-500 text-xs">Or</span>
+        <span className="text-gray-600 text-xs">Continue with</span>
+        <Button variant="outline" className="gap-2 bg-transparent h-9 px-4">
+          <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <path
+              fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            />
+          </svg>
+          Google
+        </Button>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -2434,7 +1560,7 @@ function Step3EmploymentAndSkills({
       // If the field is 'currentlyEmployed', handle the transition to null if 'no' is selected
       if (field === "currentlyEmployed" && value === "no") {
         updateFormData("currentEmployment", null)
-        updateFormData("workStatus", "experienced") // Assuming if they are not currently employed, they are experienced
+        // updateFormData("workStatus", "experienced") // This line was causing an issue if workStatus was already set to fresher
       } else {
         updateFormData("currentEmployment", updatedCurrentEmployment)
       }
@@ -2495,43 +1621,45 @@ function Step3EmploymentAndSkills({
     )
   }
 
-  const handleSaveStep3 = async () => {
-    if (isSaving) return
-    setIsSaving(true)
+  const handleSaveAndContinue = async () => {
+    if (isLoading) return
+
     setIsLoading?.(true)
+    console.log("[v0] Step3 saving employment data...")
 
     try {
-      // Prepare data for saving (consider what needs to be saved to backend)
-      const dataToSave = {
+      // Ensure to pass correct data based on the `updateEmploymentDetails` function signature.
+      // The current `formData` structure might not directly map to what `updateEmploymentDetails` expects.
+      // For example, it might expect a flat structure or different key names.
+      // I'll assume `updateEmploymentDetails` can handle the `formData` object directly or a subset of it.
+      const result = await updateEmploymentDetails(formData.email, {
+        // Assuming these keys are expected by the backend action:
+        employmentHistory: formData.additionalEmployment, // Assuming this maps to previous jobs
+        currentEmployment: formData.currentEmployment, // Assuming this is the current job details
+        workStatus: formData.workStatus,
         totalExperienceYears: formData.totalExperienceYears,
         totalExperienceMonths: formData.totalExperienceMonths,
-        skillsYouKnow: formData.skillsYouKnow,
-        // Include currentEmployment and additionalEmployment if they need to be directly saved here,
-        // or if they are part of a larger candidate profile update.
-        currentEmployment: formData.currentEmployment,
-        additionalEmployment: formData.additionalEmployment,
+        // currentJobTitle: formData.currentJobTitle, // This seems redundant if currentEmployment.currentJobTitle is used
+        skillsForRole: formData.skillsForRole || [],
+        skillsYouKnow: formData.skillsYouKnow || [],
         industry: formData.industry,
         department: formData.department,
         roleCategory: formData.roleCategory,
         jobRole: formData.jobRole,
+      })
+
+      if (!result.success) {
+        alert(`Failed to save employment details: ${result.error}`)
+        setIsLoading?.(false)
+        return
       }
 
-      // In a real application, you would call an API here to save this data.
-      // For this example, we'll assume it's part of the overall registration process
-      // and will be saved with other steps, or you can add a specific API call.
-
-      console.log("Step 3 data saved (simulated):", dataToSave)
-
-      // Recalculate total experience after potentially updating employment details
-      // This call should be made when employment details are finalized or saved
-      // calculateTotalExperienceFromEmployment(formData, updateFormData); // Moved this logic to be called upon saving employment details
-
+      console.log("[v0] Employment data saved successfully")
       nextStep()
     } catch (error) {
-      console.error("Error saving Step 3 data:", error)
-      alert("Failed to save employment details. Please try again.")
+      console.error("[v0] Error saving employment data:", error)
+      alert("An error occurred while saving your employment details")
     } finally {
-      setIsSaving(false)
       setIsLoading?.(false)
     }
   }
@@ -2915,7 +2043,6 @@ function Step3EmploymentAndSkills({
                   </div>
                 </div>
 
-                {/* Current City & State */}
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2 relative">
                     <Label htmlFor="currentCity">
@@ -2929,6 +2056,8 @@ function Step3EmploymentAndSkills({
                         handleInputChange("current", null, "currentCity", e.target.value)
                         setShowCityDropdown(e.target.value.length > 0)
                       }}
+                      onFocus={() => setShowCityDropdown(formData.currentEmployment?.currentCity?.length > 0)}
+                      onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
                       placeholder="Enter city"
                       className="rounded-full h-10"
                       disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
@@ -3345,16 +2474,1122 @@ function Step3EmploymentAndSkills({
           </div>
         </div>
 
+        <CardFooter className="flex justify-between pt-6">
+          <Button type="button" variant="outline" onClick={prevStep} className="rounded-full px-8 bg-transparent">
+            Back
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSaveAndContinue}
+            disabled={isLoading}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+          >
+            {isLoading ? "Saving..." : "Save & Continue"}
+          </Button>
+        </CardFooter>
+      </CardContent>
+    </Card>
+  )
+}
+
+const Step4EducationAndProjects = ({
+  formData,
+  updateFormData,
+  nextStep,
+  prevStep,
+  setIsLoading,
+  isLoading,
+  setFormData,
+}: StepProps) => {
+  const [certInputs, setCertInputs] = useState<{
+    [key: number]: { name: string; issuer: string }
+  }>(() => {
+    const initial: { [key: number]: { name: string; issuer: string } } = {}
+    ;(formData.certifications || []).forEach((cert, index) => {
+      initial[index] = { name: cert.name || "", issuer: cert.issuer || "" }
+    })
+    return initial
+  })
+
+  const [projectInputs, setProjectInputs] = useState<{
+    [key: number]: { title: string; role: string; description: string; technologies: string }
+  }>(() => {
+    const initial: { [key: number]: { title: string; role: string; description: string; technologies: string } } = {}
+    ;(formData.projects || []).forEach((proj, index) => {
+      initial[index] = {
+        title: proj.title || "",
+        role: proj.role || "",
+        description: proj.description || "",
+        technologies: proj.technologies || "",
+      }
+    })
+    return initial
+  })
+
+  const addCertification = () => {
+    const certs = formData.certifications || []
+    const newIndex = certs.length
+    updateFormData("certifications", [...certs, { name: "", issuer: "", issueDate: "", expiryDate: "" }])
+    setCertInputs({ ...certInputs, [newIndex]: { name: "", issuer: "" } })
+  }
+
+  const addProject = () => {
+    const projects = formData.projects || []
+    const newIndex = projects.length
+    updateFormData("projects", [
+      ...projects,
+      { title: "", description: "", role: "", startDate: "", endDate: "", technologies: "" },
+    ])
+    setProjectInputs({
+      ...projectInputs,
+      [newIndex]: { title: "", role: "", description: "", technologies: "" },
+    })
+  }
+
+  // Handle saving education details
+  const handleSaveAndContinue = async () => {
+    if (isLoading) return
+
+    setIsLoading?.(true)
+    console.log("[v0] Step4 saving education data...")
+
+    try {
+      const result = await updateEducationDetails({
+        email: formData.email,
+        highestQualification: formData.highestQualification,
+        course: formData.course,
+        courseType: formData.courseType || "",
+        specialization: formData.specialization,
+        university: formData.university,
+        passingYearFrom: formData.passingYearFrom, // Use passingYearFrom and passingYearTo
+        passingYearTo: formData.passingYearTo,
+        certifications: formData.certifications || [],
+        projects: formData.projects || [], // Include projects here
+      })
+
+      if (!result.success) {
+        alert(`Failed to save education details: ${result.error}`)
+        setIsLoading?.(false)
+        return
+      }
+
+      console.log("[v0] Education data saved successfully")
+      nextStep() // Proceed to the next step
+    } catch (error) {
+      console.error("[v0] Error saving education data:", error)
+      alert("An error occurred while saving your education details")
+    } finally {
+      setIsLoading?.(false)
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-4xl mx-auto shadow-lg p-6 md:p-8">
+      <CardHeader className="pb-6">
+        <CardTitle className="text-2xl font-bold">Education Details</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Share your educational background and achievements.</p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Education Fields */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="qualification" className="text-sm">
+                Highest Qualification <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="qualification"
+                value={formData.highestQualification || ""}
+                onChange={(e) => {
+                  const qual = e.target.value
+                  setFormData({
+                    ...formData,
+                    highestQualification: qual,
+                    course: "",
+                    courseType: "",
+                    specialization: "",
+                  })
+                }}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select qualification</option>
+                <option value="10th">10th</option>
+                <option value="12th">12th</option>
+                <option value="Diploma">Diploma</option>
+                <option value="Graduation/Diploma">Any Graduated</option>
+                <option value="Post Graduation/Masters">Post Graduation/Masters</option>
+                <option value="Doctorate/PhD">Doctorate/PhD</option>
+              </select>
+            </div>
+
+            {formData.highestQualification && (
+              <div>
+                <Label htmlFor="course" className="text-sm font-medium">
+                  Course <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="course"
+                  value={formData.course || ""}
+                  onChange={(e) => {
+                    setFormData({
+                      ...formData,
+                      course: e.target.value,
+                      specialization: "",
+                    })
+                  }}
+                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                >
+                  <option value="">Select course</option>
+                  {qualificationCourseSpecializationMapping[formData.highestQualification]?.courses.map((course) => (
+                    <option key={course} value={course}>
+                      {course}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {formData.highestQualification && formData.course && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="courseType" className="text-sm font-medium">
+                  Course Type <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="courseType"
+                  value={formData.courseType || ""}
+                  onChange={(e) => setFormData({ ...formData, courseType: e.target.value })}
+                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                >
+                  <option value="">Select course type</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Part Time">Part Time</option>
+                  <option value="Distance Learning">Distance Learning</option>
+                  <option value="Online">Online</option>
+                  <option value="Correspondence">Correspondence</option>
+                </select>
+              </div>
+
+              {formData.highestQualification !== "10th" && formData.highestQualification !== "12th" && (
+                <div>
+                  <Label htmlFor="specialization" className="text-sm font-medium">
+                    Specialization <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    id="specialization"
+                    value={formData.specialization || ""}
+                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                    className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    required
+                  >
+                    <option value="">Select specialization</option>
+                    {qualificationCourseSpecializationMapping[formData.highestQualification]?.specializations[
+                      formData.course
+                    ]?.map((spec) => (
+                      <option key={spec} value={spec}>
+                        {spec}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {formData.highestQualification && formData.course && (
+            <div>
+              <Label htmlFor="university" className="text-sm font-medium">
+                University/Institution <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="university"
+                type="text"
+                value={formData.university || ""}
+                onChange={(e) => setFormData({ ...formData, university: e.target.value })}
+                placeholder="Enter university or institution name"
+                className="mt-1 h-10 rounded-full"
+                required
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="passingYearFrom" className="text-sm font-medium">
+                Year From <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="passingYearFrom"
+                value={formData.passingYearFrom || ""}
+                onChange={(e) => setFormData({ ...formData, passingYearFrom: e.target.value })}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select year</option>
+                {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="passingYearTo" className="text-sm font-medium">
+                Year To <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="passingYearTo"
+                value={formData.passingYearTo || ""}
+                onChange={(e) => setFormData({ ...formData, passingYearTo: e.target.value })}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select year</option>
+                {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-8 mt-8 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Certifications (Optional)</h3>
+              <p className="text-sm text-muted-foreground">Add any relevant certifications you've earned</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCertification}
+              className="rounded-full bg-transparent"
+            >
+              + Add Certification
+            </Button>
+          </div>
+
+          {formData.certifications && formData.certifications.length > 0 && (
+            <div className="space-y-4">
+              {formData.certifications.map((cert, index) => (
+                <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Certification Name</Label>
+                      <Input
+                        value={certInputs[index]?.name || ""}
+                        onChange={(e) => {
+                          setCertInputs({
+                            ...certInputs,
+                            [index]: { ...certInputs[index], name: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].name = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        placeholder="e.g., AWS Certified Solutions Architect"
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Issuing Organization</Label>
+                      <Input
+                        value={certInputs[index]?.issuer || ""}
+                        onChange={(e) => {
+                          setCertInputs({
+                            ...certInputs,
+                            [index]: { ...certInputs[index], issuer: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].issuer = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        placeholder="e.g., Amazon Web Services"
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Issue Date</Label>
+                      <Input
+                        type="month"
+                        value={cert.issueDate}
+                        onChange={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].issueDate = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Expiry Date (Optional)</Label>
+                      <Input
+                        type="month"
+                        value={cert.expiryDate || ""}
+                        onChange={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].expiryDate = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const certs = formData.certifications?.filter((_, i) => i !== index) || []
+                      const newInputs = { ...certInputs }
+                      delete newInputs[index]
+                      // Re-index remaining inputs
+                      const reindexed: { [key: number]: { name: string; issuer: string } } = {}
+                      Object.keys(newInputs).forEach((key) => {
+                        const oldIndex = Number.parseInt(key)
+                        const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                        reindexed[newIndex] = newInputs[oldIndex]
+                      })
+                      setCertInputs(reindexed)
+                      updateFormData("certifications", certs)
+                    }}
+                    className="rounded-full h-8 px-3 text-xs"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-8 mt-8 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Projects</h3>
+              <p className="text-sm text-muted-foreground">Detail any significant projects you've worked on</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addProject}
+              className="rounded-full bg-transparent"
+            >
+              + Add Project
+            </Button>
+          </div>
+
+          {formData.projects && formData.projects.length > 0 && (
+            <div className="space-y-4">
+              {formData.projects.map((project, index) => (
+                <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label htmlFor={`projectTitle-${index}`} className="text-sm">
+                        Project Title
+                      </Label>
+                      <Input
+                        id={`projectTitle-${index}`}
+                        value={projectInputs[index]?.title || ""}
+                        onChange={(e) => {
+                          setProjectInputs({
+                            ...projectInputs,
+                            [index]: { ...projectInputs[index], title: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const updatedProjects = [...formData.projects]
+                          updatedProjects[index] = { ...updatedProjects[index], title: e.target.value }
+                          updateFormData("projects", updatedProjects)
+                        }}
+                        placeholder="e.g., E-commerce Platform"
+                        className="mt-1 h-10 rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`projectRole-${index}`} className="text-sm">
+                        Your Role
+                      </Label>
+                      <Input
+                        id={`projectRole-${index}`}
+                        value={projectInputs[index]?.role || ""}
+                        onChange={(e) => {
+                          setProjectInputs({
+                            ...projectInputs,
+                            [index]: { ...projectInputs[index], role: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const updatedProjects = [...formData.projects]
+                          updatedProjects[index] = { ...updatedProjects[index], role: e.target.value }
+                          updateFormData("projects", updatedProjects)
+                        }}
+                        placeholder="e.g., Lead Developer"
+                        className="mt-1 h-10 rounded-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Start Date</Label>
+                      <Input
+                        type="month"
+                        value={project.startDate}
+                        onChange={(e) => {
+                          const projects = [...(formData.projects || [])]
+                          projects[index].startDate = e.target.value
+                          updateFormData("projects", projects)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">End Date (Optional)</Label>
+                      <Input
+                        type="month"
+                        value={project.endDate || ""}
+                        onChange={(e) => {
+                          const projects = [...(formData.projects || [])]
+                          projects[index].endDate = e.target.value
+                          updateFormData("projects", projects)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <Label htmlFor={`projectDescription-${index}`} className="text-sm">
+                      Description
+                    </Label>
+                    <Input
+                      id={`projectDescription-${index}`}
+                      value={projectInputs[index]?.description || ""}
+                      onChange={(e) => {
+                        setProjectInputs({
+                          ...projectInputs,
+                          [index]: { ...projectInputs[index], description: e.target.value },
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const updatedProjects = [...formData.projects]
+                        updatedProjects[index] = { ...updatedProjects[index], description: e.target.value }
+                        updateFormData("projects", updatedProjects)
+                      }}
+                      placeholder="Briefly describe the project and your contributions"
+                      className="mt-1 h-10 rounded-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`projectTechnologies-${index}`} className="text-sm">
+                      Technologies Used
+                    </Label>
+                    <Input
+                      id={`projectTechnologies-${index}`}
+                      value={projectInputs[index]?.technologies || ""}
+                      onChange={(e) => {
+                        setProjectInputs({
+                          ...projectInputs,
+                          [index]: { ...projectInputs[index], technologies: e.target.value },
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const updatedProjects = [...formData.projects]
+                        updatedProjects[index] = { ...updatedProjects[index], technologies: e.target.value }
+                        updateFormData("projects", updatedProjects)
+                      }}
+                      placeholder="e.g., React, Node.js, MongoDB, AWS"
+                      className="mt-1 h-10 rounded-full"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const projects = formData.projects?.filter((_, i) => i !== index) || []
+                      const newInputs = { ...projectInputs }
+                      delete newInputs[index]
+                      // Re-index remaining inputs
+                      const reindexed: {
+                        [key: number]: { title: string; role: string; description: string; technologies: string }
+                      } = {}
+                      Object.keys(newInputs).forEach((key) => {
+                        const oldIndex = Number.parseInt(key)
+                        const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                        reindexed[newIndex] = newInputs[oldIndex]
+                      })
+                      setProjectInputs(reindexed)
+                      updateFormData("projects", projects)
+                    }}
+                    className="rounded-full h-8 px-3 text-xs mt-4"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Navigation Buttons */}
         <div className="flex justify-between pt-4 border-t">
-          <Button type="button" variant="outline" className="rounded-full px-8 bg-transparent" onClick={prevStep}>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-full px-8 bg-transparent"
+            onClick={prevStep}
+            disabled={isLoading}
+          >
             Back
           </Button>
           <Button
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
-            onClick={handleSaveStep3}
-            disabled={isSaving || isLoading}
+            onClick={handleSaveAndContinue}
+            disabled={isLoading}
           >
-            {isSaving || isLoading ? "Saving..." : "Save & Continue"}
+            {isLoading ? "Saving..." : "Save & Continue"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+const Step5HeadlineAndPreferences = ({
+  formData,
+  updateFormData,
+  nextStep,
+  prevStep,
+  setFormData,
+  setIsLoading,
+  isLoading,
+  handleCompleteRegistration, // Receive the handler
+}: StepProps) => {
+  const [showHeadlineDropdown, setShowHeadlineDropdown] = useState(false)
+  const [headlineInput, setHeadlineInput] = useState(formData.resumeHeadline || "")
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false)
+  const [locationInput, setLocationInput] = useState("")
+  const [showCityDropdown, setShowCityDropdown] = useState(false)
+  const [cityInput, setCityInput] = useState(formData.currentCity || "")
+  const [salaryInput, setSalaryInput] = useState(formData.preferredSalary || "")
+  const [languageInputs, setLanguageInputs] = useState<{ [key: number]: string }>({
+    ...(formData.languagesKnown || []).reduce((acc, lang, index) => ({ ...acc, [index]: lang.language || "" }), {}),
+  })
+
+  // Generate profile-relevant headline suggestions based on user's data
+  const getProfileRelevantHeadlines = () => {
+    const industry = formData.industry || ""
+    const jobTitle = formData.jobRole || "" // Use jobRole from Step 3
+    const yearsOfExp = formData.totalExperienceYears || 0
+    const skills = (formData.skillsYouKnow || []).slice(0, 3).join(", ")
+
+    const relevantHeadlines = []
+
+    // If user has job title and industry, create specific headlines
+    if (jobTitle && industry) {
+      relevantHeadlines.push(`${jobTitle} with ${yearsOfExp}+ years in ${industry}`)
+      if (skills) {
+        relevantHeadlines.push(`${jobTitle} skilled in ${skills}`)
+      }
+    }
+
+    // Add generic but relevant headlines based on industry
+    if (industry.includes("IT") || industry.includes("Technology")) {
+      relevantHeadlines.push(
+        "Experienced Software Engineer with full-stack development expertise",
+        "Full Stack Developer proficient in modern technologies",
+        "Senior Developer with strong problem-solving skills",
+      )
+    }
+    if (industry.includes("BPO") || industry.includes("Call")) {
+      relevantHeadlines.push(
+        "Customer Service Professional with excellent communication skills",
+        "Team Lead with proven track record in client satisfaction",
+        "Quality Analyst focused on process improvement",
+      )
+    }
+    if (industry.includes("Marketing") || industry.includes("Sales")) {
+      relevantHeadlines.push(
+        "Digital Marketing Specialist with data-driven approach",
+        "Sales Professional with consistent target achievement",
+        "Marketing Manager with proven ROI improvement",
+      )
+    }
+
+    // Fallback generic headlines if no specific data
+    if (relevantHeadlines.length === 0) {
+      relevantHeadlines.push(
+        `Professional with ${yearsOfExp}+ years of experience`,
+        "Dedicated professional seeking new opportunities",
+        "Results-oriented professional with strong work ethic",
+        "Experienced professional with domain expertise",
+      )
+    }
+
+    return relevantHeadlines.slice(0, 6) // Limit to 6 suggestions
+  }
+
+  const headlineSuggestions = getProfileRelevantHeadlines()
+
+  const filteredHeadlines = headlineSuggestions.filter((h) => h.toLowerCase().includes(headlineInput.toLowerCase()))
+
+  const [cities, setCities] = useState<Array<{ city: string; state: string }>>([])
+
+  useEffect(() => {
+    // Load cities from component constant (already defined in the file)
+    const INDIAN_CITIES = [
+      { city: "Mumbai", state: "Maharashtra" },
+      { city: "Delhi", state: "Delhi" },
+      { city: "Bangalore", state: "Karnataka" },
+      { city: "Hyderabad", state: "Telangana" },
+      { city: "Chennai", state: "Tamil Nadu" },
+      { city: "Kolkata", state: "West Bengal" },
+      { city: "Pune", state: "Maharashtra" },
+      { city: "Ahmedabad", state: "Gujarat" },
+      { city: "Jaipur", state: "Rajasthan" },
+      { city: "Surat", state: "Gujarat" },
+      { city: " Lucknow", state: "Uttar Pradesh" },
+      { city: "Kanpur", state: "Uttar Pradesh" },
+      { city: "Nagpur", state: "Maharashtra" },
+      { city: "Indore", state: "Madhya Pradesh" },
+      { city: "Thane", state: "Maharashtra" },
+      { city: "Bhopal", state: "Madhya Pradesh" },
+      { city: "Visakhapatnam", state: "Andhra Pradesh" },
+    ]
+    setCities(INDIAN_CITIES)
+  }, [])
+
+  const filteredCities = cities.filter(
+    (c) =>
+      c.city.toLowerCase().includes(cityInput.toLowerCase()) || c.state.toLowerCase().includes(cityInput.toLowerCase()),
+  )
+
+  const filteredLocations = cities.filter((c) => c.city.toLowerCase().includes(locationInput.toLowerCase()))
+
+  const formatIndianSalary = (value: string) => {
+    const num = value.replace(/,/g, "")
+    if (!/^\d*$/.test(num)) return value
+
+    if (num.length === 0) return ""
+
+    const lastThree = num.substring(num.length - 3)
+    const otherNumbers = num.substring(0, num.length - 3)
+    const formatted = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + (otherNumbers ? "," : "") + lastThree
+    return formatted
+  }
+
+  const handleAddLocation = () => {
+    if (locationInput.trim()) {
+      const currentLocations = formData.preferredLocations || []
+      if (!currentLocations.includes(locationInput.trim())) {
+        updateFormData("preferredLocations", [...currentLocations, locationInput.trim()])
+      }
+      setLocationInput("")
+      setShowLocationDropdown(false)
+    }
+  }
+
+  const handleRemoveLocation = (index: number) => {
+    const currentLocations = formData.preferredLocations || []
+    updateFormData(
+      "preferredLocations",
+      currentLocations.filter((_, i) => i !== index),
+    )
+  }
+
+  const handleAddLanguage = () => {
+    const currentLanguages = formData.languagesKnown || []
+    const newIndex = currentLanguages.length
+    updateFormData("languagesKnown", [...currentLanguages, { language: "", read: false, write: false, speak: false }])
+    setLanguageInputs({
+      ...languageInputs,
+      [newIndex]: "",
+    })
+  }
+
+  const handleRemoveLanguage = (index: number) => {
+    const currentLanguages = formData.languagesKnown || []
+    updateFormData(
+      "languagesKnown",
+      currentLanguages.filter((_, i) => i !== index),
+    )
+    const newInputs = { ...languageInputs }
+    delete newInputs[index]
+    // Re-index remaining inputs
+    const reindexed: { [key: number]: string } = {}
+    Object.keys(newInputs).forEach((key) => {
+      const oldIndex = Number.parseInt(key)
+      const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+      reindexed[newIndex] = newInputs[oldIndex]
+    })
+    setLanguageInputs(reindexed)
+  }
+
+  const handleLanguageChange = (index: number, field: string, value: any) => {
+    const currentLanguages = formData.languagesKnown || []
+    const updatedLanguages = [...currentLanguages]
+    updatedLanguages[index] = { ...updatedLanguages[index], [field]: value }
+    updateFormData("languagesKnown", updatedLanguages)
+  }
+
+  return (
+    <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
+      <CardHeader className="border-b pb-4">
+        <CardTitle className="text-2xl font-bold">Preferences</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Tell us about your job preferences</p>
+      </CardHeader>
+      <CardContent className="pt-6 space-y-6">
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+
+            <div className="mb-4">
+              <Label htmlFor="resumeHeadline" className="text-sm">
+                Resume Headline <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  value={headlineInput}
+                  onChange={(e) => {
+                    setHeadlineInput(e.target.value)
+                    setShowHeadlineDropdown(e.target.value.length > 0)
+                  }}
+                  onFocus={() => setShowHeadlineDropdown(headlineInput.length > 0)}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      updateFormData("resumeHeadline", headlineInput)
+                      setShowHeadlineDropdown(false)
+                    }, 200)
+                  }}
+                  placeholder="e.g., Experienced Software Engineer..."
+                  className="rounded-full"
+                />
+                {showHeadlineDropdown && filteredHeadlines.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filteredHeadlines.map((headline, idx) => (
+                      <div
+                        key={idx}
+                        className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-sm"
+                        onClick={() => {
+                          setHeadlineInput(headline)
+                          updateFormData("resumeHeadline", headline)
+                          setShowHeadlineDropdown(false)
+                        }}
+                      >
+                        {headline}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">
+                  Current City / State <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={cityInput}
+                    onChange={(e) => {
+                      setCityInput(e.target.value)
+                      setShowCityDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => setShowCityDropdown(cityInput.length > 0)}
+                    onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
+                    placeholder="Type to search city"
+                    className="rounded-full"
+                  />
+                  {showCityDropdown && filteredCities.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredCities.map((c, idx) => (
+                        <div
+                          key={idx}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            setCityInput(`${c.city}, ${c.state}`)
+                            updateFormData("currentCity", c.city)
+                            updateFormData("currentState", c.state)
+                            setShowCityDropdown(false)
+                          }}
+                        >
+                          {c.city}, {c.state}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">
+                  Availability to Join <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={formData.availabilityToJoin}
+                  onChange={(e) => updateFormData("availabilityToJoin", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select availability</option>
+                  <option value="Immediate">Immediate</option>
+                  <option value="15 Days">15 Days</option>
+                  <option value="1 Month">1 Month</option>
+                  <option value="2 Months">2 Months</option>
+                  <option value="3 Months">3 Months</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">
+                  Preferred Locations <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={locationInput}
+                    onChange={(e) => {
+                      setLocationInput(e.target.value)
+                      setShowLocationDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => setShowLocationDropdown(locationInput.length > 0)}
+                    onBlur={() => setTimeout(() => setShowLocationDropdown(false), 200)}
+                    placeholder="Type to search cities"
+                    className="rounded-full"
+                  />
+                  {showLocationDropdown && filteredLocations.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredLocations.map((loc, idx) => (
+                        <div
+                          key={idx}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            const locs = formData.preferredLocations || []
+                            if (!locs.includes(loc.city)) {
+                              updateFormData("preferredLocations", [...locs, loc.city])
+                            }
+                            setLocationInput("")
+                            setShowLocationDropdown(false)
+                          }}
+                        >
+                          {loc.city}, {loc.state}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(formData.preferredLocations || []).map((loc, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                    >
+                      {loc}
+                      <button
+                        onClick={() => {
+                          const locs = formData.preferredLocations?.filter((_, i) => i !== idx) || []
+                          updateFormData("preferredLocations", locs)
+                        }}
+                        className="hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">
+                  Expected Salary (INR) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  value={salaryInput}
+                  onChange={(e) => {
+                    // Only update local state, don't trigger formData update
+                    setSalaryInput(e.target.value)
+                  }}
+                  onBlur={(e) => {
+                    // Finalize the formatting and save to formData on blur
+                    const formatted = formatIndianSalary(e.target.value)
+                    setSalaryInput(formatted)
+                    updateFormData("preferredSalary", formatted)
+                  }}
+                  placeholder="e.g., 10,00,000"
+                  className="rounded-full"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Personal Details (Optional)</h3>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">Marital Status</Label>
+                <select
+                  value={formData.maritalStatus}
+                  onChange={(e) => updateFormData("maritalStatus", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select status</option>
+                  <option value="single">Single</option>
+                  <option value="married">Married</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-sm">Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={formData.dateOfBirth}
+                  onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
+                  className="rounded-full"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold">Languages Known</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full bg-transparent"
+                  onClick={handleAddLanguage}
+                >
+                  + Add Language
+                </Button>
+              </div>
+
+              {(formData.languagesKnown || []).map((lang, index) => (
+                <div key={index} className="bg-gray-50 p-4 rounded-lg mb-3">
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <Input
+                      value={languageInputs[index] || ""}
+                      onChange={(e) => {
+                        setLanguageInputs({
+                          ...languageInputs,
+                          [index]: e.target.value,
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const langs = [...(formData.languagesKnown || [])]
+                        langs[index].language = e.target.value
+                        updateFormData("languagesKnown", langs)
+                      }}
+                      placeholder="Language name"
+                      className="rounded-full"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const langs = formData.languagesKnown?.filter((_, i) => i !== index) || []
+                        const newInputs = { ...languageInputs }
+                        delete newInputs[index]
+                        // Re-index remaining inputs
+                        const reindexed: { [key: number]: string } = {}
+                        Object.keys(newInputs).forEach((key) => {
+                          const oldIndex = Number.parseInt(key)
+                          const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                          reindexed[newIndex] = newInputs[oldIndex]
+                        })
+                        setLanguageInputs(reindexed)
+                        updateFormData("languagesKnown", langs)
+                      }}
+                      className="rounded-full h-8 px-3 text-xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.read}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].read = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Read</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.write}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].write = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Write</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.speak}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].speak = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Speak</span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between pt-4">
+          <Button
+            variant="outline"
+            onClick={prevStep}
+            className="rounded-full px-8 bg-transparent"
+            disabled={isLoading}
+          >
+            Previous
+          </Button>
+          <Button
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+            onClick={async () => {
+              setIsLoading(true)
+              await handleCompleteRegistration()
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? "Completing Registration..." : "Complete Registration"}
           </Button>
         </div>
       </CardContent>

@@ -53,7 +53,7 @@ import {
   updateEmploymentHistory,
 } from "@/app/actions/candidate-actions"
 import { logoutCandidate } from "@/app/actions/candidate-auth-actions"
-import { createClient } from "@/lib/supabase/client"
+import { getCandidateProfile } from "@/app/actions/candidate-profile-actions"
 import { InfoField } from "@/components/info-field"
 import { toast } from "@/components/ui/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -82,6 +82,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar" // Added Avatar components
 
 type Job = {
   id: string
@@ -98,6 +99,9 @@ type Job = {
   created_at: string
   job_description: string
   openings?: number
+  category?: string // Added for premium jobs
+  urgent_hiring?: boolean // Added for urgent hiring tag
+  company_logo_url?: string // Added for company logo URL
 }
 
 // Added JobWithStatus to accommodate status like 'applied' or 'saved'
@@ -313,7 +317,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set())
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
-  const [showProfileView, setShowProfileView] = useState(false)
+  const [showProfileView, setShowProfileView] = useState(false) // Renamed from showProfile
   const [profileData, setProfileData] = useState<any>(null)
 
   const [isEditMode, setIsEditMode] = useState(false)
@@ -333,6 +337,10 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
   const [customBlockReason, setCustomBlockReason] = useState("")
   const [deactivationReason, setDeactivationReason] = useState("")
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false)
+
+  // State for profile picture upload
+  const [isPictureUploading, setIsPictureUploading] = useState(false)
+  const profilePictureInputRef = useRef<HTMLInputElement>(null)
 
   const [languages, setLanguages] = useState<
     Array<{
@@ -364,6 +372,42 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
 
   const resumeInputRef = useRef<HTMLInputElement>(null)
   const [editingSection, setEditingSection] = useState<string | null>(null) // "employment", "education", etc.
+
+  // Load profile data on mount
+  useEffect(() => {
+    const loadProfileData = async () => {
+      console.log("[v0] Loading candidate profile data for:", candidateId)
+      const result = await getCandidateProfile(candidateId)
+
+      if (result.success && result.candidate) {
+        console.log("[v0] Profile data loaded successfully")
+        console.log("[v0] Employment history:", result.candidate.employment_history)
+        console.log("[v0] Skills for role:", result.candidate.skills_for_role)
+        console.log("[v0] Skills you know:", result.candidate.skills_you_know)
+        console.log("[v0] Preferred salary:", result.candidate.preferred_salary)
+        console.log("[v0] Education:", result.candidate.highest_qualification, result.candidate.course)
+        console.log("[v0] Certifications:", result.candidate.certifications)
+        console.log("[v0] Projects:", result.candidate.projects)
+
+        setProfileData(result.candidate)
+
+        // Initialize arrays for edit mode
+        if (result.candidate.languages_known) {
+          setLanguages(Array.isArray(result.candidate.languages_known) ? result.candidate.languages_known : [])
+        }
+        if (result.candidate.certifications) {
+          setCertifications(Array.isArray(result.candidate.certifications) ? result.candidate.certifications : [])
+        }
+        if (result.candidate.projects) {
+          setProjects(Array.isArray(result.candidate.projects) ? result.candidate.projects : [])
+        }
+      } else {
+        console.error("[v0] Failed to load profile:", result.error)
+      }
+    }
+
+    loadProfileData()
+  }, [candidateId])
 
   useEffect(() => {
     if (!profileData) return
@@ -548,15 +592,36 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
     return locations.join(", ")
   }
 
-  const getSalaryString = (min: number, max: number) => {
-    if (!min && !max) return "Not disclosed"
+  const formatSalary = (salary: string | number | null) => {
+    if (!salary) return "Not specified"
 
-    const minLPA = min
-    const maxLPA = max
+    // Remove commas if present and convert to number
+    const salaryStr = typeof salary === "string" ? salary.replace(/,/g, "") : String(salary)
+    const salaryNum = Number.parseFloat(salaryStr)
 
-    if (min && max) return `${minLPA.toFixed(0)}-${maxLPA.toFixed(0)} LPA`
-    if (min) return `${minLPA.toFixed(0)}+ LPA`
-    return "Not disclosed"
+    if (isNaN(salaryNum)) return "Not specified"
+
+    // If number is already in lakhs (< 100), return as is
+    if (salaryNum < 100) {
+      return `${salaryNum.toFixed(2)} LPA`
+    }
+
+    // Otherwise divide by 100000 to convert to lakhs
+    return `${(salaryNum / 100000).toFixed(2)} LPA`
+  }
+
+  const getSalaryString = (minSalary: number | null, maxSalary: number | null) => {
+    if (minSalary === null && maxSalary === null) return "Not specified"
+    if (minSalary !== null && maxSalary !== null) {
+      return `${formatSalary(minSalary)} - ${formatSalary(maxSalary)}`
+    }
+    if (minSalary !== null) {
+      return `₹${formatSalary(minSalary)} onwards`
+    }
+    if (maxSalary !== null) {
+      return `Upto ₹${formatSalary(maxSalary)}`
+    }
+    return "Not specified"
   }
 
   const getDaysAgo = (dateString: string) => {
@@ -755,16 +820,23 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
   }
 
   const handleViewProfile = async () => {
-    const supabase = createClient()
-    const { data } = await supabase.from("candidates").select("*").eq("id", candidateId).single()
+    console.log("[v0] Loading profile view")
+    const result = await getCandidateProfile(candidateId)
 
-    if (data) {
-      setProfileData(data)
-      setShowProfileView(true)
+    if (result.success && result.candidate) {
+      setProfileData(result.candidate)
+      setShowProfileView(true) // Use the correct state name
       setShowProfileMenu(false)
       setIsEditMode(false)
       setEditFormData(null)
       setUploadError(null)
+    } else {
+      console.error("[v0] Failed to load profile:", result.error)
+      toast({
+        title: "Error",
+        description: "Failed to load profile data",
+        variant: "destructive",
+      })
     }
   }
 
@@ -782,7 +854,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
       return
     }
 
-    setIsUploading(true)
+    setIsPictureUploading(true) // Use the specific uploading state for the picture
     setUploadError(null)
 
     try {
@@ -806,12 +878,29 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         profile_picture_url: result.url,
       }))
 
+      // Update profileData immediately for UI feedback
+      setProfileData((prev: any) => ({
+        ...prev,
+        profile_picture_url: result.url,
+        updated_at: new Date().toISOString(),
+      }))
+
+      toast({
+        title: "Success",
+        description: "Profile picture updated successfully",
+      })
+
       console.log("[v0] Profile picture uploaded:", result.url)
     } catch (error) {
       console.error("[v0] Error uploading profile picture:", error)
       setUploadError(error instanceof Error ? error.message : "Upload failed")
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to upload profile picture",
+        variant: "destructive",
+      })
     } finally {
-      setIsUploading(false)
+      setIsPictureUploading(false)
     }
   }
 
@@ -879,7 +968,9 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
     if (!profileData?.resume_url) return
 
     try {
-      const result = await handleResumeDownload(profileData.resume_url) // Assume this action handles the download logic
+      // Assuming handleResumeDownload is an action that takes the URL and initiates download
+      // and returns { success: boolean, error?: string }
+      const result = await handleResumeDownload(profileData.resume_url)
 
       if (!result.success) {
         toast({
@@ -935,6 +1026,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
       languages_known: profileData.languages_known || [],
       certifications: profileData.certifications || [],
       projects: profileData.projects || [],
+      skills_for_role: profileData.skills_for_role || [],
+      skills_you_know: profileData.skills_you_know || [],
     })
     if (profileData?.languages_known && Array.isArray(profileData.languages_known)) {
       setLanguages(
@@ -957,6 +1050,26 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         ),
       )
     }
+  }
+
+  const reloadJobsAfterProfileUpdate = async () => {
+    console.log("[v0] Reloading job recommendations after profile update...")
+    setIsLoading(true)
+
+    const result = await getRecommendedJobs(candidateId)
+    if (result.success) {
+      const jobsWithStatus = result.jobs.map((job: Job) => ({
+        ...job,
+        status: appliedJobIds.has(job.id) ? "applied" : undefined,
+      }))
+      setJobs(jobsWithStatus)
+      if (activeTab === "recommended") {
+        setFilteredJobs(jobsWithStatus)
+      }
+      console.log("[v0] Job recommendations refreshed successfully")
+    }
+
+    setIsLoading(false)
   }
 
   const handleSaveProfile = async () => {
@@ -987,6 +1100,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         notice_period: editFormData.notice_period,
         currently_employed: editFormData.currently_employed,
         skills_for_role: editFormData.skills_for_role,
+        skills_you_know: editFormData.skills_you_know,
         preferred_salary: editFormData.preferred_salary,
         preferred_locations: editFormData.preferred_locations,
         highest_qualification: editFormData.highest_qualification,
@@ -1017,6 +1131,17 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         job_role: profileData.job_role,
         notice_period: profileData.notice_period,
         university: profileData.university,
+        // Education fields
+        highest_qualification: editFormData.highest_qualification,
+        course: editFormData.course,
+        specialization: editFormData.specialization,
+        course_type: editFormData.course_type,
+        university: editFormData.university, // Make sure this maps to profileData.university if needed
+        starting_year: editFormData.starting_year,
+        passing_year: editFormData.passing_year,
+        // Skills
+        skills_for_role: editFormData.skills_for_role,
+        skills_you_know: editFormData.skills_you_know,
       })
 
       if (result.success) {
@@ -1027,6 +1152,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
           title: "Success",
           description: "Profile updated successfully",
         })
+        // </CHANGE> Reload jobs after profile update
+        await reloadJobsAfterProfileUpdate()
       } else {
         setUploadError(result.error || "Failed to update profile")
       }
@@ -1201,843 +1328,6 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
           </div>
         </div>
       </header>
-      {showProfileView && profileData && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="min-h-screen py-8 px-4">
-            <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
-              <button
-                onClick={() => {
-                  setShowProfileView(false)
-                  setIsEditMode(false)
-                  setEditFormData(null)
-                  setUploadError(null)
-                  setEditingSection(null)
-                }}
-                className="absolute top-4 right-4 z-50 bg-white hover:bg-gray-100 rounded-full p-2 shadow-lg transition-colors"
-              >
-                <X className="w-6 h-6 text-gray-600" />
-              </button>
-
-              <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white px-8 pt-8 pb-20">
-                <div className="absolute top-6 right-6 flex items-center gap-4">
-                  <div className="bg-white/95 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg flex items-center gap-3">
-                    <span className="text-xs font-semibold text-gray-600">Profile</span>
-                    <div className="relative w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className={`absolute inset-y-0 left-0 rounded-full transition-all ${
-                          calculateProfileCompletion(profileData) === 100
-                            ? "bg-green-500"
-                            : calculateProfileCompletion(profileData) >= 75
-                              ? "bg-blue-500"
-                              : calculateProfileCompletion(profileData) >= 50
-                                ? "bg-yellow-500"
-                                : "bg-orange-500"
-                        }`}
-                        style={{ width: `${calculateProfileCompletion(profileData)}%` }}
-                      />
-                    </div>
-                    <span
-                      className={`text-sm font-bold ${
-                        calculateProfileCompletion(profileData) === 100
-                          ? "text-green-600"
-                          : calculateProfileCompletion(profileData) >= 75
-                            ? "text-blue-600"
-                            : calculateProfileCompletion(profileData) >= 50
-                              ? "text-yellow-600"
-                              : "text-orange-600"
-                      }`}
-                    >
-                      {calculateProfileCompletion(profileData)}%
-                    </span>
-                  </div>
-
-                  {!isEditMode && (
-                    <Button
-                      onClick={handleEditProfile}
-                      className="bg-white hover:bg-gray-50 text-blue-700 font-semibold shadow-lg rounded-full px-6"
-                    >
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      Edit Profile
-                    </Button>
-                  )}
-                </div>
-
-                <div className="flex items-start gap-6 mt-12">
-                  <div className="flex-shrink-0">
-                    <div className="w-28 h-28 rounded-2xl overflow-hidden border-4 border-white/30 shadow-xl">
-                      {profileData.profile_picture_url ? (
-                        <img
-                          src={profileData.profile_picture_url || "/placeholder.svg"}
-                          alt={profileData.full_name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
-                          <User className="w-14 h-14 text-white" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex-1">
-                    <h1 className="text-3xl font-bold mb-3">{profileData.full_name}</h1>
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-blue-50 text-sm mb-4">
-                      <div className="flex items-center gap-2">
-                        <Mail className="w-4 h-4" />
-                        <span>{profileData.email}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        <span>{profileData.mobile_number}</span>
-                      </div>
-                      {profileData.date_of_birth && (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4" />
-                          <span>
-                            Born:{" "}
-                            {new Date(profileData.date_of_birth).toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {profileData.resume_headline && (
-                      <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-3 border border-white/20">
-                        <p className="text-blue-50 text-sm leading-relaxed">{profileData.resume_headline}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-8 space-y-6">
-                {uploadError && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{uploadError}</div>
-                )}
-
-                {isEditMode && (
-                  <div className="flex justify-end gap-3 pb-4 border-b">
-                    <Button variant="outline" onClick={handleCancelEdit} className="rounded-full bg-transparent">
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleSaveProfile}
-                      disabled={isSaving}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-6"
-                    >
-                      {isSaving ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </div>
-                )}
-
-                {/* Resume Section */}
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                        Resume
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {profileData.resume_url && (
-                          <>
-                            <Button
-                              onClick={() => window.open(profileData.resume_url!, "_blank")}
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full"
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View
-                            </Button>
-                            <Button
-                              onClick={handleResumeDownload}
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full bg-transparent"
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              Download
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          onClick={() => resumeInputRef.current?.click()}
-                          size="sm"
-                          variant="default"
-                          disabled={isUploading}
-                          className="rounded-full"
-                        >
-                          {isUploading ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Upload className="w-4 h-4 mr-2" />
-                          )}
-                          {profileData.resume_url ? "Replace" : "Upload"}
-                        </Button>
-                        <input
-                          type="file"
-                          ref={resumeInputRef}
-                          onChange={handleResumeUpload}
-                          accept=".pdf,.doc,.docx"
-                          className="hidden"
-                        />
-                      </div>
-                    </div>
-
-                    {profileData.resume_url ? (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <FileText className="w-6 h-6 text-blue-600" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-medium text-gray-900">Resume uploaded</p>
-                            <p className="text-sm text-gray-600">
-                              Last updated: {new Date(profileData.updated_at || "").toLocaleDateString("en-IN")}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
-                        <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500 mb-2">No resume uploaded</p>
-                        <p className="text-sm text-gray-400">Upload your resume (PDF, DOC, DOCX - Max 5MB)</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <User className="w-5 h-5 text-blue-600" />
-                      Personal Information
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {isEditMode ? (
-                        <>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Gender</Label>
-                            <Select
-                              value={editFormData?.gender || ""}
-                              onValueChange={(val) => setEditFormData({ ...editFormData, gender: val })}
-                            >
-                              <SelectTrigger className="rounded-full">
-                                <SelectValue placeholder="Select gender" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Male">Male</SelectItem>
-                                <SelectItem value="Female">Female</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Date of Birth</Label>
-                            <Input
-                              type="date"
-                              value={editFormData?.date_of_birth?.split("T")[0] || ""}
-                              onChange={(e) => setEditFormData({ ...editFormData, date_of_birth: e.target.value })}
-                              className="rounded-full"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Marital Status</Label>
-                            <Select
-                              value={editFormData?.marital_status || ""}
-                              onValueChange={(val) => setEditFormData({ ...editFormData, marital_status: val })}
-                            >
-                              <SelectTrigger className="rounded-full">
-                                <SelectValue placeholder="Select status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="single">Single</SelectItem>
-                                <SelectItem value="married">Married</SelectItem>
-                                <SelectItem value="divorced">Divorced</SelectItem>
-                                <SelectItem value="widowed">Widowed</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Current City</Label>
-                            <Input
-                              value={editFormData?.current_city || ""}
-                              onChange={(e) => setEditFormData({ ...editFormData, current_city: e.target.value })}
-                              placeholder="Enter city"
-                              className="rounded-full"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Current State</Label>
-                            <Input
-                              value={editFormData?.current_state || ""}
-                              onChange={(e) => setEditFormData({ ...editFormData, current_state: e.target.value })}
-                              placeholder="Enter state"
-                              className="rounded-full"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Work Status</Label>
-                            <Select
-                              value={editFormData?.work_status || ""}
-                              onValueChange={(val) => setEditFormData({ ...editFormData, work_status: val })}
-                            >
-                              <SelectTrigger className="rounded-full">
-                                <SelectValue placeholder="Select work status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="fresher">Fresher</SelectItem>
-                                <SelectItem value="experienced">Experienced</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <InfoField label="Gender" value={profileData.gender} />
-                          <InfoField
-                            label="Date of Birth"
-                            value={
-                              profileData.date_of_birth
-                                ? new Date(profileData.date_of_birth).toLocaleDateString("en-IN", {
-                                    day: "numeric",
-                                    month: "long",
-                                    year: "numeric",
-                                  })
-                                : undefined
-                            }
-                          />
-                          <InfoField label="Marital Status" value={profileData.marital_status} capitalize />
-                          <InfoField label="Current City" value={profileData.current_city} />
-                          <InfoField label="Current State" value={profileData.current_state} />
-                          <InfoField label="Work Status" value={profileData.work_status} capitalize />
-                        </>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Languages className="w-5 h-5 text-blue-600" />
-                        Languages Known
-                      </h3>
-                      {isEditMode && (
-                        <Button
-                          onClick={addLanguage}
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full bg-transparent"
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Language
-                        </Button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      {isEditMode ? (
-                        languages.length > 0 ? (
-                          languages.map((lang, index) => (
-                            <div key={index} className="flex gap-4 items-start p-4 bg-gray-50 rounded-lg">
-                              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input
-                                  placeholder="Language name"
-                                  value={lang.language}
-                                  onChange={(e) => updateLanguage(index, "language", e.target.value)}
-                                  className="rounded-full"
-                                />
-                                <div className="flex items-center gap-4">
-                                  <label className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={lang.read}
-                                      onChange={(e) => updateLanguage(index, "read", e.target.checked)}
-                                      className="rounded"
-                                    />
-                                    <span className="text-sm">Read</span>
-                                  </label>
-                                  <label className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={lang.write}
-                                      onChange={(e) => updateLanguage(index, "write", e.target.checked)}
-                                      className="rounded"
-                                    />
-                                    <span className="text-sm">Write</span>
-                                  </label>
-                                  <label className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={lang.speak}
-                                      onChange={(e) => updateLanguage(index, "speak", e.target.checked)}
-                                      className="rounded"
-                                    />
-                                    <span className="text-sm">Speak</span>
-                                  </label>
-                                </div>
-                              </div>
-                              <Button
-                                onClick={() => removeLanguage(index)}
-                                variant="ghost"
-                                size="icon"
-                                className="text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-500 text-sm">
-                            No languages added yet. Click "Add Language" to start.
-                          </p>
-                        )
-                      ) : profileData.languages_known && profileData.languages_known.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {profileData.languages_known.map((lang: any, index: number) => (
-                            <div key={index} className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
-                              <p className="font-semibold text-gray-900 mb-2">{lang.language}</p>
-                              <div className="flex gap-2 text-xs">
-                                {lang.read && <Badge variant="secondary">Read</Badge>}
-                                {lang.write && <Badge variant="secondary">Write</Badge>}
-                                {lang.speak && <Badge variant="secondary">Speak</Badge>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm">No languages specified</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Award className="w-5 h-5 text-blue-600" />
-                        Certifications
-                      </h3>
-                      {isEditMode && (
-                        <Button
-                          onClick={addCertification}
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full bg-transparent"
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Certification
-                        </Button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      {isEditMode ? (
-                        certifications.length > 0 ? (
-                          certifications.map((cert, index) => (
-                            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <Input
-                                    placeholder="Certification name"
-                                    value={cert.name}
-                                    onChange={(e) => updateCertification(index, "name", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    placeholder="Topic/Subject"
-                                    value={cert.topic}
-                                    onChange={(e) => updateCertification(index, "topic", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    type="date"
-                                    placeholder="From date"
-                                    value={cert.from_date}
-                                    onChange={(e) => updateCertification(index, "from_date", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    type="date"
-                                    placeholder="To date (expiry)"
-                                    value={cert.to_date}
-                                    onChange={(e) => updateCertification(index, "to_date", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    placeholder="Certificate URL"
-                                    value={cert.url}
-                                    onChange={(e) => updateCertification(index, "url", e.target.value)}
-                                    className="md:col-span-2 rounded-full"
-                                  />
-                                </div>
-                                <Button
-                                  onClick={() => removeCertification(index)}
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-red-600 ml-2"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-500 text-sm">
-                            No certifications added yet. Click "Add Certification" to start.
-                          </p>
-                        )
-                      ) : profileData.certifications && profileData.certifications.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {profileData.certifications.map((cert: any, index: number) => (
-                            <div key={index} className="p-4 bg-green-50 border border-green-100 rounded-lg">
-                              <h4 className="font-semibold text-gray-900">{cert.name}</h4>
-                              {cert.topic && <p className="text-sm text-gray-600 mt-1">{cert.topic}</p>}
-                              {(cert.from_date || cert.to_date) && (
-                                <p className="text-xs text-gray-500 mt-2">
-                                  {cert.from_date &&
-                                    new Date(cert.from_date).toLocaleDateString("en-IN", {
-                                      month: "short",
-                                      year: "numeric",
-                                    })}{" "}
-                                  {cert.from_date && cert.to_date && "- "}
-                                  {cert.to_date &&
-                                    new Date(cert.to_date).toLocaleDateString("en-IN", {
-                                      month: "short",
-                                      year: "numeric",
-                                    })}
-                                </p>
-                              )}
-                              {cert.url && (
-                                <a
-                                  href={cert.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline mt-2 block"
-                                >
-                                  View Certificate
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm">No certifications added</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Added employment history edit functionality with add/edit/delete options */}
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Briefcase className="w-5 h-5 text-blue-600" />
-                        Employment History
-                      </h3>
-                      {editingSection !== "employment" && (
-                        <Button
-                          onClick={() => setEditingSection("employment")}
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full"
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                      )}
-                    </div>
-
-                    {editingSection === "employment" ? (
-                      <EmploymentEditForm
-                        employmentHistory={profileData.employment_history || []}
-                        onSave={handleEmploymentSave}
-                        onCancel={() => setEditingSection(null)}
-                      />
-                    ) : profileData.work_status !== "fresher" ? (
-                      <div className="space-y-6">
-                        {profileData.employment_history && profileData.employment_history.length > 0 ? (
-                          <div className="space-y-4">
-                            {profileData.employment_history.map((job: any, index: number) => (
-                              <div key={index} className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                                <div className="flex justify-between items-start mb-2">
-                                  <div>
-                                    <h5 className="font-semibold text-gray-900">
-                                      {job.job_title || job.currentJobTitle}
-                                    </h5>
-                                    <p className="text-sm text-gray-600">{job.company_name || job.companyName}</p>
-                                  </div>
-                                  {(job.is_current || job.currently_working) && (
-                                    <Badge variant="secondary" className="bg-green-100 text-green-700">
-                                      Current
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                  {job.start_date || job.durationFrom
-                                    ? new Date(job.start_date || job.durationFrom).toLocaleDateString("en-IN", {
-                                        month: "short",
-                                        year: "numeric",
-                                      })
-                                    : "Start Date Not Specified"}
-                                  {" - "}
-                                  {job.end_date || job.durationTo
-                                    ? new Date(job.end_date || job.durationTo).toLocaleDateString("en-IN", {
-                                        month: "short",
-                                        year: "numeric",
-                                      })
-                                    : "Present"}
-                                </p>
-                                {job.employment_type && (
-                                  <Badge variant="outline" className="mt-2">
-                                    {job.employment_type}
-                                  </Badge>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
-                            <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500 mb-2">No employment history added</p>
-                            <p className="text-sm text-gray-400">Click "Edit" to add your work experience</p>
-                          </div>
-                        )}
-
-                        {/* Total Experience Display */}
-                        {(profileData.total_experience_years || profileData.total_experience_months) && (
-                          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                            <p className="text-sm text-gray-600 mb-1">Total Experience</p>
-                            <p className="text-lg font-semibold text-gray-900">
-                              {profileData.total_experience_years || 0} Years {profileData.total_experience_months || 0}{" "}
-                              Months
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500">Fresher - No work experience yet</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <GraduationCap className="w-5 h-5 text-blue-600" />
-                      Education
-                    </h3>
-
-                    {profileData.highest_qualification || profileData.course ? (
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                          {profileData.highest_qualification && (
-                            <InfoField label="Highest Qualification" value={profileData.highest_qualification} />
-                          )}
-                          {profileData.course && <InfoField label="Course" value={profileData.course} />}
-                          {profileData.specialization && (
-                            <InfoField label="Specialization" value={profileData.specialization} />
-                          )}
-                          {profileData.course_type && (
-                            <InfoField label="Course Type" value={profileData.course_type} capitalize />
-                          )}
-                          {profileData.university && (
-                            <InfoField label="University/Institute" value={profileData.university} />
-                          )}
-                          {(profileData.starting_year || profileData.passing_year) && (
-                            <InfoField
-                              label="Duration"
-                              value={`${profileData.starting_year || "N/A"} - ${profileData.passing_year || "N/A"}`}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500">No education details provided</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 rounded-lg shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Target className="w-5 h-5 text-blue-600" />
-                        Projects
-                      </h3>
-                      {isEditMode && (
-                        <Button
-                          onClick={addProject}
-                          size="sm"
-                          variant="outline"
-                          className="rounded-full bg-transparent"
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Project
-                        </Button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      {isEditMode ? (
-                        projects.length > 0 ? (
-                          projects.map((proj, index) => (
-                            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
-                              <div className="flex justify-between items-start gap-4">
-                                <div className="flex-1 space-y-3">
-                                  <Input
-                                    placeholder="Project name"
-                                    value={proj.name}
-                                    onChange={(e) => updateProject(index, "name", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Textarea
-                                    placeholder="Project description"
-                                    value={proj.description}
-                                    onChange={(e) => updateProject(index, "description", e.target.value)}
-                                    rows={2}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    placeholder="Technologies used (comma-separated)"
-                                    value={proj.technologies}
-                                    onChange={(e) => updateProject(index, "technologies", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                  <Input
-                                    placeholder="Project URL"
-                                    value={proj.url}
-                                    onChange={(e) => updateProject(index, "url", e.target.value)}
-                                    className="rounded-full"
-                                  />
-                                </div>
-                                <Button
-                                  onClick={() => removeProject(index)}
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-gray-500 text-sm">No projects added yet. Click "Add Project" to start.</p>
-                        )
-                      ) : profileData.projects && profileData.projects.length > 0 ? (
-                        <div className="space-y-4">
-                          {profileData.projects.map((proj: any, index: number) => (
-                            <div key={index} className="p-4 bg-purple-50 border border-purple-100 rounded-lg">
-                              <h4 className="font-semibold text-gray-900">{proj.name}</h4>
-                              {proj.description && <p className="text-sm text-gray-600 mt-2">{proj.description}</p>}
-                              {proj.technologies && (
-                                <p className="text-xs text-gray-500 mt-2">
-                                  <span className="font-medium">Technologies:</span> {proj.technologies}
-                                </p>
-                              )}
-                              {proj.url && (
-                                <a
-                                  href={proj.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline mt-2 block"
-                                >
-                                  View Project
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm">No projects added</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card className="border border-gray-200 rounded-lg shadow-sm">
-                    <CardContent className="p-6">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4 pb-3 border-b">
-                        <Star className="w-5 h-5 text-blue-600" />
-                        Key Skills
-                      </h3>
-                      {profileData.skills_for_role && profileData.skills_for_role.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {profileData.skills_for_role.map((skill: string, index: number) => (
-                            <Badge
-                              key={index}
-                              variant="secondary"
-                              className="bg-blue-100 text-blue-700 hover:bg-blue-200"
-                            >
-                              {skill}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 text-sm">No skills specified</p>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-gray-200 rounded-lg shadow-sm">
-                    <CardContent className="p-6">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4 pb-3 border-b">
-                        <Target className="w-5 h-5 text-blue-600" />
-                        Job Preferences
-                      </h3>
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm text-gray-500 mb-1">Preferred Salary</p>
-                          <p className="text-lg font-semibold text-gray-900">
-                            ₹
-                            {profileData.preferred_salary
-                              ? (Number(profileData.preferred_salary) / 100000).toFixed(2)
-                              : "Not specified"}{" "}
-                            LPA
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-500 mb-2">Preferred Locations</p>
-                          {profileData.preferred_locations && profileData.preferred_locations.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {profileData.preferred_locations.map((location: string, index: number) => (
-                                <Badge
-                                  key={index}
-                                  variant="outline"
-                                  className="bg-green-50 text-green-700 border-green-200"
-                                >
-                                  <MapPin className="w-3 h-3 mr-1" />
-                                  {location}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-gray-500 text-sm">No locations specified</p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       <Dialog
         open={activePrivacyDialog === "visibility"}
         onOpenChange={(open) => !open && setActivePrivacyDialog(null)}
@@ -2408,8 +1698,14 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
             currentJobs.map((job) => (
               <Card
                 key={job.id}
-                className="hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-200 group rounded-lg"
+                className="hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-200 group rounded-lg relative"
               >
+                {job.category === "premium" && job.urgent_hiring && (
+                  <div className="absolute top-0 right-0 bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg z-10">
+                    URGENT HIRING
+                  </div>
+                )}
+
                 <CardContent className="p-3 md:p-4">
                   <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-start">
                     <div className="flex-1 space-y-2 md:space-y-3 w-full">
@@ -2421,6 +1717,118 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                           >
                             {job.job_title}
                           </h3>
+                          {job.category === "premium" && (
+                            <div className="relative">
+                              <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="drop-shadow-lg"
+                              >
+                                {/* Main diamond body with blue gradient */}
+                                <path
+                                  d="M12 2L2 7L12 22L22 7L12 2Z"
+                                  fill="url(#blueDiamondGradient)"
+                                  stroke="url(#blueStroke)"
+                                  strokeWidth="0.5"
+                                />
+
+                                {/* Diamond facets for depth and realism */}
+                                <path d="M12 2L7 7H17L12 2Z" fill="rgba(59, 130, 246, 0.4)" stroke="none" />
+                                <path d="M7 7L2 7L12 22L7 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
+                                <path d="M17 7L22 7L12 22L17 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
+                                <path d="M12 7L12 22" stroke="rgba(29, 78, 216, 0.3)" strokeWidth="0.5" />
+
+                                {/* White highlight for sparkle effect on diamond */}
+                                <ellipse cx="10" cy="5" rx="2.5" ry="2" fill="white" opacity="0.9" />
+                                <circle cx="10" cy="5" r="1.2" fill="white" opacity="1" />
+                                <circle cx="14" cy="8" r="0.8" fill="white" opacity="0.7" />
+
+                                {/* Animated gold sparkles around diamond */}
+                                <g className="animate-pulse" style={{ animationDuration: "2s" }}>
+                                  {/* Top right large gold sparkle */}
+                                  <path
+                                    d="M20 3L20.8 5.2L23 6L20.8 6.8L20 9L19.2 6.8L17 6L19.2 5.2Z"
+                                    fill="url(#sparkleGold1)"
+                                    opacity="0.95"
+                                  />
+                                  {/* Bottom left gold sparkle */}
+                                  <path
+                                    d="M4 17L4.6 18.8L6.5 19.5L4.6 20.2L4 22L3.4 20.2L1.5 19.5L3.4 18.8Z"
+                                    fill="url(#sparkleGold2)"
+                                    opacity="0.9"
+                                  />
+                                  {/* Top left small gold sparkle */}
+                                  <path
+                                    d="M5.5 1.5L5.9 2.7L7 3.1L5.9 3.5L5.5 4.7L5.1 3.5L4 3.1L5.1 2.7Z"
+                                    fill="#FEF3C7"
+                                    opacity="0.85"
+                                  />
+                                  {/* Right side gold sparkle */}
+                                  <path
+                                    d="M21.5 12L21.8 13L22.8 13.3L21.8 13.6L21.5 14.6L21.2 13.6L20.2 13.3L21.2 13Z"
+                                    fill="#FDE68A"
+                                    opacity="0.8"
+                                  />
+                                </g>
+
+                                {/* Additional subtle shimmer gold sparkles */}
+                                <g
+                                  className="animate-pulse"
+                                  style={{ animationDuration: "3s", animationDelay: "0.5s" }}
+                                >
+                                  <circle cx="8" cy="10" r="0.5" fill="#FEF3C7" opacity="0.7" />
+                                  <circle cx="16" cy="13" r="0.5" fill="#FDE68A" opacity="0.7" />
+                                  <circle cx="11" cy="15" r="0.4" fill="#FBBF24" opacity="0.6" />
+                                </g>
+
+                                <defs>
+                                  {/* Blue gradient for diamond */}
+                                  <linearGradient
+                                    id="blueDiamondGradient"
+                                    x1="12"
+                                    y1="2"
+                                    x2="12"
+                                    y2="22"
+                                    gradientUnits="userSpaceOnUse"
+                                  >
+                                    <stop offset="0%" stopColor="#93C5FD" />
+                                    <stop offset="30%" stopColor="#60A5FA" />
+                                    <stop offset="60%" stopColor="#3B82F6" />
+                                    <stop offset="100%" stopColor="#2563EB" />
+                                  </linearGradient>
+
+                                  {/* Blue stroke for definition */}
+                                  <linearGradient
+                                    id="blueStroke"
+                                    x1="12"
+                                    y1="2"
+                                    x2="12"
+                                    y2="22"
+                                    gradientUnits="userSpaceOnUse"
+                                  >
+                                    <stop offset="0%" stopColor="#2563EB" />
+                                    <stop offset="100%" stopColor="#1D4ED8" />
+                                  </linearGradient>
+
+                                  {/* Gold sparkle gradients */}
+                                  <radialGradient id="sparkleGold1">
+                                    <stop offset="0%" stopColor="#FEF3C7" />
+                                    <stop offset="50%" stopColor="#FCD34D" />
+                                    <stop offset="100%" stopColor="#FBBF24" />
+                                  </radialGradient>
+
+                                  <radialGradient id="sparkleGold2">
+                                    <stop offset="0%" stopColor="#FFFBEB" />
+                                    <stop offset="50%" stopColor="#FDE68A" />
+                                    <stop offset="100%" stopColor="#FCD34D" />
+                                  </radialGradient>
+                                </defs>
+                              </svg>
+                            </div>
+                          )}
                           {job.openings && job.openings > 0 && (
                             <Badge
                               variant="secondary"
@@ -2430,12 +1838,15 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                             </Badge>
                           )}
                         </div>
+
                         <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-bold text-sm md:text-base">
+                          <Avatar className="w-10 h-10 md:w-12 md:h-12 border-2 border-gray-200 flex-shrink-0">
+                            <AvatarImage src={job.company_logo_url || "/briefcase-icon.png"} alt={job.company_name} />
+                            <AvatarFallback className="bg-blue-600 text-white text-sm font-semibold">
                               {job.company_name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                              {job.company_name.split(" ")[1]?.charAt(0).toUpperCase() || ""}
+                            </AvatarFallback>
+                          </Avatar>
                           <div className="min-w-0 flex-1">
                             <div className="text-base md:text-lg font-semibold text-gray-800 break-words">
                               {job.company_name}
@@ -2446,6 +1857,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                             </div>
                           </div>
                         </div>
+
                         {job.status === "applied" && (
                           <Badge
                             variant="secondary"
@@ -2662,6 +2074,1073 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
           </div>
         )}
       </div>
+      {showProfileView && profileData && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto">
+          <div className="min-h-screen py-8 px-4">
+            <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <button
+                onClick={() => {
+                  setShowProfileView(false)
+                  setIsEditMode(false)
+                  setEditFormData(null)
+                  setUploadError(null)
+                  setEditingSection(null)
+                }}
+                className="absolute top-4 right-4 z-50 bg-white hover:bg-gray-100 rounded-full p-2 shadow-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-600" />
+              </button>
+
+              <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white px-8 pt-8 pb-20">
+                <div className="absolute top-6 right-6 flex items-center gap-4">
+                  <div className="bg-white/95 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg flex items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-600">Profile</span>
+                    <div className="relative w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`absolute inset-y-0 left-0 rounded-full transition-all ${
+                          calculateProfileCompletion(profileData) === 100
+                            ? "bg-green-500"
+                            : calculateProfileCompletion(profileData) >= 75
+                              ? "bg-blue-500"
+                              : calculateProfileCompletion(profileData) >= 50
+                                ? "bg-yellow-500"
+                                : "bg-orange-500"
+                        }`}
+                        style={{ width: `${calculateProfileCompletion(profileData)}%` }}
+                      />
+                    </div>
+                    <span
+                      className={`text-sm font-bold ${
+                        calculateProfileCompletion(profileData) === 100
+                          ? "text-green-600"
+                          : calculateProfileCompletion(profileData) >= 75
+                            ? "text-blue-600"
+                            : calculateProfileCompletion(profileData) >= 50
+                              ? "text-yellow-600"
+                              : "text-orange-600"
+                      }`}
+                    >
+                      {calculateProfileCompletion(profileData)}%
+                    </span>
+                  </div>
+
+                  {!isEditMode && (
+                    <Button
+                      onClick={handleEditProfile}
+                      className="bg-white hover:bg-gray-50 text-blue-700 font-semibold shadow-lg rounded-full px-6"
+                    >
+                      <Edit2 className="w-4 h-4 mr-2" />
+                      Edit Profile
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-6 mt-12">
+                  <div
+                    className={`flex-shrink-0 ${
+                      isEditMode ? "cursor-pointer hover:opacity-80 transition-opacity relative group" : ""
+                    }`}
+                    onClick={() => isEditMode && profilePictureInputRef.current?.click()}
+                  >
+                    <div className="w-28 h-28 rounded-2xl overflow-hidden border-4 border-white/30 shadow-xl">
+                      {profileData.profile_picture_url ? (
+                        <img
+                          src={profileData.profile_picture_url || "/placeholder.svg"}
+                          alt={profileData.full_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
+                          <User className="w-14 h-14 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    {isEditMode && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <div className="text-center">
+                          <Upload className="w-8 h-8 text-white mx-auto mb-1" />
+                          <span className="text-white text-xs font-medium">Change Photo</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    ref={profilePictureInputRef}
+                    onChange={handleProfilePictureUpload}
+                    accept="image/jpeg,image/png,image/jpg,image/webp"
+                    className="hidden"
+                  />
+                  {isEditMode && isPictureUploading && (
+                    <div className="mt-2 text-xs text-white flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Uploading...
+                    </div>
+                  )}
+                  {isEditMode && uploadError && (
+                    <div className="mt-2 text-xs text-red-300 max-w-[112px]">{uploadError}</div>
+                  )}
+
+                  <div className="flex-1">
+                    <h1 className="text-3xl font-bold mb-3">{profileData.full_name}</h1>
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-blue-50 text-sm mb-4">
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4" />
+                        <span>{profileData.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4" />
+                        <span>{profileData.mobile_number}</span>
+                      </div>
+                      {profileData.date_of_birth && (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            Born:{" "}
+                            {new Date(profileData.date_of_birth).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {profileData.resume_headline && (
+                      <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-3 border border-white/20">
+                        <p className="text-blue-50 text-sm leading-relaxed">{profileData.resume_headline}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 space-y-6">
+                {uploadError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{uploadError}</div>
+                )}
+
+                {isEditMode && (
+                  <div className="flex justify-end gap-3 pb-4 border-b">
+                    <Button variant="outline" onClick={handleCancelEdit} className="rounded-full bg-transparent">
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-6"
+                    >
+                      {isSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Resume Section */}
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                        Resume
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        {profileData.resume_url && (
+                          <>
+                            <Button
+                              onClick={() => window.open(profileData.resume_url!, "_blank")}
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full"
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View
+                            </Button>
+                            <Button
+                              onClick={handleResumeDownload}
+                              size="sm"
+                              variant="outline"
+                              className="rounded-full bg-transparent"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              Download
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          onClick={() => resumeInputRef.current?.click()}
+                          size="sm"
+                          variant="default"
+                          disabled={isUploading}
+                          className="rounded-full"
+                        >
+                          {isUploading ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Upload className="w-4 h-4 mr-2" />
+                          )}
+                          {profileData.resume_url ? "Replace" : "Upload"}
+                        </Button>
+                        <input
+                          type="file"
+                          ref={resumeInputRef}
+                          onChange={handleResumeUpload}
+                          accept=".pdf,.doc,.docx"
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {profileData.resume_url ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <FileText className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">Resume uploaded</p>
+                            <p className="text-sm text-gray-600">
+                              Last updated: {new Date(profileData.updated_at || "").toLocaleDateString("en-IN")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+                        <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-500 mb-2">No resume uploaded</p>
+                        <p className="text-sm text-gray-400">Upload your resume (PDF, DOC, DOCX - Max 5MB)</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* The profile picture upload is now handled by clicking the avatar in the header */}
+
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <User className="w-5 h-5 text-blue-600" />
+                      Personal Information
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {isEditMode ? (
+                        <>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Gender</Label>
+                            <Select
+                              value={editFormData?.gender || ""}
+                              onValueChange={(val) => setEditFormData({ ...editFormData, gender: val })}
+                            >
+                              <SelectTrigger className="rounded-full">
+                                <SelectValue placeholder="Select gender" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Date of Birth</Label>
+                            <Input
+                              type="date"
+                              value={editFormData?.date_of_birth?.split("T")[0] || ""}
+                              onChange={(e) => setEditFormData({ ...editFormData, date_of_birth: e.target.value })}
+                              className="rounded-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Marital Status</Label>
+                            <Select
+                              value={editFormData?.marital_status || ""}
+                              onValueChange={(val) => setEditFormData({ ...editFormData, marital_status: val })}
+                            >
+                              <SelectTrigger className="rounded-full">
+                                <SelectValue placeholder="Select status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="single">Single</SelectItem>
+                                <SelectItem value="married">Married</SelectItem>
+                                <SelectItem value="divorced">Divorced</SelectItem>
+                                <SelectItem value="widowed">Widowed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Current City</Label>
+                            <Input
+                              value={editFormData?.current_city || ""}
+                              onChange={(e) => setEditFormData({ ...editFormData, current_city: e.target.value })}
+                              placeholder="Enter city"
+                              className="rounded-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Current State</Label>
+                            <Input
+                              value={editFormData?.current_state || ""}
+                              onChange={(e) => setEditFormData({ ...editFormData, current_state: e.target.value })}
+                              placeholder="Enter state"
+                              className="rounded-full"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">Work Status</Label>
+                            <Select
+                              value={editFormData?.work_status || ""}
+                              onValueChange={(val) => setEditFormData({ ...editFormData, work_status: val })}
+                            >
+                              <SelectTrigger className="rounded-full">
+                                <SelectValue placeholder="Select work status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="fresher">Fresher</SelectItem>
+                                <SelectItem value="experienced">Experienced</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <InfoField label="Gender" value={profileData.gender} />
+                          <InfoField
+                            label="Date of Birth"
+                            value={
+                              profileData.date_of_birth
+                                ? new Date(profileData.date_of_birth).toLocaleDateString("en-IN", {
+                                    day: "numeric",
+                                    month: "long",
+                                    year: "numeric",
+                                  })
+                                : undefined
+                            }
+                          />
+                          <InfoField label="Marital Status" value={profileData.marital_status} capitalize />
+                          <InfoField label="Current City" value={profileData.current_city} />
+                          <InfoField label="Current State" value={profileData.current_state} />
+                          <InfoField label="Work Status" value={profileData.work_status} capitalize />
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Languages className="w-5 h-5 text-blue-600" />
+                      Languages Known
+                    </h3>
+                    {isEditMode && (
+                      <Button onClick={addLanguage} size="sm" variant="outline" className="rounded-full bg-transparent">
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add Language
+                      </Button>
+                    )}
+                    <div className="space-y-4">
+                      {isEditMode ? (
+                        languages.length > 0 ? (
+                          languages.map((lang, index) => (
+                            <div key={index} className="flex gap-4 items-start p-4 bg-gray-50 rounded-lg">
+                              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Input
+                                  placeholder="Language name"
+                                  value={lang.language}
+                                  onChange={(e) => updateLanguage(index, "language", e.target.value)}
+                                  className="rounded-full"
+                                />
+                                <div className="flex items-center gap-4">
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={lang.read}
+                                      onChange={(e) => updateLanguage(index, "read", e.target.checked)}
+                                      className="rounded"
+                                    />
+                                    <span className="text-sm">Read</span>
+                                  </label>
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={lang.write}
+                                      onChange={(e) => updateLanguage(index, "write", e.target.checked)}
+                                      className="rounded"
+                                    />
+                                    <span className="text-sm">Write</span>
+                                  </label>
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={lang.speak}
+                                      onChange={(e) => updateLanguage(index, "speak", e.target.checked)}
+                                      className="rounded"
+                                    />
+                                    <span className="text-sm">Speak</span>
+                                  </label>
+                                </div>
+                              </div>
+                              <Button
+                                onClick={() => removeLanguage(index)}
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-gray-500 text-sm">
+                            No languages added yet. Click "Add Language" to start.
+                          </p>
+                        )
+                      ) : profileData.languages_known && profileData.languages_known.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {profileData.languages_known.map((lang: any, index: number) => (
+                            <div key={index} className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                              <p className="font-semibold text-gray-900 mb-2">{lang.language}</p>
+                              <div className="flex gap-2 text-xs">
+                                {lang.read && <Badge variant="secondary">Read</Badge>}
+                                {lang.write && <Badge variant="secondary">Write</Badge>}
+                                {lang.speak && <Badge variant="secondary">Speak</Badge>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm">No languages specified</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-blue-600" />
+                      Certifications
+                    </h3>
+                    {isEditMode && (
+                      <Button
+                        onClick={addCertification}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full bg-transparent"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add Certification
+                      </Button>
+                    )}
+                    <div className="space-y-4">
+                      {isEditMode ? (
+                        certifications.length > 0 ? (
+                          certifications.map((cert, index) => (
+                            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
+                              <div className="flex justify-between items-start">
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <Input
+                                    placeholder="Certification name"
+                                    value={cert.name}
+                                    onChange={(e) => updateCertification(index, "name", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    placeholder="Topic/Subject"
+                                    value={cert.topic}
+                                    onChange={(e) => updateCertification(index, "topic", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    type="date"
+                                    placeholder="From date"
+                                    value={cert.from_date}
+                                    onChange={(e) => updateCertification(index, "from_date", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    type="date"
+                                    placeholder="To date (expiry)"
+                                    value={cert.to_date}
+                                    onChange={(e) => updateCertification(index, "to_date", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    placeholder="Certificate URL"
+                                    value={cert.url}
+                                    onChange={(e) => updateCertification(index, "url", e.target.value)}
+                                    className="md:col-span-2 rounded-full"
+                                  />
+                                </div>
+                                <Button
+                                  onClick={() => removeCertification(index)}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-600 ml-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-gray-500 text-sm">
+                            No certifications added yet. Click "Add Certification" to start.
+                          </p>
+                        )
+                      ) : profileData.certifications && profileData.certifications.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {profileData.certifications.map((cert: any, index: number) => (
+                            <div key={index} className="p-4 bg-green-50 border border-green-100 rounded-lg">
+                              <h4 className="font-semibold text-gray-900">{cert.name}</h4>
+                              {cert.topic && <p className="text-sm text-gray-600 mt-1">{cert.topic}</p>}
+                              {(cert.from_date || cert.to_date) && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                  {cert.from_date &&
+                                    new Date(cert.from_date).toLocaleDateString("en-IN", {
+                                      month: "short",
+                                      year: "numeric",
+                                    })}{" "}
+                                  {cert.from_date && cert.to_date && "- "}
+                                  {cert.to_date &&
+                                    new Date(cert.to_date).toLocaleDateString("en-IN", {
+                                      month: "short",
+                                      year: "numeric",
+                                    })}
+                                </p>
+                              )}
+                              {cert.url && (
+                                <a
+                                  href={cert.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline mt-2 block"
+                                >
+                                  View Certificate
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm">No certifications added</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Added employment history edit functionality with add/edit/delete options */}
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <Briefcase className="w-5 h-5 text-blue-600" />
+                        Employment History
+                      </h3>
+                      {editingSection !== "employment" && (
+                        <Button
+                          onClick={() => setEditingSection("employment")}
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full"
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </Button>
+                      )}
+                    </div>
+
+                    {editingSection === "employment" ? (
+                      <EmploymentEditForm
+                        employmentHistory={profileData.employment_history || []}
+                        onSave={handleEmploymentSave}
+                        onCancel={() => setEditingSection(null)}
+                      />
+                    ) : profileData.work_status !== "fresher" ? (
+                      <div className="space-y-6">
+                        {profileData.employment_history && profileData.employment_history.length > 0 ? (
+                          <div className="space-y-4">
+                            {profileData.employment_history.map((job: any, index: number) => (
+                              <div key={index} className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <h5 className="font-semibold text-gray-900">
+                                      {job.job_title || job.currentJobTitle}
+                                    </h5>
+                                    <p className="text-sm text-gray-600">{job.company_name || job.companyName}</p>
+                                  </div>
+                                  {(job.is_current || job.currently_working) && (
+                                    <Badge variant="secondary" className="bg-green-100 text-green-700">
+                                      Current
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                  {job.start_date || job.durationFrom
+                                    ? new Date(job.start_date || job.durationFrom).toLocaleDateString("en-IN", {
+                                        month: "short",
+                                        year: "numeric",
+                                      })
+                                    : "Start Date Not Specified"}
+                                  {" - "}
+                                  {job.end_date || job.durationTo
+                                    ? new Date(job.end_date || job.durationTo).toLocaleDateString("en-IN", {
+                                        month: "short",
+                                        year: "numeric",
+                                      })
+                                    : "Present"}
+                                </p>
+                                {job.employment_type && (
+                                  <Badge variant="outline" className="mt-2">
+                                    {job.employment_type}
+                                  </Badge>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+                            <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                            <p className="text-gray-500 mb-2">No employment history added</p>
+                            <p className="text-sm text-gray-400">Click "Edit" to add your work experience</p>
+                          </div>
+                        )}
+
+                        {/* Total Experience Display */}
+                        {(profileData.total_experience_years || profileData.total_experience_months) && (
+                          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                            <p className="text-sm text-gray-600 mb-1">Total Experience</p>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {profileData.total_experience_years || 0} Years {profileData.total_experience_months || 0}{" "}
+                              Months
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Briefcase className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-500">Fresher - No work experience yet</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <GraduationCap className="w-5 h-5 text-blue-600" />
+                      Education
+                    </h3>
+
+                    {isEditMode ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Highest Qualification *
+                          </Label>
+                          <Input
+                            value={editFormData?.highest_qualification || ""}
+                            onChange={(e) =>
+                              setEditFormData({ ...editFormData, highest_qualification: e.target.value })
+                            }
+                            placeholder="e.g., Bachelor's, Master's, PhD"
+                            className="rounded-full"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Course *</Label>
+                          <Input
+                            value={editFormData?.course || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, course: e.target.value })}
+                            placeholder="e.g., B.Tech, MBA, BCA"
+                            className="rounded-full"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Specialization</Label>
+                          <Input
+                            value={editFormData?.specialization || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, specialization: e.target.value })}
+                            placeholder="e.g., Computer Science, Finance"
+                            className="rounded-full"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Course Type</Label>
+                          <Select
+                            value={editFormData?.course_type || ""}
+                            onValueChange={(val) => setEditFormData({ ...editFormData, course_type: val })}
+                          >
+                            <SelectTrigger className="rounded-full">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Full Time">Full Time</SelectItem>
+                              <SelectItem value="Part Time">Part Time</SelectItem>
+                              <SelectItem value="Distance Learning">Distance Learning</SelectItem>
+                              <SelectItem value="Correspondence">Correspondence</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">University/Institute</Label>
+                          <Input
+                            value={editFormData?.university || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, university: e.target.value })}
+                            placeholder="Enter university name"
+                            className="rounded-full"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Starting Year</Label>
+                          <Input
+                            type="number"
+                            value={editFormData?.starting_year || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, starting_year: e.target.value })}
+                            placeholder="e.g., 2018"
+                            className="rounded-full"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">Passing Year</Label>
+                          <Input
+                            type="number"
+                            value={editFormData?.passing_year || ""}
+                            onChange={(e) => setEditFormData({ ...editFormData, passing_year: e.target.value })}
+                            placeholder="e.g., 2022"
+                            className="rounded-full"
+                          />
+                        </div>
+                      </div>
+                    ) : profileData.highest_qualification || profileData.course ? (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {profileData.highest_qualification && (
+                            <InfoField label="Highest Qualification" value={profileData.highest_qualification} />
+                          )}
+                          {profileData.course && <InfoField label="Course" value={profileData.course} />}
+                          {profileData.specialization && (
+                            <InfoField label="Specialization" value={profileData.specialization} />
+                          )}
+                          {profileData.course_type && (
+                            <InfoField label="Course Type" value={profileData.course_type} capitalize />
+                          )}
+                          {profileData.university && (
+                            <InfoField label="University/Institute" value={profileData.university} />
+                          )}
+                          {(profileData.starting_year || profileData.passing_year) && (
+                            <InfoField
+                              label="Duration"
+                              value={`${profileData.starting_year || "N/A"} - ${profileData.passing_year || "N/A"}`}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-500">No education details provided</p>
+                        {!isEditMode && (
+                          <p className="text-sm text-gray-400 mt-2">Click "Edit Profile" to add education details</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200 rounded-lg shadow-sm">
+                  <CardContent className="p-6">
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Target className="w-5 h-5 text-blue-600" />
+                      Projects
+                    </h3>
+                    {isEditMode && (
+                      <Button onClick={addProject} size="sm" variant="outline" className="rounded-full bg-transparent">
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add Project
+                      </Button>
+                    )}
+                    <div className="space-y-4">
+                      {isEditMode ? (
+                        projects.length > 0 ? (
+                          projects.map((proj, index) => (
+                            <div key={index} className="p-4 bg-gray-50 rounded-lg space-y-3">
+                              <div className="flex justify-between items-start gap-4">
+                                <div className="flex-1 space-y-3">
+                                  <Input
+                                    placeholder="Project name"
+                                    value={proj.name}
+                                    onChange={(e) => updateProject(index, "name", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Textarea
+                                    placeholder="Project description"
+                                    value={proj.description}
+                                    onChange={(e) => updateProject(index, "description", e.target.value)}
+                                    rows={2}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    placeholder="Technologies used (comma-separated)"
+                                    value={proj.technologies}
+                                    onChange={(e) => updateProject(index, "technologies", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                  <Input
+                                    placeholder="Project URL"
+                                    value={proj.url}
+                                    onChange={(e) => updateProject(index, "url", e.target.value)}
+                                    className="rounded-full"
+                                  />
+                                </div>
+                                <Button
+                                  onClick={() => removeProject(index)}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-gray-500 text-sm">No projects added yet. Click "Add Project" to start.</p>
+                        )
+                      ) : profileData.projects && profileData.projects.length > 0 ? (
+                        <div className="space-y-4">
+                          {profileData.projects.map((proj: any, index: number) => (
+                            <div key={index} className="p-4 bg-purple-50 border border-purple-100 rounded-lg">
+                              <h4 className="font-semibold text-gray-900">{proj.name}</h4>
+                              {proj.description && <p className="text-sm text-gray-600 mt-2">{proj.description}</p>}
+                              {proj.technologies && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                  <span className="font-medium">Technologies:</span> {proj.technologies}
+                                </p>
+                              )}
+                              {proj.url && (
+                                <a
+                                  href={proj.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline mt-2 block"
+                                >
+                                  View Project
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm">No projects added</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="border border-gray-200 rounded-lg shadow-sm">
+                    <CardContent className="p-6">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4 pb-3 border-b">
+                        <Star className="w-5 h-5 text-blue-600" />
+                        Key Skills
+                      </h3>
+                      {isEditMode ? (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Add Skills (Press Enter or comma to add)
+                          </Label>
+                          <Input
+                            placeholder="Type a skill and press Enter"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === ",") {
+                                e.preventDefault()
+                                const input = e.currentTarget
+                                const skill = input.value.trim().replace(/,$/g, "")
+                                if (skill) {
+                                  const currentSkills = editFormData?.skills_for_role || []
+                                  if (!currentSkills.includes(skill)) {
+                                    setEditFormData({
+                                      ...editFormData,
+                                      skills_for_role: [...currentSkills, skill],
+                                    })
+                                  }
+                                  input.value = ""
+                                }
+                              }
+                            }}
+                            className="rounded-full"
+                          />
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            {(editFormData?.skills_for_role || []).map((skill: string, index: number) => (
+                              <Badge
+                                key={index}
+                                variant="secondary"
+                                className="bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer"
+                                onClick={() => {
+                                  const newSkills = (editFormData?.skills_for_role || []).filter(
+                                    (_: string, i: number) => i !== index,
+                                  )
+                                  setEditFormData({ ...editFormData, skills_for_role: newSkills })
+                                }}
+                              >
+                                {skill} <X className="w-3 h-3 ml-1" />
+                              </Badge>
+                            ))}
+                          </div>
+                          {(!editFormData?.skills_for_role || editFormData.skills_for_role.length === 0) && (
+                            <p className="text-gray-500 text-sm mt-2">
+                              No skills added yet. Start typing to add skills.
+                            </p>
+                          )}
+                        </div>
+                      ) : profileData.skills_for_role &&
+                        Array.isArray(profileData.skills_for_role) &&
+                        profileData.skills_for_role.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {profileData.skills_for_role.map((skill: string, index: number) => (
+                            <Badge
+                              key={index}
+                              variant="secondary"
+                              className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+                            >
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <p className="text-gray-500 text-sm">No skills specified</p>
+                          {!isEditMode && (
+                            <p className="text-xs text-gray-400 mt-1">Click "Edit Profile" to add skills</p>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-gray-200 rounded-lg shadow-sm">
+                    <CardContent className="p-6">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <Award className="w-5 h-5 text-purple-600" />
+                        All Skills
+                      </h3>
+                      {isEditMode ? (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Add Additional Skills (Press Enter or comma to add)
+                          </Label>
+                          <Input
+                            placeholder="Type a skill and press Enter"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === ",") {
+                                e.preventDefault()
+                                const input = e.currentTarget
+                                const skill = input.value.trim().replace(/,$/g, "")
+                                if (skill) {
+                                  const currentSkills = editFormData?.skills_you_know || []
+                                  if (!currentSkills.includes(skill)) {
+                                    setEditFormData({
+                                      ...editFormData,
+                                      skills_you_know: [...currentSkills, skill],
+                                    })
+                                  }
+                                  input.value = ""
+                                }
+                              }
+                            }}
+                            className="rounded-full"
+                          />
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            {(editFormData?.skills_you_know || []).map((skill: string, index: number) => (
+                              <Badge
+                                key={index}
+                                variant="outline"
+                                className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 cursor-pointer"
+                                onClick={() => {
+                                  const newSkills = (editFormData?.skills_you_know || []).filter(
+                                    (_: string, i: number) => i !== index,
+                                  )
+                                  setEditFormData({ ...editFormData, skills_you_know: newSkills })
+                                }}
+                              >
+                                {skill} <X className="w-3 h-3 ml-1" />
+                              </Badge>
+                            ))}
+                          </div>
+                          {(!editFormData?.skills_you_know || editFormData.skills_you_know.length === 0) && (
+                            <p className="text-gray-500 text-sm mt-2">No additional skills added yet.</p>
+                          )}
+                        </div>
+                      ) : profileData.skills_you_know &&
+                        Array.isArray(profileData.skills_you_know) &&
+                        profileData.skills_you_know.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {profileData.skills_you_know.map((skill: string, index: number) => (
+                            <Badge
+                              key={index}
+                              variant="outline"
+                              className="bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                            >
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <p className="text-gray-500 text-sm">No additional skills specified</p>
+                          {!isEditMode && (
+                            <p className="text-xs text-gray-400 mt-1">Click "Edit Profile" to add more skills</p>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-gray-200 rounded-lg shadow-sm">
+                    <CardContent className="p-6">
+                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <Target className="w-5 h-5 text-blue-600" />
+                        Job Preferences
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm text-gray-500 mb-1">Preferred Salary</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            ₹{formatSalary(profileData.preferred_salary)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500 mb-2">Preferred Locations</p>
+                          {profileData.preferred_locations &&
+                          Array.isArray(profileData.preferred_locations) &&
+                          profileData.preferred_locations.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {profileData.preferred_locations.map((location: string, index: number) => (
+                                <Badge
+                                  key={index}
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700 border-green-200"
+                                >
+                                  <MapPin className="w-3 h-3 mr-1" />
+                                  {location}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-sm">No locations specified</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

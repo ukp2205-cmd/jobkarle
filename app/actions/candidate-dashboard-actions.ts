@@ -1,6 +1,7 @@
 "use server"
 
 import { createServerClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/client"
 
 async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
   let lastError: any
@@ -28,168 +29,80 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxRetries = 3, initial
 
 export async function getRecommendedJobs(candidateId: string) {
   try {
-    const supabase = await createServerClient()
+    const supabase = createClient()
 
-    const { data: candidate, error: candidateError } = await retryWithBackoff(async () => {
-      return await supabase
-        .from("candidates")
-        .select(
-          "skills_for_role, preferred_locations, preferred_salary, total_experience_years, industry, department, registration_completed, email, full_name",
-        )
-        .eq("id", candidateId)
-        .single()
-    })
+    const { data: candidate } = await supabase.from("candidates").select("*").eq("id", candidateId).single()
 
-    if (candidateError || !candidate) {
-      console.log("[v0] Candidate not found or error:", candidateError)
-      return { success: false, error: "Candidate not found", jobs: [], profileIncomplete: false }
+    if (!candidate) {
+      return { success: false, jobs: [], error: "Candidate not found" }
     }
-
-    console.log("[v0] === JOB RECOMMENDATION REQUEST ===")
-    console.log("[v0] Candidate:", {
-      email: candidate.email,
-      name: candidate.full_name,
-      id: candidateId.substring(0, 8) + "...",
-    })
-
-    const candidateSkills = (candidate.skills_for_role || []) as string[]
-    const candidateLocations = (candidate.preferred_locations || []) as string[]
-    const candidateSalary = candidate.preferred_salary
-    const candidateExperience = candidate.total_experience_years || 0
-    const candidateIndustry = candidate.industry as string | null
-    const candidateDepartment = candidate.department as string | null
 
     const { data: blockedEmployers } = await supabase
       .from("blocked_employers")
       .select("employer_id")
       .eq("candidate_id", candidateId)
 
-    const blockedEmployerIds = (blockedEmployers || []).map((blocked) => blocked.employer_id).filter(Boolean)
+    const blockedEmployerIds = blockedEmployers?.map((b) => b.employer_id) || []
 
-    console.log("[v0] Blocked Employers Query Result:", {
-      raw: blockedEmployers,
-      count: blockedEmployers?.length || 0,
-      employerIds: blockedEmployerIds,
-    })
-
-    const profileIncomplete = candidateSkills.length === 0
-
-    console.log("[v0] Candidate Profile:", {
-      skills: candidateSkills,
-      locations: candidateLocations,
-      salary: candidateSalary,
-      experience: candidateExperience,
-      industry: candidateIndustry,
-      department: candidateDepartment,
-      profileIncomplete,
-      blockedCompanies: blockedEmployerIds.length,
-    })
-
-    const { data: jobs, error } = await supabase
+    const { data: jobs } = await supabase
       .from("job_postings")
-      .select("*, openings")
+      .select("*")
       .eq("status", "published")
-      .order("created_at", { ascending: false })
-      .limit(100)
+      .gte("expires_at", new Date().toISOString())
 
-    if (error) {
-      console.error("[v0] Error fetching jobs:", error)
-      return { success: false, error: error.message, jobs: [], profileIncomplete }
-    }
-
-    console.log("[v0] Total published jobs:", jobs?.length || 0)
-
-    if (profileIncomplete) {
-      console.log("[v0] Profile incomplete - returning 0 jobs to force profile completion")
-      return {
-        success: true,
-        jobs: [],
-        profileIncomplete: true,
-        message: "Please complete your profile (add skills) to see job recommendations",
-      }
-    }
-
+    const candidateSkills = ((candidate.skills_for_role || []) as string[]).concat(
+      (candidate.skills_you_know || []) as string[],
+    )
     const normalizedCandidateSkills = candidateSkills.map((skill) => String(skill).toLowerCase().trim())
-    const normalizedCandidateLocations =
-      candidateLocations.length > 0 ? candidateLocations.map((loc) => String(loc).toLowerCase().trim()) : []
+
+    const candidateLocations = (candidate.preferred_locations || []) as string[]
+    const normalizedCandidateLocations = candidateLocations.map((loc) => String(loc).toLowerCase().trim())
+
+    const candidateIndustry = candidate.industry
+    const candidateEducation = candidate.highest_qualification
+    const candidateExperience = (candidate.total_experience_years || 0) + (candidate.total_experience_months || 0) / 12
+    const candidateSalary = candidate.preferred_salary
 
     let candidateSalaryMin = 0
     let candidateSalaryMax = Number.POSITIVE_INFINITY
     if (candidateSalary) {
-      const salaryNum = Number(candidateSalary)
-      if (salaryNum >= 100) {
-        candidateSalaryMin = salaryNum
-        candidateSalaryMax = salaryNum
-      } else {
-        candidateSalaryMin = salaryNum * 100000
-        candidateSalaryMax = salaryNum * 100000
+      const salaryStr = String(candidateSalary).replace(/[^0-9.]/g, "")
+      const salaryNum = Number(salaryStr)
+      if (!isNaN(salaryNum) && salaryNum > 0) {
+        if (salaryNum >= 100) {
+          candidateSalaryMin = salaryNum
+          candidateSalaryMax = salaryNum
+        } else {
+          candidateSalaryMin = salaryNum * 100000
+          candidateSalaryMax = salaryNum * 100000
+        }
       }
     }
-
-    console.log("[v0] Candidate salary range:", {
-      raw: candidateSalary,
-      min: candidateSalaryMin,
-      max: candidateSalaryMax,
-      minLPA: candidateSalaryMin / 100000,
-      maxLPA: candidateSalaryMax / 100000,
-    })
 
     const matchedJobs =
       jobs?.filter((job) => {
         const isBlocked = job.employer_id && blockedEmployerIds.includes(job.employer_id)
-        console.log(`[v0] Checking job "${job.job_title}" at ${job.company_name}:`, {
-          jobEmployerId: job.employer_id,
-          blockedIds: blockedEmployerIds,
-          isBlocked,
-        })
 
         if (isBlocked) {
-          console.log(`[v0] ❌ JOB FILTERED (Blocked Employer): "${job.job_title}" at ${job.company_name}`)
           return false
         }
 
-        let matchScore = 0
-        const matchDetails: any = {}
+        const jobIndustries = (job.candidate_industries || []) as string[]
+        const normalizedJobIndustries = jobIndustries.map((ind) => String(ind).toLowerCase().trim())
 
-        const jobMinSalary = Number(job.min_salary) || 0
-        const jobMaxSalary = Number(job.max_salary) || Number.POSITIVE_INFINITY
-
-        const salaryMatch =
-          !candidateSalary || (candidateSalaryMin <= jobMaxSalary && candidateSalaryMax >= jobMinSalary)
-        matchDetails.salary = {
-          match: salaryMatch,
-          candidateRange: candidateSalary
-            ? `${candidateSalaryMin / 100000}-${candidateSalaryMax / 100000} LPA`
-            : "Not specified",
-          jobRange: `${jobMinSalary / 100000}-${jobMaxSalary / 100000} LPA`,
-        }
-        if (salaryMatch) matchScore += 25
-
-        const jobLocations = (job.job_locations || []) as string[]
-        const normalizedJobLocations = jobLocations.map((loc) => String(loc).toLowerCase().trim())
-
-        const locationMatch =
-          normalizedCandidateLocations.length === 0 ||
-          normalizedCandidateLocations.some((candidateLoc) =>
-            normalizedJobLocations.some((jobLoc) => jobLoc.includes(candidateLoc) || candidateLoc.includes(jobLoc)),
+        const industryMatch =
+          candidateIndustry &&
+          jobIndustries.length > 0 &&
+          normalizedJobIndustries.some(
+            (jobInd) =>
+              jobInd === candidateIndustry.toLowerCase().trim() ||
+              candidateIndustry.toLowerCase().trim().includes(jobInd) ||
+              jobInd.includes(candidateIndustry.toLowerCase().trim()),
           )
-        matchDetails.location = {
-          match: locationMatch,
-          candidateLocations: normalizedCandidateLocations.length > 0 ? normalizedCandidateLocations : ["Any location"],
-          jobLocations: normalizedJobLocations,
-        }
-        if (locationMatch) matchScore += 25
 
-        const jobMinExp = Number(job.min_experience) || 0
-        const jobMaxExp = Number(job.max_experience) || 100
-
-        const experienceMatch = candidateExperience >= jobMinExp && candidateExperience <= jobMaxExp
-        matchDetails.experience = {
-          match: experienceMatch,
-          candidateExp: candidateExperience,
-          jobRange: `${jobMinExp}-${jobMaxExp} years`,
+        if (!industryMatch) {
+          return false
         }
-        if (experienceMatch) matchScore += 25
 
         const jobSkills = (job.required_skills || []) as string[]
         const normalizedJobSkills = jobSkills.map((skill) => String(skill).toLowerCase().trim())
@@ -200,46 +113,90 @@ export async function getRecommendedJobs(candidateId: string) {
           }),
         )
 
-        const skillsMatch = matchingSkills.length > 0
-        matchDetails.skills = {
-          match: skillsMatch,
-          matchingSkills: matchingSkills,
-          candidateSkills: normalizedCandidateSkills,
-          jobSkills: normalizedJobSkills,
-        }
-        if (skillsMatch) matchScore += 25
+        const skillsMatch = normalizedCandidateSkills.length > 0 && jobSkills.length > 0 && matchingSkills.length > 0
 
-        const isMatch = matchScore >= 25
-
-        if (isMatch) {
-          console.log(`[v0] ✅ JOB MATCHED: "${job.job_title}" at ${job.company_name}`)
-          console.log(`[v0]    Match Score: ${matchScore}/100`)
-          console.log(
-            `[v0]    ${matchDetails.salary.match ? "✓" : "✗"} Salary: ${matchDetails.salary.candidateRange} vs ${matchDetails.salary.jobRange}`,
-          )
-          console.log(
-            `[v0]    ${matchDetails.location.match ? "✓" : "✗"} Location: ${matchDetails.location.candidateLocations.join(", ")} vs ${matchDetails.location.jobLocations.join(", ")}`,
-          )
-          console.log(
-            `[v0]    ${matchDetails.experience.match ? "✓" : "✗"} Experience: ${matchDetails.experience.candidateExp} years vs ${matchDetails.experience.jobRange}`,
-          )
-          console.log(
-            `[v0]    ${matchDetails.skills.match ? "✓" : "✗"} Skills: ${matchingSkills.length} matching (${matchingSkills.join(", ")})`,
-          )
+        if (!skillsMatch) {
+          return false
         }
 
-        return isMatch
+        const jobLocations = (job.job_locations || []) as string[]
+        const normalizedJobLocations = jobLocations.map((loc) => String(loc).toLowerCase().trim())
+
+        const locationMatch =
+          normalizedCandidateLocations.length > 0 &&
+          jobLocations.length > 0 &&
+          normalizedCandidateLocations.some((candidateLoc) =>
+            normalizedJobLocations.some((jobLoc) => jobLoc.includes(candidateLoc) || candidateLoc.includes(jobLoc)),
+          )
+
+        if (!locationMatch) {
+          return false
+        }
+
+        const jobMinSalary = Number(job.min_salary) || 0
+        const jobMaxSalary = Number(job.max_salary) || Number.POSITIVE_INFINITY
+
+        const salaryMatch =
+          candidateSalary &&
+          candidateSalaryMin > 0 &&
+          candidateSalaryMin <= jobMaxSalary &&
+          candidateSalaryMax >= jobMinSalary
+
+        if (!salaryMatch) {
+          return false
+        }
+
+        const jobEducationRequirements = (job.educational_qualifications || []) as string[]
+        const normalizedJobEducation = jobEducationRequirements.map((edu) => String(edu).toLowerCase().trim())
+
+        const educationMatch =
+          candidateEducation &&
+          jobEducationRequirements.length > 0 &&
+          normalizedJobEducation.some(
+            (jobEdu) =>
+              jobEdu === candidateEducation.toLowerCase().trim() ||
+              candidateEducation.toLowerCase().trim().includes(jobEdu) ||
+              jobEdu.includes(candidateEducation.toLowerCase().trim()),
+          )
+
+        if (!educationMatch) {
+          console.log(`[v0] ✗ Education mismatch for job ${job.id}`)
+          return false
+        }
+
+        const jobMinExp = Number(job.min_experience) || 0
+        const jobMaxExp = Number(job.max_experience) || 100
+        const experienceMatch = candidateExperience >= jobMinExp && candidateExperience <= jobMaxExp
+
+        console.log(
+          `[v0] ✓ Job ${job.id} matched - Industry: ✓, Skills: ✓, Location: ✓, Salary: ✓, Education: ✓, Experience: ${experienceMatch ? "✓" : "~"}`,
+        )
+        return experienceMatch
       }) || []
 
-    console.log("[v0] === MATCHING COMPLETE ===")
-    console.log("[v0] Total matched jobs:", matchedJobs.length)
-    console.log("[v0] ========================")
+    const sortedJobs = matchedJobs.sort((a, b) => {
+      const aPremium = a.category === "premium" ? 1 : 0
+      const bPremium = b.category === "premium" ? 1 : 0
+      if (aPremium !== bPremium) return bPremium - aPremium
 
-    return { success: true, jobs: matchedJobs, profileIncomplete: false }
-  } catch (error) {
-    console.error("[v0] Error in getRecommendedJobs:", error)
-    const errorMessage = error instanceof Error ? error.message : "Failed to fetch jobs"
-    return { success: false, error: errorMessage, jobs: [], profileIncomplete: false }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    return {
+      success: true,
+      jobs: sortedJobs,
+      candidateProfile: {
+        industry: candidateIndustry,
+        skills: candidateSkills,
+        locations: candidateLocations,
+        education: candidateEducation,
+        experience: candidateExperience,
+        salary: candidateSalary,
+      },
+    }
+  } catch (error: any) {
+    console.error("[v0] ✗ Error in getRecommendedJobs:", error)
+    return { success: false, jobs: [], error: error.message }
   }
 }
 

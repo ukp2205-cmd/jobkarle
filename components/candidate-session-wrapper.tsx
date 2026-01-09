@@ -3,23 +3,23 @@
 import type React from "react"
 
 import { useRouter } from "next/navigation"
-import { logoutEmployer } from "@/app/actions/employer-auth-actions"
+import { logoutCandidate } from "@/app/actions/candidate-auth-actions"
 import { useSessionTimeout } from "@/hooks/use-session-timeout"
 import { SessionTimeoutWarning } from "@/components/session-timeout-warning"
 
-interface EmployerSessionWrapperProps {
+interface CandidateSessionWrapperProps {
   children: React.ReactNode
 }
 
-export function EmployerSessionWrapper({ children }: EmployerSessionWrapperProps) {
+export function CandidateSessionWrapper({ children }: CandidateSessionWrapperProps) {
   const router = useRouter()
 
   const { showWarning, secondsRemaining, extendSession } = useSessionTimeout({
     timeoutMs: 15 * 60 * 1000, // 15 minutes (900,000 ms)
     warningMs: 10 * 1000, // 10 seconds warning before timeout
     onTimeout: async () => {
-      await logoutEmployer()
-      router.push("/employer/login?timeout=true")
+      await logoutCandidate()
+      router.push("/candidate/login?timeout=true")
     },
   })
 
