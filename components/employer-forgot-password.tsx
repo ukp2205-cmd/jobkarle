@@ -2,14 +2,16 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Label } from "@/components/ui/label"
 import Link from "next/link"
-import { ArrowLeft, Mail } from "lucide-react"
+import { ArrowLeft, Mail, Briefcase } from "lucide-react"
 import { sendEmailViaMSG91 } from "@/app/actions/email-actions"
+import { createClient } from "@/lib/supabase/client"
+
+const PRODUCTION_DOMAIN = "https://jobkarle.com"
 
 export default function EmployerForgotPassword() {
   const [email, setEmail] = useState("")
@@ -28,28 +30,48 @@ export default function EmployerForgotPassword() {
         return
       }
 
-      // Generate reset token
+      const supabase = createClient()
+
+      const { data: employer, error: queryError } = await supabase
+        .from("employers")
+        .select("username, company_name, id")
+        .eq("email", email)
+        .single()
+
+      if (queryError || !employer) {
+        setMessage({ type: "error", text: "Email not found in our system" })
+        setIsLoading(false)
+        return
+      }
+
+      const employerName = employer?.username || employer?.company_name || "User"
+
       const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-      const resetLink = `${window.location.origin}/employer/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
+      const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000)
+
+      const { error: updateError } = await supabase
+        .from("employers")
+        .update({
+          reset_token: resetToken,
+          reset_token_expires_at: resetTokenExpiry.toISOString(),
+        })
+        .eq("id", employer.id)
+
+      if (updateError) {
+        console.error("[v0] Failed to save reset token:", updateError)
+        setMessage({ type: "error", text: "Failed to generate reset link. Please try again." })
+        setIsLoading(false)
+        return
+      }
+
+      const resetLink = `${PRODUCTION_DOMAIN}/employer/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
 
       const emailResult = await sendEmailViaMSG91({
         to: email,
         subject: "Reset Your JobKarle Employer Account Password",
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Password Reset Request</h2>
-            <p>Hello Employer,</p>
-            <p>We received a request to reset your password. Click the link below to proceed:</p>
-            <p style="margin: 20px 0;">
-              <a href="${resetLink}" style="background-color: #a855f7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Reset Password
-              </a>
-            </p>
-            <p>If you didn't request this, you can ignore this email. This link will expire in 1 hour.</p>
-            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
-            <p style="font-size: 12px; color: #666;">JobKarle Team</p>
-          </div>
-        `,
+        html: "",
+        resetLink: resetLink,
+        name: employerName,
       })
 
       if (emailResult.success) {
@@ -75,31 +97,34 @@ export default function EmployerForgotPassword() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-            <Link href="/employer/login" className="flex items-center gap-1 hover:text-foreground transition-colors">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Login
-            </Link>
+    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardContent className="pt-8">
+          <div className="flex justify-center mb-8">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Briefcase className="h-6 w-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">JobKarle</span>
+            </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Forgot Password</CardTitle>
-          <CardDescription>Enter your email address and we'll send you a link to reset your password.</CardDescription>
-        </CardHeader>
-        <CardContent>
+
+          <h1 className="text-3xl font-bold text-center text-gray-900 mb-2">Forgot Password?</h1>
+          <p className="text-center text-gray-600 mb-8">
+            No worries! Enter your email and we'll send you a link to reset your password.
+          </p>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
+              <label className="text-sm font-medium text-gray-700">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
                 <Input
-                  id="email"
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-9"
+                  className="pl-10 py-2.5 border border-gray-300 rounded-lg"
                   required
                   disabled={isLoading}
                 />
@@ -112,14 +137,32 @@ export default function EmployerForgotPassword() {
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button
+              type="submit"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-semibold"
+              disabled={isLoading}
+            >
               {isLoading ? "Sending..." : "Send Reset Link"}
             </Button>
 
-            <div className="text-center text-sm text-muted-foreground">
-              Remember your password?{" "}
-              <Link href="/employer/login" className="text-primary hover:underline">
-                Sign in
+            <div className="relative flex items-center my-6">
+              <div className="flex-grow border-t border-gray-300"></div>
+              <span className="mx-4 text-gray-500 text-sm">or</span>
+              <div className="flex-grow border-t border-gray-300"></div>
+            </div>
+
+            <Link
+              href="/employer/login"
+              className="w-full flex items-center justify-center gap-2 border border-gray-300 text-gray-700 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Login
+            </Link>
+
+            <div className="text-center text-sm text-gray-600 mt-6">
+              Employer?{" "}
+              <Link href="/candidate/forgot-password" className="text-blue-500 hover:underline font-medium">
+                Reset Candidate Password
               </Link>
             </div>
           </form>

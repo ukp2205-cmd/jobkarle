@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,8 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { Lock, Eye, EyeOff } from "lucide-react"
-import { createBrowserClient } from "@supabase/ssr"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { resetEmployerPassword } from "@/app/actions/password-reset-actions"
 
 export default function EmployerResetPassword() {
   const [password, setPassword] = useState("")
@@ -21,11 +20,10 @@ export default function EmployerResetPassword() {
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const token = searchParams.get("token")
+  const email = searchParams.get("email")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,17 +42,34 @@ export default function EmployerResetPassword() {
       return
     }
 
+    if (!token || !email) {
+      setMessage({ type: "error", text: "Invalid reset link. Please request a new password reset." })
+      setIsLoading(false)
+      return
+    }
+
+    console.log("[v0] Resetting password for:", decodeURIComponent(email))
+    console.log("[v0] Token:", token)
+
     try {
-      const { error } = await supabase.auth.updateUser({ password })
+      const result = await resetEmployerPassword({
+        token,
+        email: decodeURIComponent(email),
+        newPassword: password,
+      })
 
-      if (error) throw error
+      console.log("[v0] Reset password result:", result)
 
-      setMessage({ type: "success", text: "Password reset successful! Redirecting to login..." })
-
-      setTimeout(() => {
-        router.push("/employer/login")
-      }, 2000)
+      if (result.success) {
+        setMessage({ type: "success", text: "Password reset successful! Redirecting to login..." })
+        setTimeout(() => {
+          router.push("/employer/login")
+        }, 2000)
+      } else {
+        setMessage({ type: "error", text: result.error || "Failed to reset password" })
+      }
     } catch (error: any) {
+      console.error("[v0] Reset password error:", error)
       setMessage({ type: "error", text: error.message || "Failed to reset password. Please try again." })
     } finally {
       setIsLoading(false)
