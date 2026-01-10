@@ -98,8 +98,6 @@ export async function getJobsByIndustry() {
         return a.industry.localeCompare(b.industry)
       })
 
-    console.log("[v0] Grouped jobs into", jobsByIndustry.length, "industries")
-
     return { success: true, jobsByIndustry }
   } catch (error: any) {
     console.error("[v0] Error in getJobsByIndustry:", error)

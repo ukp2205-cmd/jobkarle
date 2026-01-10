@@ -32,9 +32,6 @@ export async function getSearchSuggestions() {
     const uniqueTitles = [...new Set((jobTitles || []).map((j) => j.job_title).filter(Boolean))]
     const uniqueCompanies = [...new Set((companies || []).map((c) => c.company_name).filter(Boolean))]
 
-    console.log("[v0] Fetched designations:", uniqueTitles.length)
-    console.log("[v0] Fetched companies:", uniqueCompanies.length)
-
     return {
       designations: uniqueTitles.sort(),
       companies: uniqueCompanies.sort(),

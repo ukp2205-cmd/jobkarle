@@ -1,158 +1,130 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
-import { Briefcase, ArrowLeft, Mail, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
-import { requestEmployerPasswordReset } from "@/app/actions/password-reset-actions"
+import { ArrowLeft, Mail } from "lucide-react"
+import { sendEmailViaMSG91 } from "@/app/actions/email-actions"
 
 export default function EmployerForgotPassword() {
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
-  const [resetUrl, setResetUrl] = useState("")
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
-    setMessage("")
-    setResetUrl("")
     setIsLoading(true)
+    setMessage(null)
 
     try {
-      const result = await requestEmployerPasswordReset(email)
-
-      if (result.success) {
-        setMessage(result.message || "Password reset link sent to your email.")
-        if (result.resetUrl) {
-          setResetUrl(result.resetUrl)
-        }
-      } else {
-        setError(result.error || "Failed to send reset link")
+      if (!email || !email.includes("@")) {
+        setMessage({ type: "error", text: "Please enter a valid email address" })
+        setIsLoading(false)
+        return
       }
-    } catch (error) {
-      setError("An unexpected error occurred")
+
+      // Generate reset token
+      const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+      const resetLink = `${window.location.origin}/employer/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
+
+      const emailResult = await sendEmailViaMSG91({
+        to: email,
+        subject: "Reset Your JobKarle Employer Account Password",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Password Reset Request</h2>
+            <p>Hello Employer,</p>
+            <p>We received a request to reset your password. Click the link below to proceed:</p>
+            <p style="margin: 20px 0;">
+              <a href="${resetLink}" style="background-color: #a855f7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                Reset Password
+              </a>
+            </p>
+            <p>If you didn't request this, you can ignore this email. This link will expire in 1 hour.</p>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+            <p style="font-size: 12px; color: #666;">JobKarle Team</p>
+          </div>
+        `,
+      })
+
+      if (emailResult.success) {
+        setMessage({
+          type: "success",
+          text: "Password reset link has been sent to your email. Please check your inbox.",
+        })
+        setEmail("")
+      } else {
+        setMessage({
+          type: "error",
+          text: emailResult.error || "Failed to send reset link. Please try again.",
+        })
+      }
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error.message || "An unexpected error occurred. Please try again.",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="p-8 shadow-2xl border-0 bg-white/80 backdrop-blur">
-          <div className="space-y-6">
-            <div className="text-center space-y-3">
-              <Link href="/" className="inline-flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition">
-                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Briefcase className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-2xl font-bold text-gray-900">JobKarle</span>
-              </Link>
-              <h1 className="text-3xl font-bold text-gray-900">Forgot Password?</h1>
-              <p className="text-gray-600">
-                No worries! Enter your email and we'll send you a link to reset your password.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {message && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm text-green-700 font-medium">{message}</p>
-                      {resetUrl && (
-                        <div className="mt-3 p-3 bg-white rounded border border-green-200">
-                          <p className="text-xs text-gray-600 mb-2">Development Mode - Reset Link:</p>
-                          <a href={resetUrl} className="text-xs text-blue-600 hover:text-blue-700 break-all underline">
-                            {resetUrl}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
-                  <span className="font-medium">⚠️</span>
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-semibold text-gray-700">
-                  Email Address
-                </Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className="h-12 pl-10 pr-4 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base shadow-lg hover:shadow-xl transition-all"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Sending...
-                  </span>
-                ) : (
-                  "Send Reset Link"
-                )}
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white text-gray-500">or</span>
-                </div>
-              </div>
-
-              <Link href="/employer/login">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-12 border-2 border-gray-300 hover:border-blue-600 hover:bg-blue-50 text-gray-700 hover:text-blue-600 font-semibold transition-all bg-transparent"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Login
-                </Button>
-              </Link>
-            </form>
-
-            <div className="text-center text-sm text-gray-500">
-              <p>
-                Candidate?{" "}
-                <a href="/candidate/forgot-password" className="text-blue-600 hover:text-blue-700 font-medium">
-                  Reset Candidate Password
-                </a>
-              </p>
-            </div>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+            <Link href="/employer/login" className="flex items-center gap-1 hover:text-foreground transition-colors">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Login
+            </Link>
           </div>
-        </Card>
-      </div>
+          <CardTitle className="text-2xl font-bold">Forgot Password</CardTitle>
+          <CardDescription>Enter your email address and we'll send you a link to reset your password.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-9"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
+            {message && (
+              <Alert variant={message.type === "error" ? "destructive" : "default"}>
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
+            )}
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Sending..." : "Send Reset Link"}
+            </Button>
+
+            <div className="text-center text-sm text-muted-foreground">
+              Remember your password?{" "}
+              <Link href="/employer/login" className="text-primary hover:underline">
+                Sign in
+              </Link>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }
