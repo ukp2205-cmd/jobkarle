@@ -433,6 +433,8 @@ export default function CandidateRegistration() {
         maritalStatus: formData.maritalStatus,
         projects: formData.projects,
         certifications: formData.certifications,
+        skillsForRole: formData.skillsForRole,
+        skillsYouKnow: formData.skillsYouKnow,
       })
 
       if (result.success) {
@@ -2148,7 +2150,7 @@ function Step3EmploymentAndSkills({
                         handleInputChange("current", null, "durationFrom", e.target.value)
                         calculateTotalExperienceFromEmployment(formData, updateFormData)
                       }}
-                      placeholder="MM/YYYY"
+                      placeholder="YYYY/MM"
                       className="rounded-full h-10"
                       disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
                     />
@@ -2172,7 +2174,7 @@ function Step3EmploymentAndSkills({
                         formData.currentEmployment?.durationTo === "Present" ||
                         (isCurrentEmploymentSaved && !isCurrentEmploymentEditable)
                       }
-                      placeholder={formData.currentEmployment?.durationTo === "Present" ? "Present" : "MM/YYYY"}
+                      placeholder={formData.currentEmployment?.durationTo === "Present" ? "Present" : "YYYY/MM"}
                       className="rounded-full h-10"
                     />
                     <div className="flex items-center gap-2 mt-2">
@@ -2279,8 +2281,8 @@ function Step3EmploymentAndSkills({
                             handleInputChange("additional", index, "fromDate", e.target.value)
                             calculateTotalExperienceFromEmployment(formData, updateFormData)
                           }}
-                          placeholder="MM/YYYY"
-                          className="mt-1 h-9 rounded-full text-sm"
+                          placeholder="YYYY/MM"
+                          className="rounded-full h-10"
                         />
                       </div>
 
@@ -2296,8 +2298,8 @@ function Step3EmploymentAndSkills({
                             handleInputChange("additional", index, "toDate", e.target.value)
                             calculateTotalExperienceFromEmployment(formData, updateFormData)
                           }}
-                          placeholder="MM/YYYY"
-                          className="mt-1 h-9 rounded-full text-sm"
+                          placeholder="YYYY/MM"
+                          className="rounded-full h-10"
                         />
                       </div>
                       {/* CHANGE END */}
@@ -2554,17 +2556,16 @@ const Step4EducationAndProjects = ({
     console.log("[v0] Step4 saving education data...")
 
     try {
-      const result = await updateEducationDetails({
-        email: formData.email,
+      const result = await updateEducationDetails(formData.email, {
         highestQualification: formData.highestQualification,
         course: formData.course,
         courseType: formData.courseType || "",
         specialization: formData.specialization,
         university: formData.university,
-        passingYearFrom: formData.passingYearFrom, // Use passingYearFrom and passingYearTo
+        passingYearFrom: formData.passingYearFrom,
         passingYearTo: formData.passingYearTo,
         certifications: formData.certifications || [],
-        projects: formData.projects || [], // Include projects here
+        projects: formData.projects || [],
       })
 
       if (!result.success) {
@@ -3048,7 +3049,6 @@ const Step4EducationAndProjects = ({
           )}
         </div>
 
-        {/* Navigation Buttons */}
         <div className="flex justify-between pt-4 border-t">
           <Button
             type="button"

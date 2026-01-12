@@ -13,7 +13,7 @@ export async function loginEmployer(email: string, password: string) {
     // Fetch employer from database
     const { data: employer, error: employerError } = await supabase
       .from("employers")
-      .select("id, email, password_hash, company_name, contact_person, otp_verified, mobile_number")
+      .select("id, email, password_hash, company_name, contact_person, otp_verified, mobile_number, logo_url")
       .eq("email", email)
       .maybeSingle()
 
@@ -57,6 +57,7 @@ export async function loginEmployer(email: string, password: string) {
       companyName: employer.company_name,
       contactPerson: employer.contact_person,
       mobileNumber: employer.mobile_number,
+      logoUrl: employer.logo_url,
       loginTime: new Date().toISOString(),
     }
 
@@ -79,6 +80,7 @@ export async function loginEmployer(email: string, password: string) {
         companyName: employer.company_name,
         contactPerson: employer.contact_person,
         mobileNumber: employer.mobile_number,
+        logoUrl: employer.logo_url,
       },
     }
   } catch (error) {

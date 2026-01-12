@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -7,8 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Briefcase, Edit, Save, X, ArrowLeft, CheckCircle, XCircle, Clock } from "lucide-react"
-import { getEmployerProfile, updateEmployerProfile } from "@/app/actions/employer-profile-actions"
+import { Calendar, Briefcase, Edit, Save, X, ArrowLeft, CheckCircle, XCircle, Clock, Upload } from "lucide-react"
+import {
+  getEmployerProfile,
+  updateEmployerProfile,
+  uploadEmployerProfileLogo,
+} from "@/app/actions/employer-profile-actions"
 import { useToast } from "@/components/ui/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -59,6 +65,7 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editedProfile, setEditedProfile] = useState<Partial<ProfileData>>({})
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   const router = useRouter()
   const { toast } = useToast()
@@ -129,6 +136,43 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
     setIsEditing(false)
   }
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const result = await uploadEmployerProfileLogo(formData)
+
+      if (result.success && result.url) {
+        setEditedProfile({ ...editedProfile, logo_url: result.url })
+        setProfile({ ...profile!, logo_url: result.url })
+        toast({
+          title: "Success",
+          description: "Logo uploaded successfully",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.message || "Failed to upload logo",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error uploading logo:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred while uploading logo",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -193,16 +237,48 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-4">
-                    {profile.company_name?.charAt(0) || "C"}
+                  <div className="relative inline-block">
+                    {profile?.logo_url ? (
+                      <img
+                        src={profile.logo_url || "/placeholder.svg"}
+                        alt={profile.company_name}
+                        className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white shadow-lg"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold border-4 border-white shadow-lg">
+                        {profile?.company_name?.charAt(0) || "C"}
+                      </div>
+                    )}
+                    {isEditing && (
+                      <label
+                        htmlFor="logo-upload"
+                        className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 cursor-pointer hover:bg-blue-700 shadow-lg"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <input
+                          id="logo-upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    {uploadingLogo && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 rounded-full">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    )}
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">{profile.company_name}</h2>
-                  <p className="text-sm text-gray-600 mt-1">{profile.contact_person}</p>
-                  <p className="text-sm text-gray-500">{profile.designation}</p>
+                  <h2 className="text-xl font-bold text-gray-900 mt-4">{profile?.company_name}</h2>
+                  <p className="text-sm text-gray-600 mt-1">{profile?.contact_person}</p>
+                  <p className="text-sm text-gray-500">{profile?.designation}</p>
+                  {isEditing && <p className="text-xs text-gray-500 mt-2">Click the upload icon to change logo</p>}
                   <div className="mt-4 pt-4 border-t">
                     <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
                       <Calendar className="h-4 w-4" />
-                      <span>Member since {new Date(profile.created_at).toLocaleDateString()}</span>
+                      <span>Member since {profile && new Date(profile.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>

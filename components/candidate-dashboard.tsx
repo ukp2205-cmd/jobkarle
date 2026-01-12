@@ -1079,6 +1079,10 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
     setUploadError(null)
 
     try {
+      console.log("[v0] Saving profile with resume_url:", editFormData.resume_url)
+      console.log("[v0] Saving profile with skills_for_role:", editFormData.skills_for_role)
+      console.log("[v0] Saving profile with skills_you_know:", editFormData.skills_you_know)
+
       const result = await updateCandidateProfile(candidateId, {
         full_name: editFormData.full_name,
         mobile_number: editFormData.mobile_number,
@@ -1107,7 +1111,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         course: editFormData.course,
         specialization: editFormData.specialization,
         course_type: editFormData.course_type,
-        university_institute: editFormData.university_institute,
+        university: editFormData.university,
         passing_year: editFormData.passing_year,
         starting_year: editFormData.starting_year,
         resume_url: editFormData.resume_url,
@@ -1117,31 +1121,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         languages_known: languages,
         certifications: certifications,
         projects: projects,
-        employment_history: profileData.employment_history, // Employment history is handled separately now
-        key_skills: profileData.key_skills,
-        field_of_study: profileData.field_of_study,
-        total_experience_years: profileData.total_experience_years,
-        total_experience_months: profileData.total_experience_months,
-        currently_employed: profileData.currently_employed,
-        company_name: profileData.company_name,
-        current_job_title: profileData.current_job_title,
-        industry: profileData.industry,
-        department: profileData.department,
-        role_category: profileData.role_category,
-        job_role: profileData.job_role,
-        notice_period: profileData.notice_period,
-        university: profileData.university,
-        // Education fields
-        highest_qualification: editFormData.highest_qualification,
-        course: editFormData.course,
-        specialization: editFormData.specialization,
-        course_type: editFormData.course_type,
-        university: editFormData.university, // Make sure this maps to profileData.university if needed
-        starting_year: editFormData.starting_year,
-        passing_year: editFormData.passing_year,
-        // Skills
-        skills_for_role: editFormData.skills_for_role,
-        skills_you_know: editFormData.skills_you_know,
+        employment_history: profileData.employment_history,
       })
 
       if (result.success) {

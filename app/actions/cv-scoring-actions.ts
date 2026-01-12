@@ -40,11 +40,11 @@ function normalizeToArray(data: any): string[] {
 
 /**
  * Calculate CV score based on job and candidate match
- * Score breakdown (out of 10):
- * - Skills match: 5.0 points (50%)
- * - Location match: 2.5 points (25%)
- * - Experience match: 2.0 points (20%)
- * - Education match: 0.5 points (5%)
+ * Score breakdown (out of 100%):
+ * - Skills match: 50% (50 points)
+ * - Location match: 25% (25 points)
+ * - Experience match: 20% (20 points)
+ * - Education match: 5% (5 points)
  */
 export async function calculateCVScore(candidate: CandidateData, job: JobData): Promise<number> {
   console.log("[v0] Calculating CV score for candidate")
@@ -53,7 +53,7 @@ export async function calculateCVScore(candidate: CandidateData, job: JobData): 
 
   let score = 0
 
-  // 1. Skills matching (5.0 points max) - Most important factor
+  // 1. Skills matching (50 points max) - Most important factor
   const candidateSkills = [
     ...normalizeToArray(candidate.skills_for_role),
     ...normalizeToArray(candidate.skills_you_know),
@@ -64,14 +64,14 @@ export async function calculateCVScore(candidate: CandidateData, job: JobData): 
   if (jobSkills.length > 0 && candidateSkills.length > 0) {
     const matchingSkills = jobSkills.filter((skill) => candidateSkills.includes(skill))
     const skillMatchPercentage = matchingSkills.length / jobSkills.length
-    score += skillMatchPercentage * 5.0
-    console.log("[v0] Skills match:", matchingSkills.length, "/", jobSkills.length, "= +", skillMatchPercentage * 5.0)
+    score += skillMatchPercentage * 50.0
+    console.log("[v0] Skills match:", matchingSkills.length, "/", jobSkills.length, "= +", skillMatchPercentage * 50.0)
   } else if (candidateSkills.length > 0) {
-    score += 1.0 // Some skills present
-    console.log("[v0] Some skills present: +1.0")
+    score += 10.0 // Some skills present
+    console.log("[v0] Some skills present: +10.0")
   }
 
-  // 2. Location matching (2.5 points max)
+  // 2. Location matching (25 points max)
   const candidateLocations = [
     candidate.current_city,
     candidate.current_state,
@@ -86,14 +86,14 @@ export async function calculateCVScore(candidate: CandidateData, job: JobData): 
     const hasLocationMatch = jobLocations.some((jobLoc) =>
       candidateLocations.some((candLoc) => candLoc?.includes(jobLoc) || jobLoc.includes(candLoc || "")),
     )
-    score += hasLocationMatch ? 2.5 : 0.5 // Full points if match, small points if any location present
-    console.log("[v0] Location match:", hasLocationMatch ? "Yes +2.5" : "Partial +0.5")
+    score += hasLocationMatch ? 25.0 : 5.0 // Full points if match, small points if any location present
+    console.log("[v0] Location match:", hasLocationMatch ? "Yes +25.0" : "Partial +5.0")
   } else if (candidateLocations.length > 0) {
-    score += 1.0 // Location data present
-    console.log("[v0] Location data present: +1.0")
+    score += 10.0 // Location data present
+    console.log("[v0] Location data present: +10.0")
   }
 
-  // 3. Experience matching (2.0 points max)
+  // 3. Experience matching (20 points max)
   const candidateExpYears = (candidate.total_experience_years || 0) + (candidate.total_experience_months || 0) / 12
 
   if (job.min_experience !== undefined || job.max_experience !== undefined) {
@@ -101,21 +101,21 @@ export async function calculateCVScore(candidate: CandidateData, job: JobData): 
     const maxExp = job.max_experience || 999
 
     if (candidateExpYears >= minExp && candidateExpYears <= maxExp) {
-      score += 2.0 // Perfect match
-      console.log("[v0] Experience perfect match: +2.0")
+      score += 20.0 // Perfect match
+      console.log("[v0] Experience perfect match: +20.0")
     } else if (candidateExpYears >= minExp * 0.8 && candidateExpYears <= maxExp * 1.2) {
-      score += 1.5 // Close match (within 20%)
-      console.log("[v0] Experience close match: +1.5")
+      score += 15.0 // Close match (within 20%)
+      console.log("[v0] Experience close match: +15.0")
     } else if (candidateExpYears > 0) {
-      score += 0.5 // Has experience but not matching
-      console.log("[v0] Has experience: +0.5")
+      score += 5.0 // Has experience but not matching
+      console.log("[v0] Has experience: +5.0")
     }
   } else if (candidateExpYears > 0) {
-    score += 1.0 // Experience present
-    console.log("[v0] Experience present: +1.0")
+    score += 10.0 // Experience present
+    console.log("[v0] Experience present: +10.0")
   }
 
-  // 4. Education matching (0.5 points max)
+  // 4. Education matching (5 points max)
   const jobEdu = normalizeToArray(job.educational_qualifications).map((e) => e.toLowerCase())
 
   if (jobEdu.length > 0 && candidate.highest_qualification) {
@@ -123,20 +123,20 @@ export async function calculateCVScore(candidate: CandidateData, job: JobData): 
     const hasEduMatch = jobEdu.some((edu) => candEdu.includes(edu) || edu.includes(candEdu))
 
     if (hasEduMatch) {
-      score += 0.5 // Match
-      console.log("[v0] Education match: +0.5")
+      score += 5.0 // Match
+      console.log("[v0] Education match: +5.0")
     } else if (candidate.highest_qualification) {
-      score += 0.2 // Has education specified
-      console.log("[v0] Education present: +0.2")
+      score += 2.0 // Has education specified
+      console.log("[v0] Education present: +2.0")
     }
   } else if (candidate.highest_qualification) {
-    score += 0.3 // Education present
-    console.log("[v0] Education present: +0.3")
+    score += 3.0 // Education present
+    console.log("[v0] Education present: +3.0")
   }
 
-  // Round to 1 decimal place and cap at 10
-  const finalScore = Math.min(Math.round(score * 10) / 10, 10.0)
-  console.log("[v0] Final CV score:", finalScore, "/10")
+  // Round to whole number and cap at 100
+  const finalScore = Math.min(Math.round(score), 100)
+  console.log("[v0] Final CV score:", finalScore, "%")
   return finalScore
 }
 

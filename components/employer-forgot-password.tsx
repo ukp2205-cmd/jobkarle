@@ -2,12 +2,11 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
-import { ArrowLeft, Mail, Briefcase } from "lucide-react"
+import { ArrowLeft, Mail, Briefcase, CheckCircle2 } from "lucide-react"
 import { sendEmailViaMSG91 } from "@/app/actions/email-actions"
 import { createClient } from "@/lib/supabase/client"
 
@@ -17,6 +16,8 @@ export default function EmployerForgotPassword() {
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [sentEmail, setSentEmail] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,7 +59,6 @@ export default function EmployerForgotPassword() {
         .eq("id", employer.id)
 
       if (updateError) {
-        console.error("[v0] Failed to save reset token:", updateError)
         setMessage({ type: "error", text: "Failed to generate reset link. Please try again." })
         setIsLoading(false)
         return
@@ -75,10 +75,8 @@ export default function EmployerForgotPassword() {
       })
 
       if (emailResult.success) {
-        setMessage({
-          type: "success",
-          text: "Password reset link has been sent to your email. Please check your inbox.",
-        })
+        setSentEmail(email)
+        setIsSuccess(true)
         setEmail("")
       } else {
         setMessage({
@@ -96,78 +94,134 @@ export default function EmployerForgotPassword() {
     }
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardContent className="pt-8">
-          <div className="flex justify-center mb-8">
-            <div className="flex items-center gap-2">
-              <div className="bg-blue-500 p-2 rounded-lg">
-                <Briefcase className="h-6 w-6 text-white" />
+  if (isSuccess) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-blue-50/30 p-4">
+        <div className="w-full max-w-[400px]">
+          <div className="bg-white rounded-xl shadow-lg shadow-gray-200/50 border border-gray-100 p-6 text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
               </div>
-              <span className="text-2xl font-bold text-gray-900">JobKarle</span>
+            </div>
+
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Check Your Email</h2>
+            <p className="text-gray-500 text-sm mb-4">
+              We've sent a reset link to <span className="font-medium text-gray-700">{sentEmail}</span>
+            </p>
+
+            <div className="bg-slate-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
+              Didn't receive it? Check spam folder or request a new link.
+            </div>
+
+            <Button
+              onClick={() => setIsSuccess(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-10 rounded-lg font-medium text-sm mb-2"
+            >
+              Send Another Link
+            </Button>
+
+            <Link
+              href="/employer/login"
+              className="block w-full py-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+            >
+              Back to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-blue-50/30 p-4">
+      <div className="w-full max-w-[400px]">
+        <div className="bg-white rounded-xl shadow-lg shadow-gray-200/50 border border-gray-100 p-6">
+          {/* Logo */}
+          <div className="flex justify-center mb-5">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-2 rounded-lg">
+                <Briefcase className="h-5 w-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-blue-600">JobKarle</span>
             </div>
           </div>
 
-          <h1 className="text-3xl font-bold text-center text-gray-900 mb-2">Forgot Password?</h1>
-          <p className="text-center text-gray-600 mb-8">
-            No worries! Enter your email and we'll send you a link to reset your password.
-          </p>
+          {/* Header */}
+          <div className="text-center mb-5">
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Forgot Password?</h1>
+            <p className="text-gray-500 text-sm">
+              No worries! Enter your email and we'll send you a link to reset your password.
+            </p>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
+            {/* Email Input */}
+            <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   type="email"
                   placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 py-2.5 border border-gray-300 rounded-lg"
+                  className="pl-10 h-11 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-blue-500 bg-gray-50/50 focus:bg-white text-sm"
                   required
                   disabled={isLoading}
                 />
               </div>
             </div>
 
+            {/* Error Message */}
             {message && (
-              <Alert variant={message.type === "error" ? "destructive" : "default"}>
-                <AlertDescription>{message.text}</AlertDescription>
+              <Alert variant={message.type === "error" ? "destructive" : "default"} className="py-2">
+                <AlertDescription className="text-xs">{message.text}</AlertDescription>
               </Alert>
             )}
 
+            {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-lg font-semibold"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-11 rounded-lg font-semibold text-sm shadow-sm"
               disabled={isLoading}
             >
-              {isLoading ? "Sending..." : "Send Reset Link"}
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Sending...
+                </div>
+              ) : (
+                "Send Reset Link"
+              )}
             </Button>
 
-            <div className="relative flex items-center my-6">
-              <div className="flex-grow border-t border-gray-300"></div>
-              <span className="mx-4 text-gray-500 text-sm">or</span>
-              <div className="flex-grow border-t border-gray-300"></div>
+            {/* Divider */}
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="mx-3 text-gray-400 text-xs">or</span>
+              <div className="flex-grow border-t border-gray-200"></div>
             </div>
 
+            {/* Back to Login */}
             <Link
               href="/employer/login"
-              className="w-full flex items-center justify-center gap-2 border border-gray-300 text-gray-700 py-2.5 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 h-11 rounded-lg font-medium text-sm hover:bg-gray-50 hover:border-gray-300 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Login
             </Link>
 
-            <div className="text-center text-sm text-gray-600 mt-6">
-              Employer?{" "}
-              <Link href="/candidate/forgot-password" className="text-blue-500 hover:underline font-medium">
+            {/* Candidate Link */}
+            <p className="text-center text-xs text-gray-500 pt-3 border-t border-gray-100">
+              Candidate?{" "}
+              <Link href="/candidate/forgot-password" className="text-blue-600 hover:text-blue-700 font-medium">
                 Reset Candidate Password
               </Link>
-            </div>
+            </p>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

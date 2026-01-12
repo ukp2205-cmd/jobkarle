@@ -16,6 +16,7 @@ export default async function EmployerDashboardPage() {
         employerId={session.employerId}
         employerName={session.contactPerson || session.email?.split("@")[0] || "Employer"}
         companyName={session.companyName || "Company"}
+        logoUrl={session.logoUrl}
       />
     </EmployerSessionWrapper>
   )

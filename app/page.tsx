@@ -7,6 +7,7 @@ import { HomeSearchResults } from "@/components/home-search-results"
 import { AutocompleteInput } from "@/components/ui/autocomplete-input"
 import { MultiSelectInput } from "@/components/ui/multi-select-input"
 import { getSearchSuggestions } from "@/app/actions/home-search-actions"
+import { CompanyLogoMarquee } from "@/components/company-logo-marquee"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -462,23 +463,26 @@ export default function HomePage() {
           {/* Search Box */}
           <div className="max-w-4xl mx-auto mb-4 sm:mb-6 lg:mb-8">
             <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4">
-              <div className="flex flex-col lg:grid lg:grid-cols-[1fr_1fr_1fr_auto] gap-2 lg:gap-3">
-                <div className="flex gap-1.5 lg:contents">
-                  <div className="flex-1 min-w-0 lg:w-auto">
-                    <MultiSelectInput
-                      options={searchSuggestions.length > 0 ? searchSuggestions : POPULAR_SKILLS}
-                      value={searchParams.skills}
-                      onChange={(value) => setSearchParams({ ...searchParams, skills: value })}
-                      onInputChange={setCurrentInputValue}
-                      placeholder="Skills / Designation / Company"
-                      className="h-9 lg:h-12"
-                    />
-                  </div>
-                  <div className="relative w-[100px] lg:w-auto flex-shrink-0">
+              <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[1fr_1fr_1fr_auto] lg:gap-3">
+                {/* Skills/Designation input - full width on mobile */}
+                <div className="w-full">
+                  <MultiSelectInput
+                    options={searchSuggestions.length > 0 ? searchSuggestions : POPULAR_SKILLS}
+                    value={searchParams.skills}
+                    onChange={(value) => setSearchParams({ ...searchParams, skills: value })}
+                    onInputChange={setCurrentInputValue}
+                    placeholder="Skills / Designation / Company"
+                    className="h-10 lg:h-12"
+                  />
+                </div>
+
+                {/* Experience dropdown and Location on same row on mobile for space efficiency */}
+                <div className="flex gap-2 lg:contents">
+                  <div className="relative flex-1">
                     <select
                       value={searchParams.experience}
                       onChange={(e) => setSearchParams({ ...searchParams, experience: e.target.value })}
-                      className="h-9 lg:h-12 w-full text-[11px] lg:text-base px-1.5 lg:px-3 py-2 rounded-md border border-input bg-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+                      className="h-10 lg:h-12 w-full text-sm lg:text-base px-3 lg:px-3 py-2 rounded-md border border-input bg-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                     >
                       <option value="" disabled>
                         Experience
@@ -490,25 +494,31 @@ export default function HomePage() {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-1 lg:right-3 top-1/2 -translate-y-1/2 h-3 w-3 lg:h-4 lg:w-4 text-muted-foreground pointer-events-none" />
+                    <ChevronDown className="absolute right-2 lg:right-3 top-1/2 -translate-y-1/2 h-4 w-4 lg:h-4 lg:w-4 text-muted-foreground pointer-events-none" />
                   </div>
-                  <div className="flex-1 min-w-0 lg:w-auto">
+
+                  {/* Location input */}
+                  <div className="flex-1">
                     <AutocompleteInput
                       options={TOP_CITIES}
                       value={searchParams.location}
                       onChange={(value) => setSearchParams({ ...searchParams, location: value })}
                       placeholder="Location"
-                      className="h-9 lg:h-12 text-[11px] lg:text-base"
+                      className="h-10 lg:h-12 text-sm lg:text-base"
                     />
                   </div>
                 </div>
-                <Button
-                  onClick={handleSearch}
-                  size="lg"
-                  className="w-full lg:w-auto h-10 lg:h-12 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm lg:text-base font-semibold px-6 lg:px-8"
-                >
-                  Search
-                </Button>
+
+                {/* Search button - smaller and compact on mobile */}
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handleSearch}
+                    size="lg"
+                    className="w-auto h-8 lg:h-12 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm lg:text-base font-semibold px-6 lg:px-8"
+                  >
+                    Search
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -535,6 +545,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Company Logo Marquee */}
+      <CompanyLogoMarquee />
 
       {/* Features Section */}
       <section className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8 lg:py-12">

@@ -478,14 +478,14 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     if (score === null || score === undefined) return null
 
     let colorClass = ""
-    if (score >= 8.0) colorClass = "bg-green-100 text-green-700 border-green-300"
-    else if (score >= 6.0) colorClass = "bg-yellow-100 text-yellow-700 border-yellow-300"
-    else if (score >= 4.0) colorClass = "bg-orange-100 text-orange-700 border-orange-300"
+    if (score >= 80) colorClass = "bg-green-100 text-green-700 border-green-300"
+    else if (score >= 60) colorClass = "bg-yellow-100 text-yellow-700 border-yellow-300"
+    else if (score >= 40) colorClass = "bg-orange-100 text-orange-700 border-orange-300"
     else colorClass = "bg-red-100 text-red-700 border-red-300"
 
     return (
       <Badge className={`${colorClass} font-semibold text-sm`} variant="outline">
-        {score.toFixed(1)}/10
+        {Math.round(score)}%
       </Badge>
     )
   }

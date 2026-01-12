@@ -67,12 +67,14 @@ interface JobsDashboardProps {
   employerId: string
   employerName?: string
   companyName?: string
+  logoUrl?: string | null
 }
 
 export default function JobsDashboard({
   employerId,
   employerName = "Employer",
   companyName = "Company",
+  logoUrl,
 }: JobsDashboardProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
@@ -236,6 +238,11 @@ export default function JobsDashboard({
   const handleRepostJob = async (jobId: string) => {
     if (!employerId) return
 
+    const job = jobs.find((j) => j.id === jobId)
+    if (!job) return
+
+    const creditsNeeded = job.category === "premium" ? 2 : 1
+
     setRepostLoading(true)
     try {
       const result = await repostJob(jobId, employerId)
@@ -243,22 +250,24 @@ export default function JobsDashboard({
       if (result.success) {
         toast({
           title: "Job Reposted Successfully",
-          description: "2 credits have been deducted. The job is now active for 30 days.",
+          description: `${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} have been deducted. The job is now active for 30 days.`,
         })
+        await loadJobs()
+        await loadCredits()
         setRepostDialogOpen(false)
         setJobToRepost(null)
-        await Promise.all([loadJobs(), loadCredits()])
       } else {
         toast({
-          title: "Repost Failed",
-          description: result.error || "Failed to repost job",
+          title: "Failed to Repost Job",
+          description: result.error || "An error occurred",
           variant: "destructive",
         })
       }
     } catch (error) {
+      console.error("[v0] Error reposting job:", error)
       toast({
         title: "Error",
-        description: "An error occurred while reposting the job",
+        description: "An unexpected error occurred",
         variant: "destructive",
       })
     } finally {
@@ -347,17 +356,16 @@ export default function JobsDashboard({
     })}`
   }
 
-  // Helper to determine if a job can be reposted
+  const canRefreshJob = (job: any) => {
+    return job.status === "published"
+  }
+
   const canRepostJob = (job: any) => {
-    // Can only repost closed, expired, or inactive jobs (not deleted or published)
-    if (job.status === "deleted" || job.status === "published") {
-      return false
-    }
+    const now = new Date()
+    const expiresAt = job.expires_at ? new Date(job.expires_at) : null
+    const isExpired = expiresAt ? now > expiresAt : false
 
-    // Check if job is expired
-    const isExpired = job.expires_at && new Date(job.expires_at) < new Date()
-
-    return job.status === "closed" || isExpired || job.status === "draft"
+    return job.status === "closed" || job.status === "expired" || isExpired
   }
 
   const getCategoryBadge = (category: string) => {
@@ -584,7 +592,15 @@ export default function JobsDashboard({
                   className="p-1.5 md:p-2 hover:bg-gray-100 rounded-full transition-colors"
                   aria-label="Profile menu"
                 >
-                  <User className="h-4 md:h-5 w-4 md:w-5 text-gray-600" />
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl || "/placeholder.svg"}
+                      alt={companyName}
+                      className="h-8 w-8 md:h-10 md:w-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-4 md:h-5 w-4 md:w-5 text-gray-600" />
+                  )}
                 </button>
 
                 {showProfileDropdown && (
@@ -1128,31 +1144,63 @@ export default function JobsDashboard({
                               </button>
                             )}
 
-                            {/* Repost Button */}
-                            {canRepostJob(job) && availableCredits >= 2 ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  setJobToRepost(job.id)
-                                  setRepostDialogOpen(true)
-                                }}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                title="Repost Job (2 credits)"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            ) : canRepostJob(job) ? (
-                              <button
-                                type="button"
-                                disabled
-                                className="p-2 text-gray-400 cursor-not-allowed rounded-md"
-                                title="Insufficient credits. Need 2 credits to repost."
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            ) : null}
+                            {canRefreshJob(job) && !canRepostJob(job) && (
+                              <>
+                                {availableCredits >= (job.category === "premium" ? 2 : 1) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setJobToRepost(job.id)
+                                      setRepostDialogOpen(true)
+                                    }}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                                    title={`Refresh Job (${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""})`}
+                                  >
+                                    <RefreshCw className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="p-2 text-gray-400 cursor-not-allowed rounded-md"
+                                    title={`Insufficient credits. Need ${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""} to refresh.`}
+                                  >
+                                    <RefreshCw className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            {canRepostJob(job) && (
+                              <>
+                                {availableCredits >= (job.category === "premium" ? 2 : 1) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setJobToRepost(job.id)
+                                      setRepostDialogOpen(true)
+                                    }}
+                                    className="px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                                    title={`Repost Job (${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""})`}
+                                  >
+                                    Repost
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="px-3 py-1.5 text-sm text-gray-400 bg-gray-100 cursor-not-allowed rounded-md"
+                                    title={`Insufficient credits. Need ${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""} to repost.`}
+                                  >
+                                    Repost
+                                  </button>
+                                )}
+                              </>
+                            )}
 
                             {/* Edit button */}
                             <button
@@ -1252,9 +1300,18 @@ export default function JobsDashboard({
       <Dialog open={repostDialogOpen} onOpenChange={setRepostDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Repost Job</DialogTitle>
+            <DialogTitle>
+              {jobToRepost && canRefreshJob(jobs.find((j) => j.id === jobToRepost)) ? "Refresh Job" : "Repost Job"}
+            </DialogTitle>
             <DialogDescription>
-              Reposting this job will deduct 2 credits and make the job active for 30 days. Do you want to continue?
+              {jobToRepost &&
+                (() => {
+                  const job = jobs.find((j) => j.id === jobToRepost)
+                  if (!job) return null
+                  const creditsNeeded = job.category === "premium" ? 2 : 1
+                  const action = canRefreshJob(job) ? "Refreshing" : "Reposting"
+                  return `${action} this job will deduct ${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} and make the job active for 30 days. Do you want to continue?`
+                })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1269,7 +1326,7 @@ export default function JobsDashboard({
               Cancel
             </Button>
             <Button onClick={() => jobToRepost && handleRepostJob(jobToRepost)} disabled={repostLoading}>
-              {repostLoading ? "Reposting..." : "Confirm Repost"}
+              {repostLoading ? "Processing..." : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>

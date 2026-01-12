@@ -64,12 +64,15 @@ export async function getActiveCredits(employerId: string): Promise<CreditBalanc
       p_employer_id: employerId,
     })
 
+    console.log("[v0] get_active_credits RPC response - data:", JSON.stringify(data), "error:", error)
+
     if (error) {
       console.error("[v0] Error fetching credits:", error)
       return null
     }
 
     if (!data || data.length === 0) {
+      console.log("[v0] No credits found, returning zero balance")
       return {
         totalCredits: 0,
         usedCredits: 0,
@@ -79,13 +82,17 @@ export async function getActiveCredits(employerId: string): Promise<CreditBalanc
     }
 
     const creditData = data[0]
+    console.log("[v0] Credit data parsed:", creditData)
 
-    return {
+    const balance = {
       totalCredits: creditData.total_credits || 0,
       usedCredits: creditData.used_credits || 0,
       remainingCredits: creditData.remaining_credits || 0,
       expiresSoon: creditData.expires_soon || false,
     }
+
+    console.log("[v0] Returning credit balance:", balance)
+    return balance
   } catch (error: any) {
     console.error("[v0] Get credits exception:", error)
     return null

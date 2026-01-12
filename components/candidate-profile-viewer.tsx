@@ -98,6 +98,11 @@ type CandidateData = {
     end_date?: string
     url?: string
   }> | null
+  accomplishments: Array<{
+    title: string
+    description?: string
+    year?: string
+  }> | null
   created_at: string
 }
 
@@ -207,7 +212,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   const handleWhatsApp = () => {
     if (candidate?.mobile_number) {
       const phoneNumber = candidate.mobile_number.replace(/\D/g, "")
-      window.open(`https://wa.me/91${phoneNumber}`, "_blank")
+      window.open(`https://wa.me/${phoneNumber}`, "_blank")
     }
   }
 
@@ -498,7 +503,11 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <ResumeViewer resumeUrl={candidate.resume_url} candidateName={candidate.full_name} />
+                    <ResumeViewer
+                      resumeUrl={candidate.resume_url}
+                      candidateName={candidate.full_name}
+                      candidatePhone={candidate.mobile_number} // Added phone number for WhatsApp button
+                    />
                   </CardContent>
                 </Card>
               )}
@@ -664,6 +673,29 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
 
               {/* Accomplishments */}
               {/* Added Accomplishments section */}
+              {candidate.accomplishments && candidate.accomplishments.length > 0 && (
+                <Card className="border-0 shadow-md">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Award className="w-5 h-5 text-blue-600" />
+                      <h2 className="text-lg font-semibold text-gray-900">Accomplishments</h2>
+                    </div>
+                    <div className="space-y-2">
+                      {candidate.accomplishments.map((accomplishment, index) => (
+                        <div key={index} className="p-2 bg-gray-50 rounded-md">
+                          <p className="font-medium text-sm">{accomplishment.title}</p>
+                          {accomplishment.description && (
+                            <p className="text-xs text-gray-600 mt-1">{accomplishment.description}</p>
+                          )}
+                          {accomplishment.year && (
+                            <p className="text-xs text-gray-500 mt-0.5">Year: {accomplishment.year}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Languages Known */}
               {candidate.languages_known && (

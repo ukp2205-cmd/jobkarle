@@ -2,15 +2,16 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Download, FileText, AlertCircle, Loader2 } from "lucide-react"
+import { Download, FileText, AlertCircle, Loader2, MessageCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface ResumeViewerProps {
   resumeUrl: string
   candidateName: string
+  candidatePhone?: string // Added optional phone number prop for WhatsApp
 }
 
-export default function ResumeViewer({ resumeUrl, candidateName }: ResumeViewerProps) {
+export default function ResumeViewer({ resumeUrl, candidateName, candidatePhone }: ResumeViewerProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,6 +36,13 @@ export default function ResumeViewer({ resumeUrl, candidateName }: ResumeViewerP
     }
   }
 
+  const handleWhatsApp = () => {
+    if (candidatePhone) {
+      const phoneNumber = candidatePhone.replace(/\D/g, "")
+      window.open(`https://wa.me/${phoneNumber}`, "_blank")
+    }
+  }
+
   const handleLoad = () => {
     setLoading(false)
     setError(null)
@@ -53,6 +61,24 @@ export default function ResumeViewer({ resumeUrl, candidateName }: ResumeViewerP
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      <div className="flex items-center gap-2 mb-4">
+        <Button onClick={handleDownload} variant="outline" size="sm">
+          <Download className="w-4 h-4 mr-2" />
+          Download Resume
+        </Button>
+        {candidatePhone && (
+          <Button
+            onClick={handleWhatsApp}
+            variant="outline"
+            size="sm"
+            className="text-green-600 hover:text-green-700 border-green-300 hover:bg-green-50 bg-transparent"
+          >
+            <MessageCircle className="w-4 h-4 mr-2" />
+            WhatsApp
+          </Button>
+        )}
+      </div>
 
       <div className="relative w-full h-[800px] border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
         {loading && (
