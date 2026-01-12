@@ -32,6 +32,7 @@ type HomeSearchResultsProps = {
 export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsProps) {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
   const [filters, setFilters] = useState({
@@ -42,6 +43,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     maxSalary: 50,
     employmentTypes: [] as string[],
     workModes: [] as string[],
+    datePosted: "all" as "24h" | "7d" | "30d" | "all",
   })
   const [expandedSections, setExpandedSections] = useState({
     location: true,
@@ -49,6 +51,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     salary: true,
     employmentType: true,
     workMode: true,
+    datePosted: true,
   })
 
   useEffect(() => {
@@ -57,67 +60,68 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
 
   const loadJobs = async () => {
     setLoading(true)
+    setError(null)
 
-    const query = searchParams.skills.filter(Boolean).join(" ")
+    try {
+      const query = searchParams.skills.filter(Boolean).join(" ")
 
-    console.log("[v0] === Home Search Component ===")
-    console.log("[v0] Search query:", query, "Skills array:", searchParams.skills)
-    console.log("[v0] Location filter:", filters.locations)
+      console.log("[v0] === Home Search Component ===")
+      console.log("[v0] Search query:", query, "Skills array:", searchParams.skills)
+      console.log("[v0] Location filter:", filters.locations)
 
-    // Parse experience if provided
-    const expMatch = searchParams.experience.match(/\d+/)
-    const experience = expMatch ? Number.parseInt(expMatch[0]) : undefined
+      // Parse experience if provided
+      const expMatch = searchParams.experience.match(/\d+/)
+      const experience = expMatch ? Number.parseInt(expMatch[0]) : undefined
 
-    const searchFilters: any = {}
+      const searchFilters: any = {}
 
-    // Add location filter
-    if (filters.locations.length > 0) {
-      searchFilters.city = filters.locations.join(",")
+      // Add location filter
+      if (filters.locations.length > 0) {
+        searchFilters.city = filters.locations.join(",")
+      }
+
+      // Add experience filter
+      if (experience !== undefined) {
+        searchFilters.min_experience = experience
+        searchFilters.max_experience = experience + 5
+      } else if (filters.minExperience > 0 || filters.maxExperience < 30) {
+        searchFilters.min_experience = filters.minExperience
+        searchFilters.max_experience = filters.maxExperience
+      }
+
+      // Add salary filter
+      if (filters.minSalary > 0 || filters.maxSalary < 50) {
+        searchFilters.min_salary = filters.minSalary * 100000 // Convert LPA to rupees
+        searchFilters.max_salary = filters.maxSalary * 100000
+      }
+
+      // Add employment type filter (Note: Elasticsearch doesn't support this yet)
+      if (filters.employmentTypes.length > 0) {
+        searchFilters.employment_type = filters.employmentTypes[0]
+      }
+
+      // Add work mode filter (Note: Elasticsearch doesn't support this yet)
+      if (filters.workModes.length > 0) {
+        searchFilters.work_mode = filters.workModes[0]
+      }
+
+      // Add date posted filter
+      if (filters.datePosted !== "all") {
+        searchFilters.date_posted = filters.datePosted
+      }
+
+      console.log("[v0] Elasticsearch search filters:", searchFilters)
+
+      const results = await searchJobsWithElastic(query, searchFilters)
+      console.log("[v0] Search results received:", results?.length || 0)
+
+      setJobs(results || [])
+    } catch (err) {
+      console.error("[v0] Error loading jobs:", err)
+      setError("Failed to load job results. Please try again.")
+    } finally {
+      setLoading(false)
     }
-
-    // Add experience filter
-    if (experience !== undefined) {
-      searchFilters.min_experience = experience
-      searchFilters.max_experience = experience + 5
-    } else if (filters.minExperience > 0 || filters.maxExperience < 30) {
-      searchFilters.min_experience = filters.minExperience
-      searchFilters.max_experience = filters.maxExperience
-    }
-
-    // Add salary filter
-    if (filters.minSalary > 0 || filters.maxSalary < 50) {
-      searchFilters.min_salary = filters.minSalary * 100000 // Convert LPA to rupees
-      searchFilters.max_salary = filters.maxSalary * 100000
-    }
-
-    // Add employment type filter (Note: Elasticsearch doesn't support this yet)
-    if (filters.employmentTypes.length > 0) {
-      searchFilters.employment_type = filters.employmentTypes[0]
-    }
-
-    // Add work mode filter (Note: Elasticsearch doesn't support this yet)
-    if (filters.workModes.length > 0) {
-      searchFilters.work_mode = filters.workModes[0]
-    }
-
-    console.log("[v0] Elasticsearch search filters:", searchFilters)
-
-    const result = await searchJobsWithElastic(query, searchFilters)
-
-    console.log("[v0] Search result:", {
-      success: result.success,
-      source: result.source,
-      jobsCount: result.jobs?.length || 0,
-      error: result.error,
-    })
-
-    if (result.success) {
-      setJobs(result.jobs || [])
-    } else {
-      console.error("[v0] ✗ Search failed:", result.error)
-      setJobs([])
-    }
-    setLoading(false)
   }
 
   const toggleLocation = (location: string) => {
@@ -145,6 +149,13 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     }))
   }
 
+  const toggleDatePosted = (datePosted: "24h" | "7d" | "30d" | "all") => {
+    setFilters((prev) => ({
+      ...prev,
+      datePosted,
+    }))
+  }
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
   }
@@ -152,6 +163,20 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
   const availableLocations = ["Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", "Chennai"]
   const employmentTypes = ["Full-time", "Part-time", "Contract", "Internship"]
   const workModes = ["Office", "Hybrid", "Remote"]
+  const datePostedOptions = ["24h", "7d", "30d", "all"]
+
+  const clearFilters = () => {
+    setFilters({
+      locations: [],
+      minExperience: 0,
+      maxExperience: 30,
+      minSalary: 0,
+      maxSalary: 50,
+      employmentTypes: [],
+      workModes: [],
+      datePosted: "all",
+    })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -352,6 +377,54 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 )}
               </div>
 
+              {/* Date Posted Filter */}
+              <div className="border-b pb-4">
+                <button
+                  type="button"
+                  onClick={() => toggleSection("datePosted")}
+                  className="flex items-center justify-between w-full text-sm font-medium mb-2"
+                >
+                  Date Posted
+                  {expandedSections.datePosted ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                {expandedSections.datePosted && (
+                  <div className="space-y-2 mt-2 ml-1">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "24h"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "24h" }))}
+                      />
+                      <span className="text-gray-700">Last 24 hours</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "7d"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "7d" }))}
+                      />
+                      <span className="text-gray-700">Last 7 days</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "30d"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "30d" }))}
+                      />
+                      <span className="text-gray-700">Last 30 days</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "all"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "all" }))}
+                      />
+                      <span className="text-gray-700">All time</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={() => {
                   loadJobs()
@@ -366,16 +439,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
 
           {/* Results */}
           <main className="flex-1 min-w-0">
-            <div className="mb-4">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                {loading ? "Searching..." : `${jobs.length} jobs found`}
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
-                {searchParams.skills.length > 0 && `Search: ${searchParams.skills.join(", ")}`}
-                {searchParams.experience && ` • Experience: ${searchParams.experience}`}
-                {searchParams.location && ` • Location: ${searchParams.location}`}
-              </p>
-            </div>
+            {error && (
+              <div className="text-center py-12">
+                <p className="text-red-500 mb-4">{error}</p>
+                <Button onClick={() => loadJobs()}>Try Again</Button>
+              </div>
+            )}
+            {!error && (
+              <div className="mb-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+                  {loading ? "Searching..." : `${jobs.length} jobs found`}
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
+                  {searchParams.skills.length > 0 && `Search: ${searchParams.skills.join(", ")}`}
+                  {searchParams.experience && ` • Experience: ${searchParams.experience}`}
+                  {searchParams.location && ` • Location: ${searchParams.location}`}
+                  {filters.datePosted !== "all" && ` • Date Posted: ${filters.datePosted}`}
+                </p>
+              </div>
+            )}
 
             {loading ? (
               <div className="space-y-4">
@@ -388,12 +470,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 ))}
               </div>
             ) : jobs.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-sm p-8 sm:p-12 text-center">
-                <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">No jobs found</h3>
-                <p className="text-sm text-gray-600 mb-4">Try adjusting your search criteria or filters</p>
-                <Button variant="outline" onClick={onBack}>
-                  Back to Search
+              <div className="text-center py-12 sm:py-20 bg-white rounded-lg border border-gray-200 px-4">
+                <Search className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+                  {filters.datePosted === "24h" && "No jobs posted in the last 24 hours"}
+                  {filters.datePosted === "7d" && "No jobs posted in the last 7 days"}
+                  {filters.datePosted === "30d" && "No jobs posted in the last 30 days"}
+                  {filters.datePosted === "all" && "No jobs found"}
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
+                  {filters.datePosted !== "all"
+                    ? "Try selecting a different time period or adjusting your filters"
+                    : "Try adjusting your search terms or filters"}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="text-xs sm:text-sm h-9 sm:h-10 bg-transparent"
+                >
+                  Clear Filters
                 </Button>
               </div>
             ) : (

@@ -11,6 +11,7 @@ export async function searchJobsWithElastic(
     max_salary?: number
     employment_type?: string
     work_mode?: string
+    date_posted?: "24h" | "7d" | "30d" | "all"
   },
 ) {
   try {
@@ -43,6 +44,18 @@ export async function searchJobsWithElastic(
         min: filters?.min_salary,
         max: filters?.max_salary,
       }
+    }
+
+    if (filters?.employment_type) {
+      requestBody.employment_type = filters.employment_type
+    }
+
+    if (filters?.work_mode) {
+      requestBody.work_mode = filters.work_mode
+    }
+
+    if (filters?.date_posted && filters.date_posted !== "all") {
+      requestBody.date_posted = filters.date_posted
     }
 
     console.log("[v0] === Elasticsearch Search Attempt ===")
@@ -100,6 +113,7 @@ async function fallbackToSupabaseSearch(
     max_salary?: number
     employment_type?: string
     work_mode?: string
+    date_posted?: "24h" | "7d" | "30d" | "all"
   },
 ) {
   try {
@@ -108,7 +122,7 @@ async function fallbackToSupabaseSearch(
     const supabaseFilters: any = {}
 
     if (filters?.city) {
-      supabaseFilters.locations = [filters.city]
+      supabaseFilters.locations = filters.city.split(",").map((c) => c.trim())
     }
 
     if (filters?.min_experience !== undefined) {
@@ -133,6 +147,10 @@ async function fallbackToSupabaseSearch(
 
     if (filters?.work_mode) {
       supabaseFilters.workModes = [filters.work_mode]
+    }
+
+    if (filters?.date_posted && filters.date_posted !== "all") {
+      supabaseFilters.datePosted = filters.date_posted
     }
 
     const { searchJobs } = await import("@/app/actions/candidate-search-actions")

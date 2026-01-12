@@ -1,13 +1,14 @@
 "use client"
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Briefcase, Users, TrendingUp, Award, ChevronDown } from "lucide-react"
+import { Briefcase, Users, TrendingUp, Award, ChevronDown, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HomeSearchResults } from "@/components/home-search-results"
-import { AutocompleteInput } from "@/components/ui/autocomplete-input"
 import { MultiSelectInput } from "@/components/ui/multi-select-input"
 import { getSearchSuggestions } from "@/app/actions/home-search-actions"
 import { CompanyLogoMarquee } from "@/components/company-logo-marquee"
+import { Input } from "@/components/ui/input"
+import { getJobsByIndustry } from "@/app/actions/home-search-actions"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,9 +17,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
-import { getJobsByIndustry } from "@/app/actions/jobs-actions"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
 export default function HomePage() {
+  console.log("[v0] HomePage rendering")
+
   const [showResults, setShowResults] = useState(false)
   const [searchParams, setSearchParams] = useState({
     skills: [] as string[],
@@ -28,22 +31,35 @@ export default function HomePage() {
   const [searchSuggestions, setSearchSuggestions] = useState<string[]>([])
   const [currentInputValue, setCurrentInputValue] = useState("")
   const [industries, setIndustries] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const loadSuggestions = async () => {
-      const { designations, companies } = await getSearchSuggestions()
-      const combined = [...POPULAR_SKILLS, ...designations, ...companies]
-      const uniqueSuggestions = [...new Set(combined)].sort()
-      setSearchSuggestions(uniqueSuggestions)
+      try {
+        const { designations, companies } = await getSearchSuggestions()
+        const combined = [...POPULAR_SKILLS, ...designations, ...companies]
+        const uniqueSuggestions = [...new Set(combined)].sort()
+        setSearchSuggestions(uniqueSuggestions)
+        console.log("[v0] Search suggestions loaded:", uniqueSuggestions.length)
+      } catch (err) {
+        console.error("[v0] Error loading suggestions:", err)
+        setError("Failed to load search suggestions")
+      }
     }
     loadSuggestions()
   }, [])
 
   useEffect(() => {
     const loadIndustries = async () => {
-      const { jobsByIndustry } = await getJobsByIndustry()
-      const industryNames = jobsByIndustry.map((item) => item.industry)
-      setIndustries(industryNames)
+      try {
+        const { jobsByIndustry } = await getJobsByIndustry()
+        const industryNames = jobsByIndustry.map((item) => item.industry)
+        setIndustries(industryNames)
+        console.log("[v0] Industries loaded:", industryNames.length)
+      } catch (err) {
+        console.error("[v0] Error loading industries:", err)
+        setError("Failed to load industries")
+      }
     }
     loadIndustries()
   }, [])
@@ -349,8 +365,20 @@ export default function HomePage() {
     return <HomeSearchResults searchParams={searchParams} onBack={handleResetSearch} />
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Reload Page</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      {console.log("[v0] Rendering homepage JSX")}
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4">
@@ -395,10 +423,11 @@ export default function HomePage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-4">
+
+            <div className="hidden md:flex items-center gap-4">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className="hidden sm:flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
+                  <Button className="flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
                     Candidate
                     <ChevronDown className="w-4 h-4 ml-1" />
                   </Button>
@@ -419,7 +448,7 @@ export default function HomePage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className="hidden sm:flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
+                  <Button className="flex bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
                     Employer
                     <ChevronDown className="w-4 h-4 ml-1" />
                   </Button>
@@ -443,6 +472,63 @@ export default function HomePage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="h-6 w-6" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px] sm:w-[350px]">
+                <SheetHeader>
+                  <SheetTitle className="text-left">Menu</SheetTitle>
+                </SheetHeader>
+                <div className="flex flex-col gap-4 mt-6">
+                  {/* Candidate Section */}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm text-gray-500 uppercase tracking-wider px-2">Candidate</h3>
+                    <Link
+                      href="/candidate/register"
+                      className="flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-blue-50 text-gray-700 hover:text-blue-600 transition-colors"
+                    >
+                      Register
+                    </Link>
+                    <Link
+                      href="/candidate/login"
+                      className="flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-blue-50 text-gray-700 hover:text-blue-600 transition-colors"
+                    >
+                      Login
+                    </Link>
+                  </div>
+
+                  <div className="border-t my-2"></div>
+
+                  {/* Employer Section */}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-sm text-gray-500 uppercase tracking-wider px-2">Employer</h3>
+                    <Link
+                      href="/employer/register"
+                      className="flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-purple-50 text-gray-700 hover:text-purple-600 transition-colors"
+                    >
+                      Register
+                    </Link>
+                    <Link
+                      href="/employer/login"
+                      className="flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-purple-50 text-gray-700 hover:text-purple-600 transition-colors"
+                    >
+                      Login
+                    </Link>
+                    <Link
+                      href="/employer/pricing"
+                      className="flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-purple-50 text-gray-700 hover:text-purple-600 transition-colors"
+                    >
+                      Pricing Plan
+                    </Link>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
@@ -462,8 +548,8 @@ export default function HomePage() {
 
           {/* Search Box */}
           <div className="max-w-4xl mx-auto mb-4 sm:mb-6 lg:mb-8">
-            <div className="bg-white rounded-lg shadow-lg p-3 sm:p-4">
-              <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[1fr_1fr_1fr_auto] lg:gap-3">
+            <div className="bg-white rounded-lg shadow-lg p-2 sm:p-4">
+              <div className="flex flex-col gap-1.5 lg:grid lg:grid-cols-[1fr_1fr_1fr_auto] lg:gap-3">
                 {/* Skills/Designation input - full width on mobile */}
                 <div className="w-full">
                   <MultiSelectInput
@@ -472,17 +558,17 @@ export default function HomePage() {
                     onChange={(value) => setSearchParams({ ...searchParams, skills: value })}
                     onInputChange={setCurrentInputValue}
                     placeholder="Skills / Designation / Company"
-                    className="h-10 lg:h-12"
+                    className="h-8 lg:h-12 text-xs lg:text-base"
                   />
                 </div>
 
                 {/* Experience dropdown and Location on same row on mobile for space efficiency */}
-                <div className="flex gap-2 lg:contents">
+                <div className="flex gap-1.5 lg:contents">
                   <div className="relative flex-1">
                     <select
                       value={searchParams.experience}
                       onChange={(e) => setSearchParams({ ...searchParams, experience: e.target.value })}
-                      className="h-10 lg:h-12 w-full text-sm lg:text-base px-3 lg:px-3 py-2 rounded-md border border-input bg-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+                      className="h-8 lg:h-12 w-full text-xs lg:text-base px-2 lg:px-3 py-1 lg:py-2 rounded-md border border-input bg-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
                     >
                       <option value="" disabled>
                         Experience
@@ -494,27 +580,25 @@ export default function HomePage() {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-2 lg:right-3 top-1/2 -translate-y-1/2 h-4 w-4 lg:h-4 lg:w-4 text-muted-foreground pointer-events-none" />
+                    <ChevronDown className="absolute right-2 lg:right-3 top-1/2 -translate-y-1/2 h-3 w-3 lg:h-4 lg:w-4 text-muted-foreground pointer-events-none" />
                   </div>
 
-                  {/* Location input */}
                   <div className="flex-1">
-                    <AutocompleteInput
-                      options={TOP_CITIES}
-                      value={searchParams.location}
-                      onChange={(value) => setSearchParams({ ...searchParams, location: value })}
+                    <Input
+                      type="text"
                       placeholder="Location"
-                      className="h-10 lg:h-12 text-sm lg:text-base"
+                      value={searchParams.location}
+                      onChange={(e) => setSearchParams({ ...searchParams, location: e.target.value })}
+                      className="h-8 lg:h-12 text-xs lg:text-base px-2 lg:px-3"
                     />
                   </div>
                 </div>
 
-                {/* Search button - smaller and compact on mobile */}
-                <div className="flex justify-center">
+                {/* Search Button - centered on mobile */}
+                <div className="flex justify-center lg:justify-start">
                   <Button
                     onClick={handleSearch}
-                    size="lg"
-                    className="w-auto h-8 lg:h-12 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white text-sm lg:text-base font-semibold px-6 lg:px-8"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all duration-200 w-auto h-10 lg:h-12 px-6 lg:px-8 text-sm lg:text-base"
                   >
                     Search
                   </Button>
@@ -525,19 +609,18 @@ export default function HomePage() {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
-            <Link href="/register" className="w-full sm:w-auto">
+            <Link href="/register" className="w-full sm:w-auto max-w-xs sm:max-w-none mx-auto sm:mx-0">
               <Button
                 size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-10 sm:h-11"
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11"
               >
                 Register as Candidate
               </Button>
             </Link>
-            <Link href="/employer/register" className="w-full sm:w-auto">
+            <Link href="/employer/register" className="w-full sm:w-auto max-w-xs sm:max-w-none mx-auto sm:mx-0">
               <Button
                 size="lg"
-                variant="outline"
-                className="w-full sm:w-auto text-sm sm:text-base h-10 sm:h-11 bg-transparent"
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11"
               >
                 Register as Employer
               </Button>
@@ -592,12 +675,12 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
             <Link href="/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-10 sm:h-11">
+              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11">
                 Register Now
               </Button>
             </Link>
             <Link href="/employer/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-10 sm:h-11">
+              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11">
                 Post a Job
               </Button>
             </Link>

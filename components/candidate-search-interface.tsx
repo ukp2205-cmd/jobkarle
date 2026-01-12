@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Search, User, LogOut, Filter, X } from "lucide-react"
+import { Search, User, LogOut, Filter, X, ChevronUp, ChevronDown, CheckIcon as Checkbox } from "lucide-react"
 import {
   searchJobs,
   saveJob,
@@ -56,6 +56,7 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
   const [showFilters, setShowFilters] = useState(false)
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set())
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showDateFilter, setShowDateFilter] = useState(false)
 
   // Filter states
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
@@ -63,6 +64,7 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
   const [salaryRange, setSalaryRange] = useState<[number, number]>([0, 50])
   const [selectedEmploymentTypes, setSelectedEmploymentTypes] = useState<string[]>([])
   const [selectedWorkModes, setSelectedWorkModes] = useState<string[]>([])
+  const [datePosted, setDatePosted] = useState<"24h" | "7d" | "30d" | "all">("all")
 
   const locations = ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Pune", "Chennai", "Kolkata"]
   const employmentTypes = ["Full-time", "Part-time", "Contract", "Internship"]
@@ -173,6 +175,12 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
       filters.workModes = selectedWorkModes
     }
 
+    // Added date posted filter
+    if (datePosted !== "all") {
+      filters.datePosted = datePosted
+      console.log("[v0] ✓ Date posted filter applied:", datePosted)
+    }
+
     const result = await searchJobs(searchQuery, filters, candidateId)
 
     if (result.success) {
@@ -251,6 +259,8 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
     setSalaryRange([0, 50])
     setSelectedEmploymentTypes([])
     setSelectedWorkModes([])
+    setDatePosted("all") // Clear date posted filter
+    setShowDateFilter(false) // Hide date filter
   }
 
   const getDaysAgo = (dateString: string) => {
@@ -281,7 +291,8 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
     selectedEmploymentTypes.length +
     selectedWorkModes.length +
     (experienceRange[0] !== 0 || experienceRange[1] !== 20 ? 1 : 0) +
-    (salaryRange[0] !== 0 || salaryRange[1] !== 50 ? 1 : 0)
+    (salaryRange[0] !== 0 || salaryRange[1] !== 50 ? 1 : 0) +
+    (datePosted !== "all" ? 1 : 0) // Include date posted filter in count
 
   return (
     <div className="flex min-h-screen flex-col bg-[#fafafa]">
@@ -545,6 +556,39 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
                       ))}
                     </div>
                   </div>
+
+                  <div className="border-t border-gray-200" />
+
+                  {/* Date Posted Filter */}
+                  <div className="mb-6">
+                    <button
+                      onClick={() => setShowDateFilter(!showDateFilter)}
+                      className="flex items-center justify-between w-full font-medium text-sm text-gray-700 mb-2"
+                    >
+                      Date Posted
+                      {showDateFilter ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    {showDateFilter && (
+                      <div className="space-y-2 ml-1">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={datePosted === "24h"} onCheckedChange={() => setDatePosted("24h")} />
+                          <span className="text-gray-700">Last 24 hours</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={datePosted === "7d"} onCheckedChange={() => setDatePosted("7d")} />
+                          <span className="text-gray-700">Last 7 days</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={datePosted === "30d"} onCheckedChange={() => setDatePosted("30d")} />
+                          <span className="text-gray-700">Last 30 days</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox checked={datePosted === "all"} onCheckedChange={() => setDatePosted("all")} />
+                          <span className="text-gray-700">All time</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Apply Filters Button */}
@@ -590,6 +634,12 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
                           years
                         </span>
                       )}
+                      {datePosted !== "all" && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-medium">•</span>
+                          <span className="font-medium">Date Posted:</span> {datePosted}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -608,9 +658,16 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
             {!isLoading && jobs.length === 0 && searchQuery && (
               <div className="text-center py-12 sm:py-20 bg-white rounded-lg border border-gray-200 px-4">
                 <Search className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No jobs found</h3>
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+                  {datePosted === "24h" && "No jobs posted in the last 24 hours"}
+                  {datePosted === "7d" && "No jobs posted in the last 7 days"}
+                  {datePosted === "30d" && "No jobs posted in the last 30 days"}
+                  {datePosted === "all" && "No jobs found"}
+                </h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-                  Try adjusting your search terms or filters
+                  {datePosted !== "all"
+                    ? "Try selecting a different time period or adjusting your filters"
+                    : "Try adjusting your search terms or filters"}
                 </p>
                 <Button
                   variant="outline"

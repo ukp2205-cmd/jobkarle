@@ -182,18 +182,18 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="border-t border-gray-700 mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-400">
-          <p>&copy; {new Date().getFullYear()} JobKarle. All rights reserved.</p>
-          <div className="flex gap-6">
-            <Link href="/privacy-policy" className="hover:text-white transition-colors">
+          <p className="text-center sm:text-left">&copy; {new Date().getFullYear()} JobKarle. All rights reserved.</p>
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 items-center w-full sm:w-auto">
+            <Link href="/privacy-policy" className="hover:text-white transition-colors py-1">
               Privacy Policy
             </Link>
-            <Link href="/terms-of-service" className="hover:text-white transition-colors">
+            <Link href="/terms-of-service" className="hover:text-white transition-colors py-1">
               Terms of Service
             </Link>
-            <Link href="/fraud-alert" className="hover:text-white transition-colors">
+            <Link href="/fraud-alert" className="hover:text-white transition-colors py-1">
               Fraud Alert
             </Link>
-            <Link href="/about" className="hover:text-white transition-colors">
+            <Link href="/about" className="hover:text-white transition-colors py-1">
               About Us
             </Link>
           </div>

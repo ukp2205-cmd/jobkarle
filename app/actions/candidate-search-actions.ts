@@ -10,6 +10,7 @@ type SearchFilters = {
   maxSalary?: number
   employmentTypes?: string[]
   workModes?: string[]
+  datePosted?: "24h" | "7d" | "30d" | "all"
 }
 
 export async function searchJobs(query: string, filters: SearchFilters = {}, candidateId?: string) {
@@ -34,6 +35,24 @@ export async function searchJobs(query: string, filters: SearchFilters = {}, can
       .select("*, category, urgent_hiring, company_logo_url")
       .eq("status", "published")
       .order("created_at", { ascending: false })
+
+    if (filters.datePosted && filters.datePosted !== "all") {
+      const now = new Date()
+      let cutoffDate: Date
+
+      if (filters.datePosted === "24h") {
+        cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      } else if (filters.datePosted === "7d") {
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      } else if (filters.datePosted === "30d") {
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      } else {
+        cutoffDate = new Date(0) // All time
+      }
+
+      queryBuilder.gte("created_at", cutoffDate.toISOString())
+      console.log("[v0] Date posted filter applied:", filters.datePosted, "cutoff:", cutoffDate.toISOString())
+    }
 
     const { data: jobs, error } = await queryBuilder.limit(200)
 
@@ -290,6 +309,7 @@ export async function searchJobs(query: string, filters: SearchFilters = {}, can
       filters.minExperience !== undefined ? `${filters.minExperience} years` : "none",
     )
     console.log("[v0] Location filter:", filters.locations?.length ? filters.locations.join(", ") : "none")
+    console.log("[v0] Date posted filter:", filters.datePosted || "none")
     console.log("[v0] Total results:", filteredJobs.length)
 
     filteredJobs.sort((a, b) => {
