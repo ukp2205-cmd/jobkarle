@@ -20,8 +20,6 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
 export default function HomePage() {
-  console.log("[v0] HomePage rendering")
-
   const [showResults, setShowResults] = useState(false)
   const [searchParams, setSearchParams] = useState({
     skills: [] as string[],
@@ -40,7 +38,6 @@ export default function HomePage() {
         const combined = [...POPULAR_SKILLS, ...designations, ...companies]
         const uniqueSuggestions = [...new Set(combined)].sort()
         setSearchSuggestions(uniqueSuggestions)
-        console.log("[v0] Search suggestions loaded:", uniqueSuggestions.length)
       } catch (err) {
         console.error("[v0] Error loading suggestions:", err)
         setError("Failed to load search suggestions")
@@ -55,10 +52,8 @@ export default function HomePage() {
         const { jobsByIndustry } = await getJobsByIndustry()
         const industryNames = jobsByIndustry.map((item) => item.industry)
         setIndustries(industryNames)
-        console.log("[v0] Industries loaded:", industryNames.length)
       } catch (err) {
         console.error("[v0] Error loading industries:", err)
-        setError("Failed to load industries")
       }
     }
     loadIndustries()
@@ -378,7 +373,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      {console.log("[v0] Rendering homepage JSX")}
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4">

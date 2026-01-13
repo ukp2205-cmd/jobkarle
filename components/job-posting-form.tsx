@@ -34,6 +34,8 @@ import { RichTextEditor } from "@/components/rich-text-editor"
 import { searchCities } from "@/app/actions/location-actions"
 import { searchSkills } from "@/app/actions/skill-actions" // Import searchSkills
 import { searchIndustries } from "@/app/actions/industry-actions" // Import searchIndustries
+import { getQualifications, type Qualification } from "@/app/actions/qualification-actions"
+import { getTeamMemberSuggestions, saveTeamMemberEmail } from "@/app/actions/team-member-actions"
 
 const steps = [
   { id: 1, name: "Job details", icon: Briefcase },
@@ -76,6 +78,15 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
   const [skillSuggestions, setSkillSuggestions] = useState<string[]>([]) // State for skill suggestions
   const [industriesSuggestions, setIndustriesSuggestions] = useState<string[]>([]) // State for industry suggestions
   const [industryInput, setIndustryInput] = useState("") // State for industry input
+  const [qualifications, setQualifications] = useState<Qualification[]>([])
+  const [loadingQualifications, setLoadingQualifications] = useState(true)
+  const [specializationOptions, setSpecializationOptions] = useState<string[]>([])
+  const [educationNameOptions, setEducationNameOptions] = useState<string[]>([])
+  const [popularSkills, setPopularSkills] = useState<string[]>([])
+  const [relatedSkills, setRelatedSkills] = useState<string[]>([])
+
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([])
+  const [showEmailSuggestions, setShowEmailSuggestions] = useState(false)
 
   const [formData, setFormData] = useState<any>({
     // Job Details (Step 1)
@@ -101,6 +112,8 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
     // Preferred Candidate Details (Step 2)
     requiredSkills: [],
     educationalQualifications: "",
+    specialization: "", // Added specialization field
+    educationName: "",
     candidateIndustries: "",
     videoProfileRequired: false,
 
@@ -132,6 +145,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
 
   const [locationInput, setLocationInput] = useState("")
   const [skillInput, setSkillInput] = useState("")
+  const [skillDuplicateError, setSkillDuplicateError] = useState("")
   const [questionInput, setQuestionInput] = useState("")
   const [teamMemberEmail, setTeamMemberEmail] = useState("")
 
@@ -164,6 +178,30 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
       setFormData((prev: any) => ({ ...prev, category: jobType }))
     }
   }, [jobType])
+
+  useEffect(() => {
+    const loadQualifications = async () => {
+      setLoadingQualifications(true)
+      const data = await getQualifications()
+      setQualifications(data)
+      setLoadingQualifications(false)
+    }
+    loadQualifications()
+    loadPopularSkills()
+  }, [])
+
+  useEffect(() => {
+    if (formData.educationalQualifications) {
+      const selectedQual = qualifications.find(
+        (q) => q.level.toLowerCase().replace(/\s+/g, "-") === formData.educationalQualifications,
+      )
+      setSpecializationOptions(selectedQual?.specializations || [])
+      setEducationNameOptions(selectedQual?.education_names || [])
+    } else {
+      setSpecializationOptions([])
+      setEducationNameOptions([])
+    }
+  }, [formData.educationalQualifications, qualifications])
 
   const loadCreditBalance = async () => {
     setLoadingCredits(true)
@@ -318,7 +356,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
         })
         return isValid
       case 2:
-        return !!(formData.requiredSkills.length > 0)
+        return !!(formData.requiredSkills.length > 0 && formData.educationalQualifications)
       case 3:
         return !!(formData.jobDescription && formData.jobDescription.length >= 50)
       case 4:
@@ -372,11 +410,49 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
     })
   }
 
+  const loadPopularSkills = async () => {
+    try {
+      const response = await searchSkills("")
+      if (response.success && response.skills && Array.isArray(response.skills)) {
+        const topSkills = response.skills.slice(0, 15).map((skill: any) => skill.skill_name)
+        setPopularSkills(topSkills)
+      }
+    } catch (error) {
+      console.error("Error loading popular skills:", error)
+    }
+  }
+
+  const fetchRelatedSkills = async (addedSkill: string) => {
+    try {
+      const response = await searchSkills(addedSkill)
+      if (response.success && response.skills && Array.isArray(response.skills)) {
+        const related = response.skills
+          .slice(0, 10)
+          .map((skill: any) => skill.skill_name)
+          .filter(
+            (skill: string) =>
+              skill.toLowerCase() !== addedSkill.toLowerCase() && !formData.requiredSkills.includes(skill),
+          )
+        setRelatedSkills(related)
+      }
+    } catch (error) {
+      console.error("Error fetching related skills:", error)
+    }
+  }
+
   const addSkill = () => {
+    if (skillInput && formData.requiredSkills.includes(skillInput)) {
+      setSkillDuplicateError("Skill already added")
+      setTimeout(() => setSkillDuplicateError(""), 3000)
+      return
+    }
+
     if (skillInput && !formData.requiredSkills.includes(skillInput) && formData.requiredSkills.length < 10) {
       setFormData({ ...formData, requiredSkills: [...formData.requiredSkills, skillInput] })
+      fetchRelatedSkills(skillInput)
       setSkillInput("")
-      setSkillSuggestions([]) // Clear suggestions after adding
+      setSkillSuggestions([])
+      setSkillDuplicateError("")
     }
   }
 
@@ -417,16 +493,47 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
     }
   }
 
-  const handleAddTeamMember = () => {
+  const fetchEmailSuggestions = async (searchTerm: string) => {
+    if (searchTerm.length === 0) {
+      // Show all previously used emails if no search term
+      const suggestions = await getTeamMemberSuggestions(employerId, "")
+      setEmailSuggestions(suggestions)
+      return
+    }
+
+    const suggestions = await getTeamMemberSuggestions(employerId, searchTerm)
+    setEmailSuggestions(suggestions)
+  }
+
+  const handleAddTeamMember = async () => {
     if (teamMemberEmail.trim() && teamMemberEmail.includes("@")) {
       addTeamMember(teamMemberEmail)
+
+      // Save email to database for future autocomplete
+      await saveTeamMemberEmail(employerId, teamMemberEmail.trim())
+
       setTeamMemberEmail("")
+      setShowEmailSuggestions(false)
+      setEmailSuggestions([])
     }
   }
 
-  const handleRemoveTeamMember = (index: number) => {
-    const updatedMembers = formData.teamMembers.filter((_: string, i: number) => i !== index)
-    setFormData({ ...formData, teamMembers: updatedMembers })
+  const handleSelectEmailSuggestion = async (email: string) => {
+    if (!formData.teamMembers.includes(email)) {
+      addTeamMember(email)
+      await saveTeamMemberEmail(employerId, email)
+    }
+    setTeamMemberEmail("")
+    setShowEmailSuggestions(false)
+    setEmailSuggestions([])
+  }
+
+  // Function to remove a team member
+  const handleRemoveTeamMember = (indexToRemove: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      teamMembers: prev.teamMembers.filter((_: string, index: number) => index !== indexToRemove),
+    }))
   }
 
   const handleHiringForSelect = (type: "own_company" | "client") => {
@@ -830,6 +937,45 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
     }
   }
 
+  // Removed static specializationOptions and now using state populated from useEffect
+  // const specializationOptions: Record<string, string[]> = {
+  //   "10th": [],
+  //   "12th": ["Science", "Commerce", "Arts"],
+  //   "any-graduate": ["Any Specialization"],
+  //   "b-tech": [
+  //     "Computer Science",
+  //     "Information Technology",
+  //     "Electronics & Communication",
+  //     "Electrical Engineering",
+  //     "Mechanical Engineering",
+  //     "Civil Engineering",
+  //     "Chemical Engineering",
+  //     "Biotechnology",
+  //     "Aerospace Engineering",
+  //     "Other Engineering",
+  //   ],
+  //   mba: [
+  //     "Finance",
+  //     "Marketing",
+  //     "Human Resources",
+  //     "Operations",
+  //     "International Business",
+  //     "Information Technology",
+  //     "Healthcare Management",
+  //     "General Management",
+  //   ],
+  //   "m-tech": [
+  //     "Computer Science",
+  //     "Information Technology",
+  //     "Electronics & Communication",
+  //     "Electrical Engineering",
+  //     "Mechanical Engineering",
+  //     "Other Engineering",
+  //   ],
+  //   "post-graduate": ["Science", "Commerce", "Arts", "Management", "Other"],
+  //   doctorate: ["Engineering", "Science", "Management", "Arts & Humanities", "Medical", "Other"],
+  // }
+
   return (
     <>
       <HiringForSelectionModal
@@ -1007,33 +1153,24 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                 value={formData.jobTitle}
                                 onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
                                 placeholder="e.g. Senior Software Engineer"
-                                className="h-9 sm:h-10 text-sm"
+                                className="h-9 sm:h-10 text-sm max-w-2xl"
                               />
                             </div>
 
                             <div>
-                              <Label htmlFor="category" className="text-xs sm:text-sm font-medium mb-2">
+                              <Label htmlFor="jobCategory" className="text-xs sm:text-sm font-medium mb-2">
                                 Job category *
                               </Label>
                               <Select
                                 value={formData.category}
                                 onValueChange={(value) => setFormData({ ...formData, category: value })}
                               >
-                                <SelectTrigger id="category" className="h-9 sm:h-10 text-sm">
+                                <SelectTrigger id="jobCategory" className="h-9 sm:h-10 text-sm">
                                   <SelectValue placeholder="Select category" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="software-development">Software Development</SelectItem>
-                                  <SelectItem value="sales-business-development">
-                                    Sales & Business Development
-                                  </SelectItem>
-                                  <SelectItem value="marketing">Marketing</SelectItem>
-                                  <SelectItem value="design">Design</SelectItem>
-                                  <SelectItem value="customer-support">Customer Support</SelectItem>
-                                  <SelectItem value="hr">Human Resources</SelectItem>
-                                  <SelectItem value="finance">Finance</SelectItem>
-                                  <SelectItem value="operations">Operations</SelectItem>
-                                  <SelectItem value="other">Other</SelectItem>
+                                  <SelectItem value="classified">Classified</SelectItem>
+                                  <SelectItem value="premium">Premium</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -1122,7 +1259,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                 value={formData.openings}
                                 onChange={(e) => setFormData({ ...formData, openings: e.target.value })}
                                 placeholder="e.g. 5"
-                                className="h-9 sm:h-10 text-sm max-w-[200px]"
+                                className="h-9 sm:h-10 text-sm max-w-[120px]"
                                 min="1"
                               />
                             </div>
@@ -1131,7 +1268,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                           <div>
                             <Label className="text-xs sm:text-sm font-medium mb-2">Job location (max. 3) *</Label>
                             <div className="flex flex-col gap-2">
-                              <div className="relative flex-1">
+                              <div className="relative flex-1 max-w-md">
                                 <Input
                                   value={locationInput}
                                   onChange={handleLocationInputChange}
@@ -1327,6 +1464,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                     } else {
                                       setSkillSuggestions([])
                                     }
+                                    setSkillDuplicateError("")
                                   }}
                                   onKeyPress={(e) => {
                                     if (e.key === "Enter") {
@@ -1348,14 +1486,16 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                         key={suggestion}
                                         type="button"
                                         onClick={() => {
-                                          if (
-                                            !formData.requiredSkills.includes(suggestion) &&
-                                            formData.requiredSkills.length < 10
-                                          ) {
+                                          if (formData.requiredSkills.includes(suggestion)) {
+                                            setSkillDuplicateError("Skill already added")
+                                            setTimeout(() => setSkillDuplicateError(""), 3000)
+                                          } else if (formData.requiredSkills.length < 10) {
                                             setFormData({
                                               ...formData,
                                               requiredSkills: [...formData.requiredSkills, suggestion],
                                             })
+                                            fetchRelatedSkills(suggestion)
+                                            setSkillDuplicateError("")
                                           }
                                           setSkillInput("")
                                           setSkillSuggestions([])
@@ -1368,6 +1508,9 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                   </div>
                                 )}
                               </div>
+                              {skillDuplicateError && (
+                                <p className="text-red-600 text-sm font-medium">{skillDuplicateError}</p>
+                              )}
                             </div>
 
                             {formData.requiredSkills.length >= 10 && (
@@ -1387,7 +1530,7 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                                       onClick={() => removeSkill(skill)}
                                       className="hover:bg-blue-100 rounded-full p-0.5"
                                     >
-                                      <X className="w-3 h-3" />
+                                      <X className="w-3 h-3 sm:w-4 sm:h-4" />
                                     </button>
                                   </div>
                                 ))}
@@ -1395,31 +1538,156 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                             )}
                           </div>
 
-                          {/* Removed "Popular skills" section and Add button */}
+                          {formData.requiredSkills.length < 10 && (
+                            <div>
+                              {relatedSkills.length > 0 ? (
+                                <>
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-2">
+                                    Related skills you might know:
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {relatedSkills.map((skill) => (
+                                      <button
+                                        key={skill}
+                                        type="button"
+                                        onClick={() => {
+                                          if (formData.requiredSkills.length < 10) {
+                                            setFormData({
+                                              ...formData,
+                                              requiredSkills: [...formData.requiredSkills, skill],
+                                            })
+                                            setRelatedSkills(relatedSkills.filter((s) => s !== skill))
+                                            fetchRelatedSkills(skill)
+                                          }
+                                        }}
+                                        className="px-3 py-1.5 bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-600 rounded-full text-xs sm:text-sm transition-colors border border-gray-200 hover:border-blue-300"
+                                      >
+                                        + {skill}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : popularSkills.length > 0 ? (
+                                <>
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-2">Popular skills:</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {popularSkills
+                                      .filter((skill) => !formData.requiredSkills.includes(skill))
+                                      .slice(0, 10)
+                                      .map((skill) => (
+                                        <button
+                                          key={skill}
+                                          type="button"
+                                          onClick={() => {
+                                            if (formData.requiredSkills.length < 10) {
+                                              setFormData({
+                                                ...formData,
+                                                requiredSkills: [...formData.requiredSkills, skill],
+                                              })
+                                              fetchRelatedSkills(skill)
+                                            }
+                                          }}
+                                          className="px-3 py-1.5 bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-600 rounded-full text-xs sm:text-sm transition-colors border border-gray-200 hover:border-blue-300"
+                                        >
+                                          + {skill}
+                                        </button>
+                                      ))}
+                                  </div>
+                                </>
+                              ) : null}
+                            </div>
+                          )}
 
-                          <div className="max-w-md">
-                            <Label htmlFor="educationalQualifications" className="text-xs sm:text-sm font-medium mb-2">
-                              Educational qualification *
-                            </Label>
-                            <Select
-                              value={formData.educationalQualifications}
-                              onValueChange={(value) => setFormData({ ...formData, educationalQualifications: value })}
-                            >
-                              <SelectTrigger className="h-9 sm:h-10 text-sm">
-                                <SelectValue placeholder="Any Graduate" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="10th">10th</SelectItem>
-                                <SelectItem value="12th">12th</SelectItem>
-                                <SelectItem value="any-graduate">Any Graduate</SelectItem>
-                                <SelectItem value="b-tech">B.Tech/B.E.</SelectItem>
-                                <SelectItem value="mba">MBA/PGDM</SelectItem>
-                                <SelectItem value="m-tech">M.Tech</SelectItem>
-                                <SelectItem value="post-graduate">Post Graduate</SelectItem>
-                                <SelectItem value="doctorate">Doctorate</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                            <div>
+                              <Label
+                                htmlFor="educationalQualifications"
+                                className="text-xs sm:text-sm font-medium mb-2"
+                              >
+                                Highest Qualification *
+                              </Label>
+                              <Select
+                                value={formData.educationalQualifications}
+                                onValueChange={(value) => {
+                                  setFormData({
+                                    ...formData,
+                                    educationalQualifications: value,
+                                    specialization: "", // Reset specialization when qualification changes
+                                    educationName: "",
+                                  })
+                                }}
+                              >
+                                <SelectTrigger className="h-9 sm:h-10 text-sm">
+                                  <SelectValue placeholder="Select Qualification" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {loadingQualifications ? (
+                                    <SelectItem value="loading" disabled>
+                                      Loading...
+                                    </SelectItem>
+                                  ) : qualifications.length > 0 ? (
+                                    qualifications.map((qual) => (
+                                      <SelectItem key={qual.id} value={qual.level.toLowerCase().replace(/\s+/g, "-")}>
+                                        {qual.level}
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <SelectItem value="no-data" disabled>
+                                      No qualifications available
+                                    </SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {formData.educationalQualifications &&
+                              formData.educationalQualifications !== "10th" &&
+                              educationNameOptions.length > 0 && (
+                                <div>
+                                  <Label htmlFor="educationName" className="text-xs sm:text-sm font-medium mb-2">
+                                    Education Name
+                                  </Label>
+                                  <Select
+                                    value={formData.educationName}
+                                    onValueChange={(value) => setFormData({ ...formData, educationName: value })}
+                                  >
+                                    <SelectTrigger className="h-9 sm:h-10 text-sm">
+                                      <SelectValue placeholder="Select Education" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {educationNameOptions.map((name) => (
+                                        <SelectItem key={name} value={name}>
+                                          {name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
                           </div>
+
+                          {formData.educationalQualifications && specializationOptions.length > 0 && (
+                            <div className="max-w-md">
+                              <Label htmlFor="specialization" className="text-xs sm:text-sm font-medium mb-2">
+                                Specialization
+                              </Label>
+                              <Select
+                                value={formData.specialization}
+                                onValueChange={(value) => setFormData({ ...formData, specialization: value })}
+                              >
+                                <SelectTrigger className="h-9 sm:h-10 text-sm">
+                                  <SelectValue placeholder="Select Specialization" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {specializationOptions.map((spec) => (
+                                    <SelectItem key={spec} value={spec.toLowerCase().replace(/\s+/g, "-")}>
+                                      {spec}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
 
                           <div>
                             <Label className="text-xs sm:text-sm font-medium mb-2 break-words">
@@ -1901,19 +2169,66 @@ Specify required role expertise, previous role experiences, or relevant call-out
 
                               {/* Add new team member */}
                               <div className="flex gap-2 mt-3">
-                                <Input
-                                  type="email"
-                                  placeholder="Enter team member email"
-                                  value={teamMemberEmail}
-                                  onChange={(e) => setTeamMemberEmail(e.target.value)}
-                                  onKeyPress={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault()
-                                      handleAddTeamMember()
-                                    }
-                                  }}
-                                  className="flex-1 h-9 sm:h-10 text-sm"
-                                />
+                                <div className="relative flex-1">
+                                  <Input
+                                    type="email"
+                                    placeholder="Enter team member email"
+                                    value={teamMemberEmail}
+                                    onChange={async (e) => {
+                                      const value = e.target.value
+                                      setTeamMemberEmail(value)
+
+                                      // Show suggestions when typing
+                                      if (value.length > 0) {
+                                        await fetchEmailSuggestions(value)
+                                        setShowEmailSuggestions(true)
+                                      } else {
+                                        // Show all previously used emails when field is focused but empty
+                                        await fetchEmailSuggestions("")
+                                        setShowEmailSuggestions(true)
+                                      }
+                                    }}
+                                    onFocus={async () => {
+                                      // Show all previously used emails on focus
+                                      await fetchEmailSuggestions(teamMemberEmail)
+                                      setShowEmailSuggestions(true)
+                                    }}
+                                    onBlur={() => {
+                                      // Delay hiding to allow clicking on suggestions
+                                      setTimeout(() => setShowEmailSuggestions(false), 200)
+                                    }}
+                                    onKeyPress={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault()
+                                        handleAddTeamMember()
+                                      }
+                                    }}
+                                    className="flex-1 h-9 sm:h-10 text-sm"
+                                  />
+
+                                  {/* Email suggestions dropdown */}
+                                  {showEmailSuggestions && emailSuggestions.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+                                      {emailSuggestions
+                                        .filter((email) => !formData.teamMembers.includes(email))
+                                        .map((email) => (
+                                          <button
+                                            key={email}
+                                            type="button"
+                                            onClick={() => handleSelectEmailSuggestion(email)}
+                                            className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm text-gray-700 flex items-center gap-2"
+                                          >
+                                            <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                              <span className="text-xs font-medium text-blue-600">
+                                                {email.charAt(0).toUpperCase()}
+                                              </span>
+                                            </div>
+                                            <span className="truncate">{email}</span>
+                                          </button>
+                                        ))}
+                                    </div>
+                                  )}
+                                </div>
                                 <Button
                                   type="button"
                                   onClick={handleAddTeamMember}

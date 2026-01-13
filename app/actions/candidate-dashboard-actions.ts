@@ -50,10 +50,26 @@ export async function getRecommendedJobs(candidateId: string) {
       .eq("status", "published")
       .gte("expires_at", new Date().toISOString())
 
-    const candidateSkills = ((candidate.skills_for_role || []) as string[]).concat(
-      (candidate.skills_you_know || []) as string[],
-    )
+    // First try new 'skills' column, then fallback to merging old columns
+    let candidateSkills: string[] = []
+
+    if (candidate.skills && Array.isArray(candidate.skills) && candidate.skills.length > 0) {
+      candidateSkills = candidate.skills as string[]
+      console.log(`[v0] Using new 'skills' column:`, candidateSkills)
+    } else {
+      // Fallback to old columns
+      const skillsForRole = (candidate.skills_for_role || []) as string[]
+      const skillsYouKnow = (candidate.skills_you_know || []) as string[]
+      candidateSkills = [...new Set([...skillsForRole, ...skillsYouKnow])]
+      console.log(`[v0] Using legacy skill columns - skills_for_role + skills_you_know:`, candidateSkills)
+    }
+
     const normalizedCandidateSkills = candidateSkills.map((skill) => String(skill).toLowerCase().trim())
+
+    console.log(
+      `[v0] Candidate has ${normalizedCandidateSkills.length} normalized skills for matching:`,
+      normalizedCandidateSkills,
+    )
 
     const candidateLocations = (candidate.preferred_locations || []) as string[]
     const normalizedCandidateLocations = candidateLocations.map((loc) => String(loc).toLowerCase().trim())
@@ -80,107 +96,146 @@ export async function getRecommendedJobs(candidateId: string) {
     }
 
     const matchedJobs =
-      jobs?.filter((job) => {
-        const isBlocked = job.employer_id && blockedEmployerIds.includes(job.employer_id)
+      jobs
+        ?.map((job) => {
+          // Always exclude blocked employers
+          const isBlocked = job.employer_id && blockedEmployerIds.includes(job.employer_id)
+          if (isBlocked) {
+            console.log(`[v0] ✗ Job "${job.job_title}" (ID: ${job.id}) - Blocked employer`)
+            return null
+          }
 
-        if (isBlocked) {
-          return false
-        }
+          // STRICT SKILLS MATCHING - This is the PRIMARY filter
+          const jobSkills = (job.required_skills || []) as string[]
+          const normalizedJobSkills = jobSkills.map((skill) => String(skill).toLowerCase().trim())
 
-        const jobIndustries = (job.candidate_industries || []) as string[]
-        const normalizedJobIndustries = jobIndustries.map((ind) => String(ind).toLowerCase().trim())
+          console.log(`[v0] Checking job "${job.job_title}" (ID: ${job.id}) with skills:`, normalizedJobSkills)
 
-        const industryMatch =
-          candidateIndustry &&
-          jobIndustries.length > 0 &&
-          normalizedJobIndustries.some(
-            (jobInd) =>
-              jobInd === candidateIndustry.toLowerCase().trim() ||
-              candidateIndustry.toLowerCase().trim().includes(jobInd) ||
-              jobInd.includes(candidateIndustry.toLowerCase().trim()),
+          if (normalizedCandidateSkills.length === 0) {
+            console.log(`[v0] ✗ Job "${job.job_title}" rejected - Candidate has NO skills in profile`)
+            return null
+          }
+
+          // If job has no required skills, reject it (we can't match)
+          if (jobSkills.length === 0) {
+            console.log(`[v0] ✗ Job "${job.job_title}" rejected - Job has NO required skills`)
+            return null
+          }
+
+          const matchingSkills = normalizedCandidateSkills.filter((candidateSkill) =>
+            normalizedJobSkills.some((jobSkill) => {
+              return (
+                candidateSkill === jobSkill || candidateSkill.includes(jobSkill) || jobSkill.includes(candidateSkill)
+              )
+            }),
           )
 
-        if (!industryMatch) {
-          return false
-        }
+          // Calculate skill match percentage
+          const skillMatchPercentage = (matchingSkills.length / jobSkills.length) * 100
 
-        const jobSkills = (job.required_skills || []) as string[]
-        const normalizedJobSkills = jobSkills.map((skill) => String(skill).toLowerCase().trim())
+          // STRICT REQUIREMENT: At least 50% of job skills must match candidate skills
+          if (skillMatchPercentage < 50) {
+            console.log(
+              `[v0] ✗ Job "${job.job_title}" rejected - Skill match only ${skillMatchPercentage.toFixed(0)}% (need 50%+). Matching skills: [${matchingSkills.join(", ")}]`,
+            )
+            return null
+          }
 
-        const matchingSkills = normalizedCandidateSkills.filter((candidateSkill) =>
-          normalizedJobSkills.some((jobSkill) => {
-            return candidateSkill === jobSkill || candidateSkill.includes(jobSkill) || jobSkill.includes(candidateSkill)
-          }),
-        )
-
-        const skillsMatch = normalizedCandidateSkills.length > 0 && jobSkills.length > 0 && matchingSkills.length > 0
-
-        if (!skillsMatch) {
-          return false
-        }
-
-        const jobLocations = (job.job_locations || []) as string[]
-        const normalizedJobLocations = jobLocations.map((loc) => String(loc).toLowerCase().trim())
-
-        const locationMatch =
-          normalizedCandidateLocations.length > 0 &&
-          jobLocations.length > 0 &&
-          normalizedCandidateLocations.some((candidateLoc) =>
-            normalizedJobLocations.some((jobLoc) => jobLoc.includes(candidateLoc) || candidateLoc.includes(jobLoc)),
+          console.log(
+            `[v0] ✓ Job "${job.job_title}" - Skill match: ${skillMatchPercentage.toFixed(0)}% (${matchingSkills.length}/${jobSkills.length}). Matching skills: [${matchingSkills.join(", ")}]`,
           )
 
-        if (!locationMatch) {
-          return false
-        }
+          // SECONDARY SCORING FACTORS (not hard filters)
+          let matchScore = skillMatchPercentage * 2 // Skills are weighted 2x
 
-        const jobMinSalary = Number(job.min_salary) || 0
-        const jobMaxSalary = Number(job.max_salary) || Number.POSITIVE_INFINITY
+          // Industry match adds bonus points (not required)
+          const jobIndustries = (job.candidate_industries || []) as string[]
+          const normalizedJobIndustries = jobIndustries.map((ind) => String(ind).toLowerCase().trim())
 
-        const salaryMatch =
-          candidateSalary &&
-          candidateSalaryMin > 0 &&
-          candidateSalaryMin <= jobMaxSalary &&
-          candidateSalaryMax >= jobMinSalary
+          const industryMatch =
+            candidateIndustry &&
+            jobIndustries.length > 0 &&
+            normalizedJobIndustries.some(
+              (jobInd) =>
+                jobInd === candidateIndustry.toLowerCase().trim() ||
+                candidateIndustry.toLowerCase().trim().includes(jobInd) ||
+                jobInd.includes(candidateIndustry.toLowerCase().trim()),
+            )
 
-        if (!salaryMatch) {
-          return false
-        }
+          if (industryMatch) {
+            matchScore += 30
+            console.log(`[v0]   + Industry match bonus`)
+          }
 
-        const jobEducationRequirements = (job.educational_qualifications || []) as string[]
-        const normalizedJobEducation = jobEducationRequirements.map((edu) => String(edu).toLowerCase().trim())
+          // Location match adds bonus points (not required)
+          const jobLocations = (job.job_locations || []) as string[]
+          const normalizedJobLocations = jobLocations.map((loc) => String(loc).toLowerCase().trim())
 
-        const educationMatch =
-          candidateEducation &&
-          jobEducationRequirements.length > 0 &&
-          normalizedJobEducation.some(
-            (jobEdu) =>
-              jobEdu === candidateEducation.toLowerCase().trim() ||
-              candidateEducation.toLowerCase().trim().includes(jobEdu) ||
-              jobEdu.includes(candidateEducation.toLowerCase().trim()),
-          )
+          const locationMatch =
+            normalizedCandidateLocations.length > 0 &&
+            jobLocations.length > 0 &&
+            normalizedCandidateLocations.some((candidateLoc) =>
+              normalizedJobLocations.some((jobLoc) => jobLoc.includes(candidateLoc) || candidateLoc.includes(jobLoc)),
+            )
 
-        if (!educationMatch) {
-          console.log(`[v0] ✗ Education mismatch for job ${job.id}`)
-          return false
-        }
+          if (locationMatch) {
+            matchScore += 20
+            console.log(`[v0]   + Location match bonus`)
+          }
 
-        const jobMinExp = Number(job.min_experience) || 0
-        const jobMaxExp = Number(job.max_experience) || 100
-        const experienceMatch = candidateExperience >= jobMinExp && candidateExperience <= jobMaxExp
+          // Salary match adds bonus points (not required)
+          const jobMinSalary = Number(job.min_salary) || 0
+          const jobMaxSalary = Number(job.max_salary) || Number.POSITIVE_INFINITY
 
-        console.log(
-          `[v0] ✓ Job ${job.id} matched - Industry: ✓, Skills: ✓, Location: ✓, Salary: ✓, Education: ✓, Experience: ${experienceMatch ? "✓" : "~"}`,
-        )
-        return experienceMatch
-      }) || []
+          const salaryMatch =
+            candidateSalary &&
+            candidateSalaryMin > 0 &&
+            candidateSalaryMin <= jobMaxSalary &&
+            candidateSalaryMax >= jobMinSalary
+
+          if (salaryMatch) {
+            matchScore += 15
+            console.log(`[v0]   + Salary match bonus`)
+          }
+
+          // Experience match adds bonus points (not required)
+          const jobMinExp = Number(job.min_experience) || 0
+          const jobMaxExp = Number(job.max_experience) || 100
+          const experienceMatch = candidateExperience >= jobMinExp && candidateExperience <= jobMaxExp
+
+          if (experienceMatch) {
+            matchScore += 10
+            console.log(`[v0]   + Experience match bonus`)
+          }
+
+          console.log(`[v0]   Total match score: ${matchScore.toFixed(0)}`)
+
+          return {
+            ...job,
+            matchScore,
+            skillMatchPercentage,
+          }
+        })
+        .filter((job) => job !== null) || []
 
     const sortedJobs = matchedJobs.sort((a, b) => {
+      // First priority: match score
+      if (a.matchScore !== b.matchScore) {
+        return b.matchScore - a.matchScore
+      }
+
+      // Second priority: premium jobs
       const aPremium = a.category === "premium" ? 1 : 0
       const bPremium = b.category === "premium" ? 1 : 0
       if (aPremium !== bPremium) return bPremium - aPremium
 
+      // Third priority: newest first
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
+
+    console.log(
+      `[v0] ✓ Returned ${sortedJobs.length} skill-matched jobs (50%+ match) out of ${jobs?.length || 0} total jobs`,
+    )
 
     return {
       success: true,

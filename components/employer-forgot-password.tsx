@@ -66,30 +66,28 @@ export default function EmployerForgotPassword() {
 
       const resetLink = `${PRODUCTION_DOMAIN}/employer/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
 
-      const emailResult = await sendEmailViaMSG91({
+      // Show success to user immediately
+      setSentEmail(email)
+      setIsSuccess(true)
+      setEmail("")
+      setIsLoading(false)
+
+      // Send email in background without waiting
+      sendEmailViaMSG91({
         to: email,
         subject: "Reset Your JobKarle Employer Account Password",
         html: "",
         resetLink: resetLink,
         name: employerName,
+      }).catch((error) => {
+        // Log error but don't show to user since they already see success
+        console.error("[v0] Background email send failed:", error)
       })
-
-      if (emailResult.success) {
-        setSentEmail(email)
-        setIsSuccess(true)
-        setEmail("")
-      } else {
-        setMessage({
-          type: "error",
-          text: emailResult.error || "Failed to send reset link. Please try again.",
-        })
-      }
     } catch (error: any) {
       setMessage({
         type: "error",
         text: error.message || "An unexpected error occurred. Please try again.",
       })
-    } finally {
       setIsLoading(false)
     }
   }

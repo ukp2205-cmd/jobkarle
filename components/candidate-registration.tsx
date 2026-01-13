@@ -203,8 +203,7 @@ type RegistrationData = {
   additionalEmployment: AdditionalEmploymentEntry[] // Additional employment with simplified fields
   totalExperienceYears: string
   totalExperienceMonths: string
-  skillsForRole: string[]
-  skillsYouKnow: string[]
+  skills: string[]
   industry: string
   department: string
   roleCategory: string
@@ -361,8 +360,7 @@ export default function CandidateRegistration() {
 
     totalExperienceYears: "",
     totalExperienceMonths: "",
-    skillsForRole: [],
-    skillsYouKnow: [],
+    skills: [],
     industry: "",
     department: "",
     roleCategory: "",
@@ -433,8 +431,7 @@ export default function CandidateRegistration() {
         maritalStatus: formData.maritalStatus,
         projects: formData.projects,
         certifications: formData.certifications,
-        skillsForRole: formData.skillsForRole,
-        skillsYouKnow: formData.skillsYouKnow,
+        skills: formData.skills,
       })
 
       if (result.success) {
@@ -1084,7 +1081,7 @@ function Step1BasicInfo({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="w-full sm:w-auto h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8"
+            className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8 h-12"
           >
             {isLoading ? "Registering..." : "Register now"}
           </Button>
@@ -1356,20 +1353,53 @@ function Step3EmploymentAndSkills({
   prevStep,
   setIsLoading,
   isLoading,
+  setFormData,
 }: StepProps) {
   const [isCurrentEmploymentSaved, setIsCurrentEmploymentSaved] = useState(false)
   const [isCurrentEmploymentEditable, setIsCurrentEmploymentEditable] = useState(true)
 
   const [allSkills, setAllSkills] = useState<Skill[]>([])
   const [skillSearch, setSkillSearch] = useState("")
+  const [skillDuplicateError, setSkillDuplicateError] = useState("")
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
   const [loadingSkills, setLoadingSkills] = useState(true)
-  const [showCityDropdown, setShowCityDropdown] = useState(false) // This state is used for multiple dropdowns, might need renaming for clarity
+  const [showCityDropdown, setShowCityDropdown] = useState(false)
   const [isSaving, setIsSaving] = React.useState(false) // Added for saving state
   const [selectedRoleCategory, setSelectedRoleCategory] = useState<string>("") // Added for the fix
   const [showCurrentEmploymentForm, setShowCurrentEmploymentForm] = useState<boolean>(
-    formData.currentEmployment !== null,
+    formData.workStatus === "experienced",
   ) // State to control the visibility of the current employment form
+  const [additionalEmploymentCount, setAdditionalEmploymentCount] = useState(0)
+  const [experienceInputs, setExperienceInputs] = useState<{
+    [key: number]: { companyName: string; jobTitle: string; fromDate: string; toDate: string }
+  }>({})
+  const firstInputRef = useRef<HTMLInputElement>(null)
+  const [currentEmployment, setCurrentEmployment] = useState<EmploymentEntry>(
+    formData.currentEmployment || {
+      currentlyEmployed: "",
+      companyName: "",
+      currentJobTitle: "",
+      currentCity: "",
+      currentState: "",
+      durationFrom: "",
+      durationTo: "Present", // Set to "Present" by default
+      annualSalary: "",
+      noticePeriod: "",
+      industry: "",
+      department: "",
+      roleCategory: "",
+      jobRole: "",
+    },
+  )
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false)
+  const [departmentSearch, setDepartmentSearch] = useState("")
+  const [showRoleCategoryDropdown, setShowRoleCategoryDropdown] = useState(false)
+  const [roleCategorySearch, setRoleCategorySearch] = useState("")
+  const [showJobTitleDropdown, setShowJobTitleDropdown] = useState(false)
+  const [jobTitleSearch, setJobTitleSearch] = useState("")
 
   // Fetch skills from Supabase
   useState(() => {
@@ -1385,9 +1415,6 @@ function Step3EmploymentAndSkills({
     }
     fetchSkills()
   })
-
-  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
-  const [industrySearch, setIndustrySearch] = useState("")
 
   // Updated industry and department structure to include roles and departments within industries
   const industries = [
@@ -1477,21 +1504,26 @@ function Step3EmploymentAndSkills({
     updateFormData("department", departmentName)
     updateFormData("roleCategory", "") // Reset role category
     updateFormData("jobRole", "") // Reset job role
-    // setShowCityDropdown(true) // Assuming this is for department/role dropdowns, needs review for accurate state management
+    setShowDepartmentDropdown(false) // Close department dropdown
+    setDepartmentSearch("") // Clear search
   }
 
   const handleRoleCategorySelect = (roleCategory: string) => {
     updateFormData("roleCategory", roleCategory)
     updateFormData("jobRole", "") // Reset job role
+    setShowRoleCategoryDropdown(false) // Close role category dropdown
+    setRoleCategorySearch("") // Clear search
   }
 
-  const handleJobRoleSelect = (jobRole: string) => {
+  const handleJobTitleSelect = (jobRole: string) => {
     updateFormData("jobRole", jobRole)
+    setShowJobTitleDropdown(false) // Close job title dropdown
+    setJobTitleSearch("") // Clear search
   }
 
   const handleCitySelect = (city: string, state: string) => {
-    handleInputChange("current", null, "currentCity", city)
-    handleInputChange("current", null, "currentState", state)
+    updateFormData("currentCity", city)
+    updateFormData("currentState", state)
     setShowCityDropdown(false)
   }
 
@@ -1522,7 +1554,6 @@ function Step3EmploymentAndSkills({
   }
 
   // Focus the first input field when the component mounts
-  const firstInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     // The actual first input field is now within the skills section.
     // Assigning the ref to the skills input.
@@ -1609,17 +1640,21 @@ function Step3EmploymentAndSkills({
   }
 
   const handleSkillSelect = (skill: Skill) => {
-    if (!formData.skillsYouKnow.includes(skill.skill_name)) {
-      updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skill.skill_name])
+    if (formData.skills.some((s) => s.toLowerCase() === skill.skill_name.toLowerCase())) {
+      setSkillDuplicateError("Skill already added")
+      setSkillSearch("")
+      setShowSkillDropdown(false)
+      return
     }
+    updateFormData("skills", [...formData.skills, skill.skill_name])
     setSkillSearch("")
     setShowSkillDropdown(false)
   }
 
   const removeSkill = (skillToRemove: string) => {
     updateFormData(
-      "skillsYouKnow",
-      formData.skillsYouKnow.filter((skill) => skill !== skillToRemove),
+      "skills",
+      formData.skills.filter((skill) => skill !== skillToRemove),
     )
   }
 
@@ -1642,8 +1677,7 @@ function Step3EmploymentAndSkills({
         totalExperienceYears: formData.totalExperienceYears,
         totalExperienceMonths: formData.totalExperienceMonths,
         // currentJobTitle: formData.currentJobTitle, // This seems redundant if currentEmployment.currentJobTitle is used
-        skillsForRole: formData.skillsForRole || [],
-        skillsYouKnow: formData.skillsYouKnow || [],
+        skills: formData.skills,
         industry: formData.industry,
         department: formData.department,
         roleCategory: formData.roleCategory,
@@ -1777,20 +1811,28 @@ function Step3EmploymentAndSkills({
             <p className="text-xs text-gray-500 mb-2">Select from suggestions or add your own</p>
 
             {/* Skill Input with Autosuggest */}
-            <div className="relative">
+            <div className="relative max-w-md">
               <Input
                 id="skills"
                 type="text"
                 value={skillSearch}
                 onChange={(e) => {
                   setSkillSearch(e.target.value)
-                  setShowSkillDropdown(e.target.value.length > 0)
+                  setShowSkillDropdown(true)
+                  setSkillDuplicateError("")
                 }}
+                onFocus={() => setShowSkillDropdown(true)}
+                onBlur={() => setTimeout(() => setShowSkillDropdown(false), 300)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && skillSearch.trim()) {
+                  if (e.key === "Enter") {
                     e.preventDefault()
-                    if (!formData.skillsYouKnow.includes(skillSearch.trim())) {
-                      updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skillSearch.trim()])
+                    const trimmedSkill = skillSearch.trim()
+                    if (trimmedSkill) {
+                      if (formData.skills.some((s) => s.toLowerCase() === trimmedSkill.toLowerCase())) {
+                        setSkillDuplicateError("Skill already added")
+                        return
+                      }
+                      updateFormData("skills", [...formData.skills, trimmedSkill])
                     }
                     setSkillSearch("")
                     setShowSkillDropdown(false)
@@ -1800,6 +1842,7 @@ function Step3EmploymentAndSkills({
                 className="mt-1 h-10 rounded-full"
                 ref={firstInputRef}
               />
+              {skillDuplicateError && <p className="text-red-600 text-sm mt-1 font-medium">{skillDuplicateError}</p>}
               {showSkillDropdown && skillSearch.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {loadingSkills ? (
@@ -1826,9 +1869,14 @@ function Step3EmploymentAndSkills({
                         <div
                           className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
                           onClick={() => {
-                            if (!formData.skillsYouKnow.includes(skillSearch.trim())) {
-                              updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skillSearch.trim()])
+                            const trimmedSkill = skillSearch.trim()
+                            if (formData.skills.some((s) => s.toLowerCase() === trimmedSkill.toLowerCase())) {
+                              setSkillDuplicateError("Skill already added")
+                              setSkillSearch("")
+                              setShowSkillDropdown(false)
+                              return
                             }
+                            updateFormData("skills", [...formData.skills, trimmedSkill])
                             setSkillSearch("")
                             setShowSkillDropdown(false)
                           }}
@@ -1844,7 +1892,7 @@ function Step3EmploymentAndSkills({
 
             {/* Selected Skills */}
             <div className="flex flex-wrap gap-2 mt-3">
-              {formData.skillsYouKnow.map((skill) => (
+              {formData.skills.map((skill) => (
                 <span
                   key={skill}
                   className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
@@ -1861,47 +1909,13 @@ function Step3EmploymentAndSkills({
               ))}
             </div>
 
-            {/* Predefined Skills for Quick Selection */}
-            {formData.skillsYouKnow.length === 0 && (
-              <div className="mt-3">
-                <p className="text-xs text-gray-500 mb-2">Popular skills:</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    "JavaScript",
-                    "Python",
-                    "Java",
-                    "React",
-                    "Node.js",
-                    "SQL",
-                    "AWS",
-                    "Communication",
-                    "Leadership",
-                    "Project Management",
-                  ].map((skill) => (
-                    <button
-                      key={skill}
-                      type="button"
-                      onClick={() => {
-                        if (!formData.skillsYouKnow.includes(skill)) {
-                          updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skill])
-                        }
-                      }}
-                      className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                    >
-                      + {skill}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Related Skills based on first selected skill */}
-            {formData.skillsYouKnow.length > 0 && (
+            {formData.skills.length > 0 && (
               <div className="mt-3">
                 <p className="text-xs text-gray-500 mb-2">Related skills you might know:</p>
                 <div className="flex flex-wrap gap-2">
                   {(() => {
-                    const firstSkill = formData.skillsYouKnow[0].toLowerCase()
+                    const firstSkill = formData.skills[0].toLowerCase()
                     let relatedSkills: string[] = []
 
                     // Define related skill groups
@@ -1924,15 +1938,15 @@ function Step3EmploymentAndSkills({
                     }
 
                     return relatedSkills
-                      .filter((skill) => !formData.skillsYouKnow.includes(skill))
+                      .filter((skill) => !formData.skills.includes(skill))
                       .slice(0, 5)
                       .map((skill) => (
                         <button
                           key={skill}
                           type="button"
                           onClick={() => {
-                            if (!formData.skillsYouKnow.includes(skill)) {
-                              updateFormData("skillsYouKnow", [...formData.skillsYouKnow, skill])
+                            if (!formData.skills.includes(skill)) {
+                              updateFormData("skills", [...formData.skills, skill])
                             }
                           }}
                           className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors"
@@ -1960,6 +1974,7 @@ function Step3EmploymentAndSkills({
                   variant={formData.currentEmployment !== null ? "default" : "outline"}
                   onClick={() => {
                     updateFormData("currentEmployment", {
+                      currentlyEmployed: "yes",
                       companyName: "",
                       currentJobTitle: "",
                       currentCity: "",
@@ -2267,8 +2282,7 @@ function Step3EmploymentAndSkills({
                           className="mt-1 h-9 rounded-full"
                         />
                       </div>
-                      {/* CHANGE START */}
-                      {/* Updated Previous Employment Duration fields with placeholders and auto-calculate experience */}
+                      {/* From Date */}
                       <div>
                         <Label htmlFor={`additionalFrom-${index}`} className="text-xs">
                           From (MM/YY)
@@ -2281,11 +2295,12 @@ function Step3EmploymentAndSkills({
                             handleInputChange("additional", index, "fromDate", e.target.value)
                             calculateTotalExperienceFromEmployment(formData, updateFormData)
                           }}
-                          placeholder="YYYY/MM"
+                          placeholder="YYYY-MM"
                           className="rounded-full h-10"
                         />
                       </div>
 
+                      {/* To Date */}
                       <div>
                         <Label htmlFor={`additionalTo-${index}`} className="text-xs">
                           To (MM/YY)
@@ -2298,20 +2313,33 @@ function Step3EmploymentAndSkills({
                             handleInputChange("additional", index, "toDate", e.target.value)
                             calculateTotalExperienceFromEmployment(formData, updateFormData)
                           }}
-                          placeholder="YYYY/MM"
+                          placeholder="YYYY-MM"
                           className="rounded-full h-10"
                         />
                       </div>
-                      {/* CHANGE END */}
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeAdditionalEmployment(index)}
-                      className="mt-3 rounded-full text-xs"
-                    >
-                      Remove
-                    </Button>
+
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          // Save this employment entry (mark as saved in state if needed)
+                          calculateTotalExperienceFromEmployment(formData, updateFormData)
+                          console.log(`[v0] Saved previous employment ${index + 1}`)
+                        }}
+                        className="rounded-full text-xs h-8 px-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeAdditionalEmployment(index)}
+                        className="rounded-full text-xs h-8 px-4"
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2359,137 +2387,253 @@ function Step3EmploymentAndSkills({
           </div>
 
           <div className="space-y-4">
-            {/* Industry Field - Autosuggest */}
-            <div className="relative">
-              <Label htmlFor="industry" className="text-sm">
-                Industry <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="industry"
-                type="text"
-                value={formData.industry}
-                onChange={(e) => {
-                  updateFormData("industry", e.target.value)
-                  setShowIndustryDropdown(e.target.value.length > 0)
-                  // Reset cascading fields when industry changes
-                  updateFormData("department", "")
-                  updateFormData("roleCategory", "")
-                  updateFormData("jobRole", "")
-                }}
-                placeholder="Type to search industries"
-                className="mt-1 h-10 rounded-full"
-              />
-              {showIndustryDropdown && formData.industry.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {industries
-                    .filter((ind) => ind.toLowerCase().includes(formData.industry.toLowerCase()))
-                    .map((ind) => (
-                      <div
-                        key={ind}
-                        className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                        onClick={() => {
-                          updateFormData("industry", ind)
-                          setShowIndustryDropdown(false)
-                        }}
-                      >
-                        {ind}
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-
-            {/* Department - Only shows after Industry is selected */}
-            {formData.industry && (
-              <div>
-                <Label htmlFor="department" className="text-sm">
-                  Department <span className="text-red-500">*</span>
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Industry Field - Autosuggest */}
+              <div className="max-w-md relative">
+                <Label htmlFor="industry" className="text-sm">
+                  Industry you work in <span className="text-red-500">*</span>
                 </Label>
-                <select
-                  id="department"
-                  value={formData.department}
+                <Input
+                  id="industry"
+                  type="text"
+                  value={formData.industry}
                   onChange={(e) => {
-                    updateFormData("department", e.target.value)
-                    // Reset child fields
+                    updateFormData("industry", e.target.value)
+                    setShowIndustryDropdown(e.target.value.length > 0)
+                    updateFormData("department", "")
                     updateFormData("roleCategory", "")
                     updateFormData("jobRole", "")
                   }}
-                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  <option value="">Select Department</option>
-                  {getDepartments(formData.industry).map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
-                    </option>
-                  ))}
-                </select>
+                  onFocus={() => setShowIndustryDropdown(formData.industry.length > 0)}
+                  onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
+                  placeholder="Type to search industries"
+                  className="mt-1 h-10 rounded-full"
+                />
+                {showIndustryDropdown && formData.industry.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {industries
+                      .filter((ind) => ind.toLowerCase().includes(formData.industry.toLowerCase()))
+                      .map((ind) => (
+                        <div
+                          key={ind}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            updateFormData("industry", ind)
+                            setShowIndustryDropdown(false)
+                          }}
+                        >
+                          {ind}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Role Category - Only shows after Department is selected */}
-            {formData.department && (
-              <div>
+              {/* Department - Shows after Industry is selected */}
+              {formData.industry && (
+                <div className="max-w-md relative">
+                  <Label htmlFor="department" className="text-sm">
+                    Department <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="department"
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => {
+                      updateFormData("department", e.target.value)
+                      setDepartmentSearch(e.target.value)
+                      setShowDepartmentDropdown(e.target.value.length > 0)
+                      updateFormData("roleCategory", "")
+                      updateFormData("jobRole", "")
+                    }}
+                    onFocus={() => {
+                      setDepartmentSearch(formData.department)
+                      setShowDepartmentDropdown(true)
+                    }}
+                    onBlur={() => setTimeout(() => setShowDepartmentDropdown(false), 300)}
+                    placeholder="Type to search or add custom department"
+                    className="mt-1 h-10 rounded-full"
+                  />
+                  {showDepartmentDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {getDepartments(formData.industry)
+                        .filter((dept) =>
+                          dept.toLowerCase().includes((departmentSearch || formData.department).toLowerCase()),
+                        )
+                        .map((dept) => (
+                          <div
+                            key={dept}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            onClick={() => {
+                              updateFormData("department", dept)
+                              setDepartmentSearch(dept)
+                              setShowDepartmentDropdown(false)
+                              updateFormData("roleCategory", "")
+                              updateFormData("jobRole", "")
+                            }}
+                          >
+                            {dept}
+                          </div>
+                        ))}
+                      {formData.department.trim() &&
+                        !getDepartments(formData.industry).some(
+                          (dept) => dept.toLowerCase() === formData.department.toLowerCase(),
+                        ) && (
+                          <div
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                            onClick={() => {
+                              setShowDepartmentDropdown(false)
+                            }}
+                          >
+                            + Add "{formData.department.trim()}" as custom department
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {formData.department && (
+            <div className="grid md:grid-cols-2 gap-4 mt-4">
+              {/* Role Category - Only shows after Department is selected */}
+              <div className="max-w-md relative">
                 <Label htmlFor="roleCategory" className="text-sm">
                   Role Category <span className="text-red-500">*</span>
                 </Label>
-                <select
+                <Input
                   id="roleCategory"
+                  type="text"
                   value={formData.roleCategory}
                   onChange={(e) => {
                     updateFormData("roleCategory", e.target.value)
-                    // Reset child field
+                    setRoleCategorySearch(e.target.value)
+                    setShowRoleCategoryDropdown(e.target.value.length > 0)
                     updateFormData("jobRole", "")
                   }}
-                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  <option value="">Select Role Category</option>
-                  {getRoles(formData.industry, formData.department).map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
+                  onFocus={() => {
+                    setRoleCategorySearch(formData.roleCategory)
+                    setShowRoleCategoryDropdown(true)
+                  }}
+                  onBlur={() => setTimeout(() => setShowRoleCategoryDropdown(false), 300)}
+                  placeholder="Type to search or add custom role category"
+                  className="mt-1 h-10 rounded-full"
+                />
+                {showRoleCategoryDropdown && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {getRoles(formData.industry, formData.department)
+                      .filter((role) =>
+                        role.toLowerCase().includes((roleCategorySearch || formData.roleCategory).toLowerCase()),
+                      )
+                      .map((role) => (
+                        <div
+                          key={role}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            updateFormData("roleCategory", role)
+                            setRoleCategorySearch(role)
+                            setShowRoleCategoryDropdown(false)
+                            updateFormData("jobRole", "")
+                          }}
+                        >
+                          {role}
+                        </div>
+                      ))}
+                    {formData.roleCategory.trim() &&
+                      !getRoles(formData.industry, formData.department).some(
+                        (role) => role.toLowerCase() === formData.roleCategory.toLowerCase(),
+                      ) && (
+                        <div
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                          onClick={() => {
+                            setShowRoleCategoryDropdown(false)
+                          }}
+                        >
+                          + Add "{formData.roleCategory.trim()}" as custom role category
+                        </div>
+                      )}
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Job Title - Only shows after Role Category is selected */}
-            {formData.roleCategory && (
-              <div>
-                <Label htmlFor="jobRole" className="text-sm">
-                  Job Title <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="jobRole"
-                  value={formData.jobRole}
-                  onChange={(e) => updateFormData("jobRole", e.target.value)}
-                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  <option value="">Select Job Title</option>
-                  {getJobTitles(formData.industry, formData.department, formData.roleCategory).map((title) => (
-                    <option key={title} value={title}>
-                      {title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
+              {/* Job Title - Only shows after Role Category is selected */}
+              {formData.roleCategory && (
+                <div className="max-w-md relative">
+                  <Label htmlFor="jobRole" className="text-sm">
+                    Job Title <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="jobRole"
+                    type="text"
+                    value={formData.jobRole}
+                    onChange={(e) => {
+                      updateFormData("jobRole", e.target.value)
+                      setJobTitleSearch(e.target.value)
+                      setShowJobTitleDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => {
+                      setJobTitleSearch(formData.jobRole)
+                      setShowJobTitleDropdown(true)
+                    }}
+                    onBlur={() => setTimeout(() => setShowJobTitleDropdown(false), 300)}
+                    placeholder="Type to search or add custom job title"
+                    className="mt-1 h-10 rounded-full"
+                  />
+                  {showJobTitleDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {getJobTitles(formData.industry, formData.department, formData.roleCategory)
+                        .filter((title) =>
+                          title.toLowerCase().includes((jobTitleSearch || formData.jobRole).toLowerCase()),
+                        )
+                        .map((title) => (
+                          <div
+                            key={title}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            onClick={() => {
+                              updateFormData("jobRole", title)
+                              setJobTitleSearch(title)
+                              setShowJobTitleDropdown(false)
+                            }}
+                          >
+                            {title}
+                          </div>
+                        ))}
+                      {formData.jobRole.trim() &&
+                        !getJobTitles(formData.industry, formData.department, formData.roleCategory).some(
+                          (title) => title.toLowerCase() === formData.jobRole.toLowerCase(),
+                        ) && (
+                          <div
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                            onClick={() => {
+                              setShowJobTitleDropdown(false)
+                            }}
+                          >
+                            + Add "{formData.jobRole.trim()}" as custom job title
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        <CardFooter className="flex justify-between pt-6">
-          <Button type="button" variant="outline" onClick={prevStep} className="rounded-full px-8 bg-transparent">
-            Back
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSaveAndContinue}
-            disabled={isLoading}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
-          >
-            {isLoading ? "Saving..." : "Save & Continue"}
-          </Button>
-        </CardFooter>
       </CardContent>
+
+      <CardFooter className="flex justify-between pt-6">
+        <Button type="button" variant="outline" onClick={prevStep} className="rounded-full px-8 bg-transparent">
+          Back
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSaveAndContinue}
+          disabled={isLoading}
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+        >
+          {isLoading ? "Saving..." : "Save & Continue"}
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
@@ -3098,7 +3242,7 @@ const Step5HeadlineAndPreferences = ({
     const industry = formData.industry || ""
     const jobTitle = formData.jobRole || "" // Use jobRole from Step 3
     const yearsOfExp = formData.totalExperienceYears || 0
-    const skills = (formData.skillsYouKnow || []).slice(0, 3).join(", ")
+    const skills = (formData.skills || []).slice(0, 3).join(", ") // Use single skills field
 
     const relevantHeadlines = []
 

@@ -82,7 +82,24 @@ export async function createInitialEmployer(data: {
 
     if (insertError) {
       console.error("[v0] createInitialEmployer: Insert error:", insertError)
-      return { success: false, message: insertError.message }
+
+      let errorMessage = insertError.message
+
+      // Check for duplicate mobile number or email (unique constraint violation)
+      if (insertError.code === "23505") {
+        if (insertError.message.includes("mobile_number") || insertError.message.includes("mobile")) {
+          errorMessage =
+            "This mobile number is already in use. Please use a different mobile number or login to your existing account."
+        } else if (insertError.message.includes("email")) {
+          errorMessage = "This email is already in use. Please use a different email address."
+        } else if (insertError.message.includes("username")) {
+          errorMessage = "This username is already taken. Please choose a different username."
+        } else {
+          errorMessage = "An account with these details already exists. Please check your information."
+        }
+      }
+
+      return { success: false, message: errorMessage }
     }
 
     console.log("[v0] createInitialEmployer: Success, new employer ID:", inserted.id)
@@ -139,7 +156,14 @@ export async function completeEmployerRegistration(email: string, password: stri
 
     if (updateError) {
       console.error("[v0] completeEmployerRegistration: Update error:", updateError)
-      return { success: false, message: updateError.message }
+
+      let errorMessage = updateError.message
+
+      if (updateError.code === "23505") {
+        errorMessage = "Some of the provided information is already in use. Please check your details."
+      }
+
+      return { success: false, message: errorMessage }
     }
 
     console.log("[v0] completeEmployerRegistration: Registration completed successfully")

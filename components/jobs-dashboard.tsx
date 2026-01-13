@@ -1082,9 +1082,11 @@ export default function JobsDashboard({
                             </div>
 
                             <div className="flex-1 min-w-0">
-                              <h3 className="text-sm md:text-base font-semibold text-gray-900 mb-1 break-words">
-                                {job.job_title}
-                              </h3>
+                              <Link href={`/employer/preview-job/${job.id}`} className="block group">
+                                <h3 className="text-sm md:text-base font-semibold text-gray-900 mb-1 break-words group-hover:text-blue-600 transition-colors cursor-pointer">
+                                  {job.job_title}
+                                </h3>
+                              </Link>
                               <p className="text-xs md:text-sm text-gray-600 mb-2 break-words">{job.location}</p>
 
                               {/* Job status badge and expiry date display */}

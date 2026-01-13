@@ -29,7 +29,6 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Star,
   Edit2,
   Ban,
   EyeOff,
@@ -135,7 +134,7 @@ const calculateProfileCompletion = (profile: any): number => {
     profile.job_role,
     profile.annual_salary,
     profile.notice_period,
-    profile.skills_for_role && profile.skills_for_role.length > 0,
+    profile.skills && profile.skills.length > 0,
     profile.highest_qualification,
     profile.course,
     profile.university,
@@ -342,6 +341,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
   const [isPictureUploading, setIsPictureUploading] = useState(false)
   const profilePictureInputRef = useRef<HTMLInputElement>(null)
 
+  const [skillDuplicateError, setSkillDuplicateError] = useState("")
+
   const [languages, setLanguages] = useState<
     Array<{
       language: string
@@ -358,6 +359,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
       from_date: string
       to_date: string
       url: string
+      issuer?: string // Added issuer field
     }>
   >([])
 
@@ -382,8 +384,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
       if (result.success && result.candidate) {
         console.log("[v0] Profile data loaded successfully")
         console.log("[v0] Employment history:", result.candidate.employment_history)
-        console.log("[v0] Skills for role:", result.candidate.skills_for_role)
-        console.log("[v0] Skills you know:", result.candidate.skills_you_know)
+        console.log("[v0] Skills:", result.candidate.skills)
         console.log("[v0] Preferred salary:", result.candidate.preferred_salary)
         console.log("[v0] Education:", result.candidate.highest_qualification, result.candidate.course)
         console.log("[v0] Certifications:", result.candidate.certifications)
@@ -447,7 +448,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
   }
 
   const addCertification = () => {
-    setCertifications([...certifications, { name: "", topic: "", from_date: "", to_date: "", url: "" }])
+    setCertifications([...certifications, { name: "", topic: "", from_date: "", to_date: "", url: "", issuer: "" }])
   }
 
   const updateCertification = (index: number, field: string, value: string) => {
@@ -1026,8 +1027,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
       languages_known: profileData.languages_known || [],
       certifications: profileData.certifications || [],
       projects: profileData.projects || [],
-      skills_for_role: profileData.skills_for_role || [],
       skills_you_know: profileData.skills_you_know || [],
+      skills_for_role: profileData.skills_for_role || [],
     })
     if (profileData?.languages_known && Array.isArray(profileData.languages_known)) {
       setLanguages(
@@ -1039,7 +1040,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
     if (profileData?.certifications && Array.isArray(profileData.certifications)) {
       setCertifications(
         profileData.certifications.map((cert: any) =>
-          typeof cert === "string" ? { name: cert, topic: "", from_date: "", to_date: "", url: "" } : cert,
+          typeof cert === "string" ? { name: cert, topic: "", from_date: "", to_date: "", url: "", issuer: "" } : cert,
         ),
       )
     }
@@ -1080,8 +1081,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
 
     try {
       console.log("[v0] Saving profile with resume_url:", editFormData.resume_url)
-      console.log("[v0] Saving profile with skills_for_role:", editFormData.skills_for_role)
-      console.log("[v0] Saving profile with skills_you_know:", editFormData.skills_you_know)
+      console.log("[v0] Saving profile with skills:", editFormData.skills_for_role)
 
       const result = await updateCandidateProfile(candidateId, {
         full_name: editFormData.full_name,
@@ -1103,8 +1103,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
         annual_salary: editFormData.annual_salary,
         notice_period: editFormData.notice_period,
         currently_employed: editFormData.currently_employed,
-        skills_for_role: editFormData.skills_for_role,
-        skills_you_know: editFormData.skills_you_know,
+        skills_for_role: editFormData.skills_for_role, // Updated to skills_for_role
+        skills_you_know: editFormData.skills_you_know, // Added for general skills
         preferred_salary: editFormData.preferred_salary,
         preferred_locations: editFormData.preferred_locations,
         highest_qualification: editFormData.highest_qualification,
@@ -1161,7 +1161,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
     if (profileData?.certifications && Array.isArray(profileData.certifications)) {
       setCertifications(
         profileData.certifications.map((cert: any) =>
-          typeof cert === "string" ? { name: cert, topic: "", from_date: "", to_date: "", url: "" } : cert,
+          typeof cert === "string" ? { name: cert, topic: "", from_date: "", to_date: "", url: "", issuer: "" } : cert,
         ),
       )
     } else {
@@ -2551,12 +2551,18 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                                     onChange={(e) => updateCertification(index, "url", e.target.value)}
                                     className="md:col-span-2 rounded-full"
                                   />
+                                  <Input
+                                    placeholder="Certified From (Issuer)" // Added input for issuer
+                                    value={cert.issuer || ""}
+                                    onChange={(e) => updateCertification(index, "issuer", e.target.value)}
+                                    className="md:col-span-2 rounded-full"
+                                  />
                                 </div>
                                 <Button
                                   onClick={() => removeCertification(index)}
                                   variant="ghost"
                                   size="icon"
-                                  className="text-red-600 ml-2"
+                                  className="text-red-600"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
@@ -2573,17 +2579,26 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                           {profileData.certifications.map((cert: any, index: number) => (
                             <div key={index} className="p-4 bg-green-50 border border-green-100 rounded-lg">
                               <h4 className="font-semibold text-gray-900">{cert.name}</h4>
+                              {cert.issuer && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  <span className="font-medium">Certified from:</span> {cert.issuer}
+                                </p>
+                              )}
                               {cert.topic && <p className="text-sm text-gray-600 mt-1">{cert.topic}</p>}
-                              {(cert.from_date || cert.to_date) && (
+                              {(cert.from_date || cert.issueDate || cert.from_date || cert.expiryDate) && (
                                 <p className="text-xs text-gray-500 mt-2">
-                                  {cert.from_date &&
-                                    new Date(cert.from_date).toLocaleDateString("en-IN", {
+                                  {(cert.from_date || cert.issueDate || cert.from_date || cert.expiryDate) &&
+                                    new Date(
+                                      cert.from_date || cert.issueDate || cert.from_date || cert.expiryDate,
+                                    ).toLocaleDateString("en-IN", {
                                       month: "short",
                                       year: "numeric",
                                     })}{" "}
-                                  {cert.from_date && cert.to_date && "- "}
-                                  {cert.to_date &&
-                                    new Date(cert.to_date).toLocaleDateString("en-IN", {
+                                  {(cert.from_date || cert.issueDate || cert.from_date || cert.expiryDate) &&
+                                    (cert.to_date || cert.expiryDate) &&
+                                    "- "}
+                                  {(cert.to_date || cert.expiryDate) &&
+                                    new Date(cert.to_date || cert.expiryDate).toLocaleDateString("en-IN", {
                                       month: "short",
                                       year: "numeric",
                                     })}
@@ -2612,23 +2627,21 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                 {/* Added employment history edit functionality with add/edit/delete options */}
                 <Card className="border border-gray-200 rounded-lg shadow-sm">
                   <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-6 pb-3 border-b">
-                      <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <Briefcase className="w-5 h-5 text-blue-600" />
-                        Employment History
-                      </h3>
-                      {editingSection !== "employment" && (
-                        <Button
-                          onClick={() => setEditingSection("employment")}
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full"
-                        >
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </Button>
-                      )}
-                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                      <Briefcase className="w-5 h-5 text-blue-600" />
+                      Employment History
+                    </h3>
+                    {editingSection !== "employment" && (
+                      <Button
+                        onClick={() => setEditingSection("employment")}
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full mb-4"
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                    )}
 
                     {editingSection === "employment" ? (
                       <EmploymentEditForm
@@ -2645,29 +2658,37 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                                 <div className="flex justify-between items-start mb-2">
                                   <div>
                                     <h5 className="font-semibold text-gray-900">
-                                      {job.job_title || job.currentJobTitle}
+                                      {job.job_title || job.jobTitle || job.currentJobTitle}
                                     </h5>
                                     <p className="text-sm text-gray-600">{job.company_name || job.companyName}</p>
                                   </div>
-                                  {(job.is_current || job.currently_working) && (
+                                  {(job.is_current || job.currently_working || job.type === "current") && (
                                     <Badge variant="secondary" className="bg-green-100 text-green-700">
                                       Current
                                     </Badge>
                                   )}
                                 </div>
                                 <p className="text-xs text-gray-500">
-                                  {job.start_date || job.durationFrom
-                                    ? new Date(job.start_date || job.durationFrom).toLocaleDateString("en-IN", {
-                                        month: "short",
-                                        year: "numeric",
-                                      })
+                                  {job.start_date || job.fromDate || job.durationFrom
+                                    ? new Date(job.start_date || job.fromDate || job.durationFrom).toLocaleDateString(
+                                        "en-IN",
+                                        {
+                                          month: "short",
+                                          year: "numeric",
+                                        },
+                                      )
                                     : "Start Date Not Specified"}
                                   {" - "}
-                                  {job.end_date || job.durationTo
-                                    ? new Date(job.end_date || job.durationTo).toLocaleDateString("en-IN", {
-                                        month: "short",
-                                        year: "numeric",
-                                      })
+                                  {job.end_date || job.toDate || job.durationTo
+                                    ? job.toDate === "Present" || job.durationTo === "Present"
+                                      ? "Present"
+                                      : new Date(job.end_date || job.toDate || job.durationTo).toLocaleDateString(
+                                          "en-IN",
+                                          {
+                                            month: "short",
+                                            year: "numeric",
+                                          },
+                                        )
                                     : "Present"}
                                 </p>
                                 {job.employment_type && (
@@ -2822,7 +2843,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                         <GraduationCap className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-500">No education details provided</p>
                         {!isEditMode && (
-                          <p className="text-sm text-gray-400 mt-2">Click "Edit Profile" to add education details</p>
+                          <p className="text-xs text-gray-400 mt-2">Click "Edit Profile" to add education details</p>
                         )}
                       </div>
                     )}
@@ -2923,7 +2944,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                   <Card className="border border-gray-200 rounded-lg shadow-sm">
                     <CardContent className="p-6">
                       <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4 pb-3 border-b">
-                        <Star className="w-5 h-5 text-blue-600" />
+                        <Award className="w-5 h-5 text-blue-600" />
                         Key Skills
                       </h3>
                       {isEditMode ? (
@@ -2940,11 +2961,15 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                                 const skill = input.value.trim().replace(/,$/g, "")
                                 if (skill) {
                                   const currentSkills = editFormData?.skills_for_role || []
-                                  if (!currentSkills.includes(skill)) {
+                                  if (currentSkills.includes(skill)) {
+                                    setSkillDuplicateError("Skill already added")
+                                    setTimeout(() => setSkillDuplicateError(""), 3000)
+                                  } else {
                                     setEditFormData({
                                       ...editFormData,
                                       skills_for_role: [...currentSkills, skill],
                                     })
+                                    setSkillDuplicateError("")
                                   }
                                   input.value = ""
                                 }
@@ -2952,6 +2977,9 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                             }}
                             className="rounded-full"
                           />
+                          {skillDuplicateError && (
+                            <p className="text-red-600 text-sm mt-1 font-medium">{skillDuplicateError}</p>
+                          )}
                           <div className="flex flex-wrap gap-2 mt-4">
                             {(editFormData?.skills_for_role || []).map((skill: string, index: number) => (
                               <Badge
