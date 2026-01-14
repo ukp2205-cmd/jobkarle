@@ -124,19 +124,33 @@ export async function getRecommendedJobs(candidateId: string) {
 
           const matchingSkills = normalizedCandidateSkills.filter((candidateSkill) =>
             normalizedJobSkills.some((jobSkill) => {
-              return (
-                candidateSkill === jobSkill || candidateSkill.includes(jobSkill) || jobSkill.includes(candidateSkill)
+              // Exact match
+              if (candidateSkill === jobSkill) return true
+
+              // Only allow partial match if one is clearly a substring with word boundaries
+              // This prevents false matches like "service" in "customer service" vs "software"
+              const candidateWords = candidateSkill.split(/\s+/)
+              const jobWords = jobSkill.split(/\s+/)
+
+              // Check if any complete word matches
+              return candidateWords.some((cWord) =>
+                jobWords.some(
+                  (jWord) =>
+                    cWord.length > 2 &&
+                    jWord.length > 2 &&
+                    (cWord === jWord ||
+                      (cWord.length > 5 && jWord.length > 5 && (cWord.includes(jWord) || jWord.includes(cWord)))),
+                ),
               )
             }),
           )
 
-          // Calculate skill match percentage
+          // Calculate skill match percentage based on job requirements
           const skillMatchPercentage = (matchingSkills.length / jobSkills.length) * 100
 
-          // STRICT REQUIREMENT: At least 50% of job skills must match candidate skills
-          if (skillMatchPercentage < 50) {
+          if (skillMatchPercentage < 60) {
             console.log(
-              `[v0] ✗ Job "${job.job_title}" rejected - Skill match only ${skillMatchPercentage.toFixed(0)}% (need 50%+). Matching skills: [${matchingSkills.join(", ")}]`,
+              `[v0] ✗ Job "${job.job_title}" rejected - Skill match only ${skillMatchPercentage.toFixed(0)}% (need 60%+). Matching skills: [${matchingSkills.join(", ")}] vs Job skills: [${normalizedJobSkills.join(", ")}]`,
             )
             return null
           }
@@ -145,10 +159,13 @@ export async function getRecommendedJobs(candidateId: string) {
             `[v0] ✓ Job "${job.job_title}" - Skill match: ${skillMatchPercentage.toFixed(0)}% (${matchingSkills.length}/${jobSkills.length}). Matching skills: [${matchingSkills.join(", ")}]`,
           )
 
-          // SECONDARY SCORING FACTORS (not hard filters)
-          let matchScore = skillMatchPercentage * 2 // Skills are weighted 2x
+          // Skills score: 0-70 points (based on match percentage)
+          const skillScore = (skillMatchPercentage / 100) * 70
 
-          // Industry match adds bonus points (not required)
+          // Other factors: max 30 points total
+          let otherScore = 0
+
+          // Industry match: up to 10 points
           const jobIndustries = (job.candidate_industries || []) as string[]
           const normalizedJobIndustries = jobIndustries.map((ind) => String(ind).toLowerCase().trim())
 
@@ -163,11 +180,11 @@ export async function getRecommendedJobs(candidateId: string) {
             )
 
           if (industryMatch) {
-            matchScore += 30
-            console.log(`[v0]   + Industry match bonus`)
+            otherScore += 10
+            console.log(`[v0]   + Industry match bonus: +10 points`)
           }
 
-          // Location match adds bonus points (not required)
+          // Location match: up to 10 points
           const jobLocations = (job.job_locations || []) as string[]
           const normalizedJobLocations = jobLocations.map((loc) => String(loc).toLowerCase().trim())
 
@@ -179,11 +196,11 @@ export async function getRecommendedJobs(candidateId: string) {
             )
 
           if (locationMatch) {
-            matchScore += 20
-            console.log(`[v0]   + Location match bonus`)
+            otherScore += 10
+            console.log(`[v0]   + Location match bonus: +10 points`)
           }
 
-          // Salary match adds bonus points (not required)
+          // Salary match: up to 5 points
           const jobMinSalary = Number(job.min_salary) || 0
           const jobMaxSalary = Number(job.max_salary) || Number.POSITIVE_INFINITY
 
@@ -194,21 +211,25 @@ export async function getRecommendedJobs(candidateId: string) {
             candidateSalaryMax >= jobMinSalary
 
           if (salaryMatch) {
-            matchScore += 15
-            console.log(`[v0]   + Salary match bonus`)
+            otherScore += 5
+            console.log(`[v0]   + Salary match bonus: +5 points`)
           }
 
-          // Experience match adds bonus points (not required)
+          // Experience match: up to 5 points
           const jobMinExp = Number(job.min_experience) || 0
           const jobMaxExp = Number(job.max_experience) || 100
           const experienceMatch = candidateExperience >= jobMinExp && candidateExperience <= jobMaxExp
 
           if (experienceMatch) {
-            matchScore += 10
-            console.log(`[v0]   + Experience match bonus`)
+            otherScore += 5
+            console.log(`[v0]   + Experience match bonus: +5 points`)
           }
 
-          console.log(`[v0]   Total match score: ${matchScore.toFixed(0)}`)
+          const matchScore = skillScore + otherScore
+
+          console.log(
+            `[v0]   Skill score: ${skillScore.toFixed(1)}/70, Other score: ${otherScore}/30, Total: ${matchScore.toFixed(1)}/100`,
+          )
 
           return {
             ...job,
@@ -234,7 +255,7 @@ export async function getRecommendedJobs(candidateId: string) {
     })
 
     console.log(
-      `[v0] ✓ Returned ${sortedJobs.length} skill-matched jobs (50%+ match) out of ${jobs?.length || 0} total jobs`,
+      `[v0] ✓ Returned ${sortedJobs.length} skill-matched jobs (60%+ match) out of ${jobs?.length || 0} total jobs`,
     )
 
     return {

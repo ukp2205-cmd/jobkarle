@@ -242,10 +242,10 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
                       <img
                         src={profile.logo_url || "/placeholder.svg"}
                         alt={profile.company_name}
-                        className="w-24 h-24 mx-auto rounded-full object-cover border-4 border-white shadow-lg"
+                        className="w-[200px] h-[200px] mx-auto rounded-full object-cover border-4 border-white shadow-lg"
                       />
                     ) : (
-                      <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold border-4 border-white shadow-lg">
+                      <div className="w-[200px] h-[200px] mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold border-4 border-white shadow-lg">
                         {profile?.company_name?.charAt(0) || "C"}
                       </div>
                     )}

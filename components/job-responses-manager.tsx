@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { getJobApplications, updateApplicationStatus } from "@/app/actions/job-responses-actions"
 import { saveColumnPreferences, getColumnPreferences } from "@/app/actions/column-preferences-actions"
-import { toast } from "@/components/ui/use-toast" // Changed import path for toast
+import { toast } from "@/hooks/use-toast" // Changed import path for toast
 
 interface Application {
   id: string
@@ -224,8 +224,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
             {app.applied_at ? new Date(app.applied_at).toLocaleDateString() : "N/A"}
           </div>
         )
-      case "keySkillScore":
-        return getKeySkillScoreBadge(app, jobDetails)
+      // </CHANGE> Removed keySkillScore case
       case "cvScore":
         return getCVScoreBadge(app.cv_score)
       case "status":
@@ -293,7 +292,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     { key: "industry", label: "Industry", selected: false },
     { key: "email", label: "Email id", selected: false },
     { key: "applyDate", label: "Apply date", selected: false },
-    { key: "keySkillScore", label: "Skill Match", selected: false }, // Added Skill Match
+    // </CHANGE> Removed keySkillScore from available columns
     { key: "cvScore", label: "CV Score", selected: true },
     { key: "status", label: "Status", selected: true },
   ])
@@ -523,7 +522,6 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           "industry",
           "email",
           "applyDate",
-          "keySkillScore",
           "cvScore",
           "status",
         ]
@@ -559,7 +557,6 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           { key: "industry", label: "Industry", selected: false },
           { key: "email", label: "Email id", selected: false },
           { key: "applyDate", label: "Apply date", selected: false },
-          { key: "keySkillScore", label: "Skill Match", selected: false },
           { key: "cvScore", label: "CV Score", selected: true },
           { key: "status", label: "Status", selected: true },
         ]
@@ -2218,11 +2215,20 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                     className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
                   >
                     <Checkbox
+                      id={column.key}
                       checked={column.selected}
                       onCheckedChange={(checked) => {
-                        setAvailableColumns((prev) =>
-                          prev.map((col) => (col.key === column.key ? { ...col, selected: checked === true } : col)),
-                        )
+                        console.log("[v0] Checkbox toggled:", column.key, "to", checked)
+                        setAvailableColumns((prev) => {
+                          const updated = prev.map((col) =>
+                            col.key === column.key ? { ...col, selected: checked === true } : col,
+                          )
+                          console.log(
+                            "[v0] Updated availableColumns:",
+                            updated.filter((c) => c.selected).map((c) => c.key),
+                          )
+                          return updated
+                        })
                       }}
                     />
                     <span className="text-sm text-gray-700 break-words">{column.label}</span>
@@ -2296,15 +2302,21 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
             </Button>
             <Button
               onClick={async () => {
-                const newVisibleColumns: Record<string, boolean> = {} // Ensure type is Record
+                console.log(
+                  "[v0] Apply clicked - Current availableColumns:",
+                  availableColumns.filter((c) => c.selected).map((c) => c.key),
+                )
+                const newVisibleColumns: Record<string, boolean> = {}
                 availableColumns.forEach((col) => {
                   newVisibleColumns[col.key] = col.selected
                 })
+                console.log("[v0] Setting visibleColumns:", newVisibleColumns)
                 setVisibleColumns(newVisibleColumns)
                 setShowCustomizeColumns(false)
 
                 // Save to database
                 await saveColumnPreferencesToDB()
+                console.log("[v0] Column preferences saved")
               }}
               className="flex-1 bg-[#0277bd] hover:bg-[#01579b]"
             >

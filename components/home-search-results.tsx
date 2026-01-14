@@ -113,9 +113,10 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
       console.log("[v0] Elasticsearch search filters:", searchFilters)
 
       const results = await searchJobsWithElastic(query, searchFilters)
-      console.log("[v0] Search results received:", results?.length || 0)
+      const jobsArray = results?.jobs || []
+      console.log("[v0] Search results received:", jobsArray.length)
 
-      setJobs(results || [])
+      setJobs(jobsArray)
     } catch (err) {
       console.error("[v0] Error loading jobs:", err)
       setError("Failed to load job results. Please try again.")

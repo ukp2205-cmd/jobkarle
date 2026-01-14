@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,10 @@ import {
   updateEmploymentDetails,
   updateEducationDetails,
 } from "@/app/actions/candidate-actions"
+import { fetchInstitutions, addCustomInstitution as saveCustomInstitution } from "@/app/actions/institution-actions"
+import { getEducationsByLevel, getSpecializationsByEducation } from "@/app/actions/education-actions"
+import { getDepartmentsByIndustry, saveCustomDepartment } from "@/app/actions/department-actions"
+import { getRoleCategoriesByDepartment, saveCustomRoleCategory } from "@/app/actions/role-category-actions"
 
 import Link from "next/link"
 
@@ -337,55 +341,78 @@ const calculateTotalExperienceFromEmployment = (
 }
 
 export default function CandidateRegistration() {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("candidateRegistrationStep")
+      return saved ? Number.parseInt(saved, 10) : 1
+    }
+    return 1
+  })
   const [isLoading, setIsLoading] = useState(false)
 
   // Removed state variables from here, they belong in Step3EmploymentAndSkills
-  // const [isCurrentEmploymentSaved, setIsCurrentEmploymentSaved] = useState(false)
-  // const [isCurrentEmploymentEditable, setIsCurrentEmploymentEditable] = useState(true)
 
-  const [formData, setFormData] = useState<RegistrationData>({
-    fullName: "",
-    email: "",
-    password: "",
-    mobileNumber: "",
-    mobileVerified: false, // Initialize mobileVerified to false
-    workStatus: "",
-    resume: null,
-    resumeUrl: "",
-    otp: "",
-    candidateId: null, // Initialize candidateId to null
-    currentEmployment: null,
-    additionalEmployment: [],
+  const [formData, setFormData] = useState<RegistrationData>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("candidateRegistrationData")
+      if (saved) {
+        try {
+          const parsed = JSON.JSON.parse(saved)
+          // Don't restore password or OTP for security
+          return {
+            ...parsed,
+            password: "",
+            otp: "",
+            resume: null, // File objects can't be serialized
+          }
+        } catch (e) {
+          console.error("[v0] Failed to parse saved registration data:", e)
+        }
+      }
+    }
+    return {
+      fullName: "",
+      email: "",
+      password: "",
+      mobileNumber: "",
+      mobileVerified: false, // Initialize mobileVerified to false
+      workStatus: "",
+      resume: null,
+      resumeUrl: "",
+      otp: "",
+      candidateId: null, // Initialize candidateId to null
+      currentEmployment: null,
+      additionalEmployment: [],
 
-    totalExperienceYears: "",
-    totalExperienceMonths: "",
-    skills: [],
-    industry: "",
-    department: "",
-    roleCategory: "",
-    jobRole: "",
-    highestQualification: "",
-    course: "",
-    courseType: "",
-    specialization: "",
-    university: "",
-    startingYear: "", // This field is effectively removed from the form logic
-    passingYear: "",
-    passingYearFrom: "", // Initialize new fields
-    passingYearTo: "", // Initialize new fields
-    certifications: [],
-    resumeHeadline: "",
-    preferredLocations: [],
-    preferredSalary: "",
-    gender: "",
-    currentCity: "",
-    currentState: "",
-    availabilityToJoin: "",
-    dateOfBirth: "",
-    maritalStatus: "",
-    languagesKnown: [],
-    projects: [],
+      totalExperienceYears: "",
+      totalExperienceMonths: "",
+      skills: [],
+      industry: "",
+      department: "",
+      roleCategory: "",
+      jobRole: "",
+      highestQualification: "",
+      course: "",
+      courseType: "",
+      specialization: "",
+      university: "",
+      startingYear: "", // This field is effectively removed from the form logic
+      passingYear: "",
+      passingYearFrom: "", // Initialize new fields
+      passingYearTo: "", // Initialize new fields
+      certifications: [],
+      resumeHeadline: "",
+      preferredLocations: [],
+      preferredSalary: "",
+      gender: "",
+      currentCity: "",
+      currentState: "",
+      availabilityToJoin: "",
+      dateOfBirth: "",
+      maritalStatus: "",
+      languagesKnown: [],
+      projects: [],
+    }
   })
 
   const isFresher = formData.workStatus === "fresher"
@@ -563,6 +590,46 @@ export default function CandidateRegistration() {
         return <Step1BasicInfo {...stepProps} />
     }
   }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candidateRegistrationStep", step.toString())
+    }
+  }, [step])
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Create a copy without sensitive data
+      const dataToSave = {
+        ...formData,
+        password: "", // Don't save password
+        otp: "", // Don't save OTP
+        resume: null, // Can't serialize File objects
+      }
+      localStorage.setItem("candidateRegistrationData", JSON.stringify(dataToSave))
+    }
+  }, [formData])
+
+  const clearRegistrationData = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("candidateRegistrationStep")
+      localStorage.removeItem("candidateRegistrationData")
+    }
+  }
+
+  const getStepLabel = (stepNum: number) => {
+    // This function is used for the stepper labels but the logic is in getStepLabels()
+    // Returning it here for completeness in case it was intended to be modified
+    const labels = getStepLabels()
+    const stepInfo = labels.find((s) => s.step === stepNum)
+    return stepInfo ? stepInfo.label : `Step ${stepNum}`
+  }
+
+  const maxStep = useMemo(() => {
+    // Experienced: steps 1, 2, 3, 4, 5
+    // Freshers: steps 1, 2, skip 3, 4, 5
+    return 5
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1119,6 +1186,7 @@ function Step1BasicInfo({
 }
 
 function Step2OTP({ formData, updateFormData, nextStep, prevStep, setIsLoading, isLoading }: StepProps) {
+  const [showPassword, setShowPassword] = useState(false) // This was duplicated from Step1BasicInfo and is not needed here. Removed.
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
   const inputRefs = [
     useRef<HTMLInputElement>(null),
@@ -1363,6 +1431,22 @@ function Step3EmploymentAndSkills({
   const [skillDuplicateError, setSkillDuplicateError] = useState("")
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
   const [loadingSkills, setLoadingSkills] = useState(true)
+
+  // State for dropdowns and search inputs related to industry, department, role, and job title
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false)
+  const [departmentSearch, setDepartmentSearch] = useState("")
+
+  // CHANGE Add state for departments and selected industry ID
+  const [departments, setDepartments] = useState<Array<{ id: string; department_name: string }>>([])
+  const [selectedIndustryId, setSelectedIndustryId] = useState<string | null>(null)
+  const [industriesData, setIndustriesData] = useState<Array<{ id: string; name: string }>>([])
+
+  const [showRoleCategoryDropdown, setShowRoleCategoryDropdown] = useState(false)
+  const [roleCategorySearch, setRoleCategorySearch] = useState("")
+  const [showJobTitleDropdown, setShowJobTitleDropdown] = useState(false)
+  const [jobTitleSearch, setJobTitleSearch] = useState("")
   const [showCityDropdown, setShowCityDropdown] = useState(false)
   const [isSaving, setIsSaving] = React.useState(false) // Added for saving state
   const [selectedRoleCategory, setSelectedRoleCategory] = useState<string>("") // Added for the fix
@@ -1391,15 +1475,10 @@ function Step3EmploymentAndSkills({
       jobRole: "",
     },
   )
-  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
-  const [industrySearch, setIndustrySearch] = useState("")
 
-  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false)
-  const [departmentSearch, setDepartmentSearch] = useState("")
-  const [showRoleCategoryDropdown, setShowRoleCategoryDropdown] = useState(false)
-  const [roleCategorySearch, setRoleCategorySearch] = useState("")
-  const [showJobTitleDropdown, setShowJobTitleDropdown] = useState(false)
-  const [jobTitleSearch, setJobTitleSearch] = useState("")
+  // CHANGE Fetch role categories when department changes
+  const [roleCategories, setRoleCategories] = useState<Array<{ id: string; role_category_name: string }>>([])
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null)
 
   // Fetch skills from Supabase
   useState(() => {
@@ -1416,39 +1495,71 @@ function Step3EmploymentAndSkills({
     fetchSkills()
   })
 
-  // Updated industry and department structure to include roles and departments within industries
-  const industries = [
-    "IT Services & Consulting",
-    "Software Product",
-    "Internet",
-    "Banking",
-    "Financial Services",
-    "Insurance",
-    "BPO / Call Centre",
-    "Analytics / KPO / Research",
-    "Healthcare",
-    "Pharmaceutical",
-    "Medical Devices",
-    "Manufacturing",
-    "Automobile",
-    "Consumer Electronics",
-    "FMCG",
-    "Retail",
-    "E-commerce",
-    "Telecommunications",
-    "Media & Entertainment",
-    "Education",
-    "Real Estate",
-    "Construction",
-    "Travel & Tourism",
-    "Hospitality",
-    "Logistics & Supply Chain",
-    "Oil & Gas",
-    "Power & Energy",
-    "Government / PSU",
-    "NGO / Non-Profit",
-    "Legal",
-  ]
+  // CHANGE Fetch industries from database on component mount
+  useEffect(() => {
+    const fetchIndustriesFromDB = async () => {
+      try {
+        const supabase = await createClient()
+        const { data, error } = await supabase.from("industries").select("id, name").order("name")
+
+        if (error) {
+          console.error("[v0] Error fetching industries:", error)
+          return
+        }
+
+        console.log(`[v0] Fetched ${data?.length || 0} industries from database`)
+        setIndustriesData(data || [])
+      } catch (error) {
+        console.error("[v0] Exception fetching industries:", error)
+      }
+    }
+
+    fetchIndustriesFromDB()
+  }, [])
+
+  // CHANGE Fetch departments when industry changes
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      if (!selectedIndustryId) {
+        setDepartments([])
+        return
+      }
+
+      console.log("[v0] Fetching departments for industry ID:", selectedIndustryId)
+      const result = await getDepartmentsByIndustry(selectedIndustryId)
+
+      if (result.success) {
+        console.log("[v0] Loaded departments:", result.departments.length)
+        setDepartments(result.departments)
+      } else {
+        console.error("[v0] Error loading departments:", result.error)
+        setDepartments([])
+      }
+    }
+
+    fetchDepartments()
+  }, [selectedIndustryId])
+
+  // CHANGE Fetch role categories when department changes
+  useEffect(() => {
+    const fetchRoleCategories = async () => {
+      if (selectedDepartmentId) {
+        console.log("[v0] Fetching role categories for department ID:", selectedDepartmentId)
+        const result = await getRoleCategoriesByDepartment(selectedDepartmentId)
+        if (result.success && result.data) {
+          setRoleCategories(result.data)
+          console.log("[v0] Loaded role categories:", result.data.length)
+        } else {
+          console.error("[v0] Failed to fetch role categories:", result.error)
+          setRoleCategories([])
+        }
+      } else {
+        setRoleCategories([])
+      }
+    }
+
+    fetchRoleCategories()
+  }, [selectedDepartmentId])
 
   const INDIAN_CITIES = [
     // Defined locally for Step3EmploymentAndSkills, used in Step5PersonalAndPreferences as well
@@ -1491,8 +1602,11 @@ function Step3EmploymentAndSkills({
     )
   }
 
-  const handleIndustrySelect = (industryName: string) => {
+  // CHANGE Update industry select handler to fetch departments
+  const handleIndustrySelect = async (industryName: string, industryId: string) => {
+    console.log("[v0] Selected industry:", industryName, "ID:", industryId)
     updateFormData("industry", industryName)
+    setSelectedIndustryId(industryId)
     updateFormData("department", "") // Reset department when industry changes
     updateFormData("roleCategory", "") // Reset role category
     updateFormData("jobRole", "") // Reset job role
@@ -1525,6 +1639,52 @@ function Step3EmploymentAndSkills({
     updateFormData("currentCity", city)
     updateFormData("currentState", state)
     setShowCityDropdown(false)
+  }
+
+  // CHANGE Add handler for custom department
+  const addCustomDepartment = async (departmentName: string) => {
+    if (!selectedIndustryId) {
+      console.error("[v0] Cannot add department without selected industry")
+      return
+    }
+
+    console.log("[v0] Adding custom department:", departmentName)
+    const result = await saveCustomDepartment(departmentName, selectedIndustryId)
+
+    if (result.success) {
+      console.log("[v0] Custom department saved successfully")
+      updateFormData("department", departmentName)
+      setShowDepartmentDropdown(false)
+      setDepartmentSearch("")
+      // Refresh departments list
+      const refreshResult = await getDepartmentsByIndustry(selectedIndustryId)
+      if (refreshResult.success) {
+        setDepartments(refreshResult.departments)
+      }
+    } else {
+      console.error("[v0] Error saving custom department:", result.error)
+    }
+  }
+
+  // CHANGE Add custom role category save function
+  const addCustomRoleCategory = async (roleCategoryName: string) => {
+    if (!selectedDepartmentId) {
+      console.error("[v0] No department selected")
+      return
+    }
+
+    const result = await saveCustomRoleCategory(selectedDepartmentId, roleCategoryName)
+    if (result.success && result.data) {
+      // Add to local state
+      setRoleCategories((prev) => [...prev, result.data!])
+      // Update form
+      updateFormData("roleCategory", roleCategoryName)
+      setRoleCategorySearch(roleCategoryName)
+      setShowRoleCategoryDropdown(false)
+      updateFormData("jobRole", "")
+    } else {
+      console.error("[v0] Failed to save custom role category:", result.error)
+    }
   }
 
   // Calculate total experience
@@ -1700,8 +1860,8 @@ function Step3EmploymentAndSkills({
     }
   }
 
-  const filteredIndustries = industries.filter((industry) =>
-    industry.toLowerCase().includes(industrySearch.toLowerCase()),
+  const filteredIndustries = industriesData.filter((industry) =>
+    industry.name.toLowerCase().includes(industrySearch.toLowerCase()),
   )
 
   // Placeholder data for departments, role categories, and job titles
@@ -2399,30 +2559,32 @@ function Step3EmploymentAndSkills({
                   value={formData.industry}
                   onChange={(e) => {
                     updateFormData("industry", e.target.value)
+                    setIndustrySearch(e.target.value)
                     setShowIndustryDropdown(e.target.value.length > 0)
                     updateFormData("department", "")
                     updateFormData("roleCategory", "")
                     updateFormData("jobRole", "")
+                    setSelectedIndustryId(null)
                   }}
-                  onFocus={() => setShowIndustryDropdown(formData.industry.length > 0)}
+                  onFocus={() => setShowIndustryDropdown(formData.industry.length > 0 || industrySearch.length > 0)}
                   onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
                   placeholder="Type to search industries"
                   className="mt-1 h-10 rounded-full"
                 />
-                {showIndustryDropdown && formData.industry.length > 0 && (
+                {/* CHANGE Updated dropdown to use database industries */}
+                {showIndustryDropdown && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {industries
-                      .filter((ind) => ind.toLowerCase().includes(formData.industry.toLowerCase()))
+                    {industriesData
+                      .filter((ind) =>
+                        ind.name.toLowerCase().includes((industrySearch || formData.industry).toLowerCase()),
+                      )
                       .map((ind) => (
                         <div
-                          key={ind}
+                          key={ind.id}
                           className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                          onClick={() => {
-                            updateFormData("industry", ind)
-                            setShowIndustryDropdown(false)
-                          }}
+                          onClick={() => handleIndustrySelect(ind.name, ind.id)}
                         >
-                          {ind}
+                          {ind.name}
                         </div>
                       ))}
                   </div>
@@ -2442,7 +2604,7 @@ function Step3EmploymentAndSkills({
                     onChange={(e) => {
                       updateFormData("department", e.target.value)
                       setDepartmentSearch(e.target.value)
-                      setShowDepartmentDropdown(e.target.value.length > 0)
+                      setShowDepartmentDropdown(true)
                       updateFormData("roleCategory", "")
                       updateFormData("jobRole", "")
                     }}
@@ -2454,38 +2616,41 @@ function Step3EmploymentAndSkills({
                     placeholder="Type to search or add custom department"
                     className="mt-1 h-10 rounded-full"
                   />
+                  {/* CHANGE Updated dropdown to use database departments */}
                   {showDepartmentDropdown && (
                     <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {getDepartments(formData.industry)
+                      {departments
                         .filter((dept) =>
-                          dept.toLowerCase().includes((departmentSearch || formData.department).toLowerCase()),
+                          dept.department_name
+                            .toLowerCase()
+                            .includes((departmentSearch || formData.department).toLowerCase()),
                         )
                         .map((dept) => (
                           <div
-                            key={dept}
+                            key={dept.id}
                             className="px-4 py-2 cursor-pointer hover:bg-gray-100"
                             onClick={() => {
-                              updateFormData("department", dept)
-                              setDepartmentSearch(dept)
+                              updateFormData("department", dept.department_name)
+                              setDepartmentSearch(dept.department_name)
                               setShowDepartmentDropdown(false)
+                              setSelectedDepartmentId(dept.id)
                               updateFormData("roleCategory", "")
                               updateFormData("jobRole", "")
                             }}
                           >
-                            {dept}
+                            {dept.department_name}
                           </div>
                         ))}
-                      {formData.department.trim() &&
-                        !getDepartments(formData.industry).some(
-                          (dept) => dept.toLowerCase() === formData.department.toLowerCase(),
+                      {/* CHANGE Add custom department option */}
+                      {departmentSearch &&
+                        !departments.some(
+                          (d) => d.department_name.toLowerCase() === departmentSearch.toLowerCase(),
                         ) && (
                           <div
-                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
-                            onClick={() => {
-                              setShowDepartmentDropdown(false)
-                            }}
+                            className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600 border-t"
+                            onClick={() => addCustomDepartment(departmentSearch)}
                           >
-                            + Add "{formData.department.trim()}" as custom department
+                            + Add "{departmentSearch}" as custom department
                           </div>
                         )}
                     </div>
@@ -2522,35 +2687,35 @@ function Step3EmploymentAndSkills({
                 />
                 {showRoleCategoryDropdown && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {getRoles(formData.industry, formData.department)
+                    {roleCategories
                       .filter((role) =>
-                        role.toLowerCase().includes((roleCategorySearch || formData.roleCategory).toLowerCase()),
+                        role.role_category_name
+                          .toLowerCase()
+                          .includes((roleCategorySearch || formData.roleCategory).toLowerCase()),
                       )
                       .map((role) => (
                         <div
-                          key={role}
+                          key={role.id}
                           className="px-4 py-2 cursor-pointer hover:bg-gray-100"
                           onClick={() => {
-                            updateFormData("roleCategory", role)
-                            setRoleCategorySearch(role)
+                            updateFormData("roleCategory", role.role_category_name)
+                            setRoleCategorySearch(role.role_category_name)
                             setShowRoleCategoryDropdown(false)
                             updateFormData("jobRole", "")
                           }}
                         >
-                          {role}
+                          {role.role_category_name}
                         </div>
                       ))}
-                    {formData.roleCategory.trim() &&
-                      !getRoles(formData.industry, formData.department).some(
-                        (role) => role.toLowerCase() === formData.roleCategory.toLowerCase(),
+                    {roleCategorySearch &&
+                      !roleCategories.some(
+                        (role) => role.role_category_name.toLowerCase() === roleCategorySearch.toLowerCase(),
                       ) && (
                         <div
-                          className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
-                          onClick={() => {
-                            setShowRoleCategoryDropdown(false)
-                          }}
+                          className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600 border-t"
+                          onClick={() => addCustomRoleCategory(roleCategorySearch)}
                         >
-                          + Add "{formData.roleCategory.trim()}" as custom role category
+                          + Add "{roleCategorySearch}" as custom role category
                         </div>
                       )}
                   </div>
@@ -2647,6 +2812,66 @@ const Step4EducationAndProjects = ({
   isLoading,
   setFormData,
 }: StepProps) => {
+  const [availableCourses, setAvailableCourses] = useState<Array<{ id: string; education_name: string }>>([])
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false)
+
+  const [availableSpecializations, setAvailableSpecializations] = useState<
+    Array<{ id: string; specialization_name: string; description?: string }>
+  >([])
+  const [isLoadingSpecializations, setIsLoadingSpecializations] = useState(false)
+  const [selectedEducationId, setSelectedEducationId] = useState<string>("")
+
+  useEffect(() => {
+    const fetchCourses = async () => {
+      if (!formData.highestQualification) {
+        setAvailableCourses([])
+        return
+      }
+
+      setIsLoadingCourses(true)
+      const result = await getEducationsByLevel(formData.highestQualification)
+
+      if (result.success && result.educations) {
+        setAvailableCourses(result.educations)
+      } else {
+        console.error("[v0] Error fetching courses:", result.error)
+        setAvailableCourses([])
+      }
+      setIsLoadingCourses(false)
+    }
+
+    fetchCourses()
+  }, [formData.highestQualification])
+
+  useEffect(() => {
+    const fetchSpecializations = async () => {
+      if (!selectedEducationId) {
+        setAvailableSpecializations([])
+        return
+      }
+
+      console.log("[v0] Fetching specializations for education ID:", selectedEducationId)
+      setIsLoadingSpecializations(true)
+      const result = await getSpecializationsByEducation(selectedEducationId)
+
+      if (result.success && result.specializations) {
+        setAvailableSpecializations(result.specializations)
+        console.log("[v0] Loaded specializations:", result.specializations.length)
+      } else {
+        console.error("[v0] Error fetching specializations:", result.error)
+        setAvailableSpecializations([])
+      }
+      setIsLoadingSpecializations(false)
+    }
+
+    fetchSpecializations()
+  }, [selectedEducationId])
+
+  const [institutionInput, setInstitutionInput] = useState("")
+  const [institutionSuggestions, setInstitutionSuggestions] = useState<any[]>([])
+  const [showInstitutionDropdown, setShowInstitutionDropdown] = useState(false)
+  const [loadingInstitutions, setLoadingInstitutions] = useState(false)
+
   const [certInputs, setCertInputs] = useState<{
     [key: number]: { name: string; issuer: string }
   }>(() => {
@@ -2671,6 +2896,54 @@ const Step4EducationAndProjects = ({
     })
     return initial
   })
+
+  const fetchInstitutionSuggestions = async (query: string) => {
+    if (query.length < 2) {
+      setInstitutionSuggestions([])
+      return
+    }
+
+    setLoadingInstitutions(true)
+    const result = await fetchInstitutions(query)
+
+    if (result.success) {
+      setInstitutionSuggestions(result.data)
+    }
+    setLoadingInstitutions(false)
+  }
+
+  const selectInstitution = (institutionName: string) => {
+    setFormData({ ...formData, university: institutionName })
+    setInstitutionInput("")
+    setShowInstitutionDropdown(false)
+    setInstitutionSuggestions([])
+  }
+
+  const addCustomInstitution = async () => {
+    if (institutionInput.trim()) {
+      console.log("[v0] Adding custom institution:", institutionInput.trim())
+
+      // Save to database first
+      const result = await saveCustomInstitution(institutionInput.trim())
+
+      if (result.success) {
+        if (result.alreadyExists) {
+          console.log("[v0] Institution already exists in database")
+        } else {
+          console.log("[v0] New institution added to database successfully")
+        }
+
+        // Update form data with the institution name
+        setFormData({ ...formData, university: institutionInput.trim() })
+        setInstitutionInput("")
+        setShowInstitutionDropdown(false)
+        setInstitutionSuggestions([])
+      } else {
+        console.error("[v0] Failed to save institution:", result.error)
+        alert("Failed to save institution. Please try again.")
+      }
+    }
+  }
 
   const addCertification = () => {
     const certs = formData.certifications || []
@@ -2768,28 +3041,37 @@ const Step4EducationAndProjects = ({
               </select>
             </div>
 
-            {formData.highestQualification && (
+            {formData.highestQualification && formData.highestQualification !== "10th" && (
               <div>
                 <Label htmlFor="course" className="text-sm font-medium">
-                  Course <span className="text-red-500">*</span>
+                  Course / Degree name <span className="text-red-500">*</span>
                 </Label>
                 <select
                   id="course"
                   value={formData.course || ""}
                   onChange={(e) => {
+                    const selectedCourseName = e.target.value
+                    const selectedCourse = availableCourses.find((c) => c.education_name === selectedCourseName)
+
                     setFormData({
                       ...formData,
-                      course: e.target.value,
-                      specialization: "",
+                      course: selectedCourseName,
+                      specialization: "", // Reset specialization when course changes
                     })
+
+                    if (selectedCourse) {
+                      setSelectedEducationId(selectedCourse.id)
+                      console.log("[v0] Selected course:", selectedCourseName, "ID:", selectedCourse.id)
+                    }
                   }}
                   className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                   required
+                  disabled={isLoadingCourses}
                 >
-                  <option value="">Select course</option>
-                  {qualificationCourseSpecializationMapping[formData.highestQualification]?.courses.map((course) => (
-                    <option key={course} value={course}>
-                      {course}
+                  <option value="">{isLoadingCourses ? "Loading courses..." : "Select course"}</option>
+                  {availableCourses.map((course) => (
+                    <option key={course.id} value={course.education_name}>
+                      {course.education_name}
                     </option>
                   ))}
                 </select>
@@ -2830,13 +3112,18 @@ const Step4EducationAndProjects = ({
                     onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
                     className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                     required
+                    disabled={isLoadingSpecializations || !formData.course}
                   >
-                    <option value="">Select specialization</option>
-                    {qualificationCourseSpecializationMapping[formData.highestQualification]?.specializations[
-                      formData.course
-                    ]?.map((spec) => (
-                      <option key={spec} value={spec}>
-                        {spec}
+                    <option value="">
+                      {isLoadingSpecializations
+                        ? "Loading specializations..."
+                        : formData.course
+                          ? "Select specialization"
+                          : "Select a course first"}
+                    </option>
+                    {availableSpecializations.map((spec) => (
+                      <option key={spec.id} value={spec.specialization_name}>
+                        {spec.specialization_name}
                       </option>
                     ))}
                   </select>
@@ -2845,20 +3132,101 @@ const Step4EducationAndProjects = ({
             </div>
           )}
 
+          {/* Replace the university input field with autocomplete dropdown */}
           {formData.highestQualification && formData.course && (
-            <div>
+            <div className="relative">
               <Label htmlFor="university" className="text-sm font-medium">
                 University/Institution <span className="text-red-500">*</span>
               </Label>
-              <Input
-                id="university"
-                type="text"
-                value={formData.university || ""}
-                onChange={(e) => setFormData({ ...formData, university: e.target.value })}
-                placeholder="Enter university or institution name"
-                className="mt-1 h-10 rounded-full"
-                required
-              />
+
+              {formData.university ? (
+                // Display selected institution with option to change
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex-1 h-10 px-4 rounded-full border border-gray-300 bg-gray-50 flex items-center">
+                    <span className="text-sm">{formData.university}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setFormData({ ...formData, university: "" })
+                      setInstitutionInput("")
+                    }}
+                    className="rounded-full"
+                  >
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    id="university"
+                    type="text"
+                    value={institutionInput}
+                    onChange={(e) => {
+                      setInstitutionInput(e.target.value)
+                      fetchInstitutionSuggestions(e.target.value)
+                    }}
+                    onFocus={() => {
+                      setShowInstitutionDropdown(true)
+                      if (institutionInput.length >= 2) {
+                        fetchInstitutionSuggestions(institutionInput)
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => setShowInstitutionDropdown(false), 200)
+                    }}
+                    placeholder="Type to search institution..."
+                    className="mt-1 h-10 rounded-full"
+                    required
+                  />
+
+                  {showInstitutionDropdown && institutionInput.length >= 2 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {loadingInstitutions ? (
+                        <div className="p-3 text-sm text-gray-500">Loading institutions...</div>
+                      ) : institutionSuggestions.length > 0 ? (
+                        <>
+                          {institutionSuggestions.map((inst) => (
+                            <button
+                              key={inst.id}
+                              type="button"
+                              onClick={() => selectInstitution(inst.institute_name)}
+                              className="w-full text-left px-4 py-2 hover:bg-purple-50 focus:bg-purple-50 transition-colors"
+                            >
+                              <div className="text-sm font-medium text-gray-900">{inst.institute_name}</div>
+                              {inst.state && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {inst.state}
+                                  {inst.district ? `, ${inst.district}` : ""}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+
+                          {/* Add custom institution option */}
+                          <button
+                            type="button"
+                            onClick={addCustomInstitution}
+                            className="w-full text-left px-4 py-2 border-t border-gray-200 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            + Add "{institutionInput}" as custom institution
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={addCustomInstitution}
+                          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          + Add "{institutionInput}" as custom institution
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
