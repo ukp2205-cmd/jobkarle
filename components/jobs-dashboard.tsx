@@ -373,8 +373,8 @@ export default function JobsDashboard({
       return (
         <div className="absolute -left-2 -top-3.5 z-20">
           <svg
-            width="36"
-            height="36"
+            width="24"
+            height="24"
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
@@ -413,7 +413,7 @@ export default function JobsDashboard({
                 fill="url(#sparkleGold2)"
                 opacity="0.9"
               />
-              {/* Top left small gold sparkle */}
+              {/* Top left gold sparkle */}
               <path d="M5.5 1.5L5.9 2.7L7 3.1L5.9 3.5L5.5 4.7L5.1 3.5L4 3.1L5.1 2.7Z" fill="#FEF3C7" opacity="0.85" />
               {/* Right side gold sparkle */}
               <path

@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/components/ui/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import useSWR from "swr"
 
 interface EmployerProfileProps {
   employerId: string
@@ -58,6 +59,8 @@ interface JobStats {
   draft: number
 }
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
 export function EmployerProfile({ employerId }: EmployerProfileProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [jobStats, setJobStats] = useState<JobStats | null>(null)
@@ -66,9 +69,11 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
   const [saving, setSaving] = useState(false)
   const [editedProfile, setEditedProfile] = useState<Partial<ProfileData>>({})
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoError, setLogoError] = useState<string>("")
 
   const router = useRouter()
   const { toast } = useToast()
+  const { mutate } = useSWR("/api/employer-profile")
 
   useEffect(() => {
     loadProfile()
@@ -140,6 +145,86 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setLogoError("")
+
+    const validFormats = ["image/png", "image/jpeg", "image/jpg"]
+    if (!validFormats.includes(file.type)) {
+      const errorMsg = "Please upload PNG or JPG/JPEG format only"
+      setLogoError(errorMsg)
+      toast({
+        title: "Invalid File Format",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      e.target.value = ""
+      return
+    }
+
+    const maxSizeInBytes = 1048576 // 1MB
+    if (file.size > maxSizeInBytes) {
+      const errorMsg = `Logo size must be under 1MB. Your file is ${(file.size / 1048576).toFixed(2)}MB`
+      setLogoError(errorMsg)
+      toast({
+        title: "File Too Large",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      e.target.value = ""
+      return
+    }
+
+    const img = new Image()
+    img.src = URL.createObjectURL(file)
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          const width = img.width
+          const height = img.height
+          const aspectRatio = width / height
+
+          if (Math.abs(aspectRatio - 1) > 0.05) {
+            const errorMsg = `Logo must be square (1:1 aspect ratio). Your image is ${width}×${height}px`
+            setLogoError(errorMsg)
+            toast({
+              title: "Invalid Aspect Ratio",
+              description: errorMsg,
+              variant: "destructive",
+            })
+            e.target.value = ""
+            URL.revokeObjectURL(img.src)
+            reject(new Error(errorMsg))
+            return
+          }
+
+          if (width !== 200 || height !== 200) {
+            toast({
+              title: "Recommendation",
+              description: `Ideal logo size is 200×200 pixels. Your image is ${width}×${height}px. It will be resized to fit.`,
+            })
+          }
+
+          URL.revokeObjectURL(img.src)
+          resolve()
+        }
+
+        img.onerror = () => {
+          const errorMsg = "Failed to load image. Please try another file."
+          setLogoError(errorMsg)
+          toast({
+            title: "Invalid Image",
+            description: errorMsg,
+            variant: "destructive",
+          })
+          e.target.value = ""
+          URL.revokeObjectURL(img.src)
+          reject(new Error(errorMsg))
+        }
+      })
+    } catch (error) {
+      return
+    }
+
     setUploadingLogo(true)
     try {
       const formData = new FormData()
@@ -150,22 +235,29 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
       if (result.success && result.url) {
         setEditedProfile({ ...editedProfile, logo_url: result.url })
         setProfile({ ...profile!, logo_url: result.url })
+        setLogoError("")
         toast({
           title: "Success",
           description: "Logo uploaded successfully",
         })
+        mutate(result.url)
+        router.refresh()
       } else {
+        const errorMsg = result.message || "Failed to upload logo"
+        setLogoError(errorMsg)
         toast({
           title: "Error",
-          description: result.message || "Failed to upload logo",
+          description: errorMsg,
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("[v0] Error uploading logo:", error)
+      const errorMsg = "An error occurred while uploading logo"
+      setLogoError(errorMsg)
       toast({
         title: "Error",
-        description: "An error occurred while uploading logo",
+        description: errorMsg,
         variant: "destructive",
       })
     } finally {
@@ -258,7 +350,7 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
                         <input
                           id="logo-upload"
                           type="file"
-                          accept="image/*"
+                          accept="image/png,image/jpeg,image/jpg"
                           onChange={handleLogoUpload}
                           disabled={uploadingLogo}
                           className="hidden"
@@ -271,10 +363,23 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
                       </div>
                     )}
                   </div>
+                  {logoError && (
+                    <div className="mt-3 text-sm text-red-600 font-medium bg-red-50 border border-red-200 rounded-md p-2">
+                      {logoError}
+                    </div>
+                  )}
                   <h2 className="text-xl font-bold text-gray-900 mt-4">{profile?.company_name}</h2>
                   <p className="text-sm text-gray-600 mt-1">{profile?.contact_person}</p>
                   <p className="text-sm text-gray-500">{profile?.designation}</p>
-                  {isEditing && <p className="text-xs text-gray-500 mt-2">Click the upload icon to change logo</p>}
+                  {isEditing && (
+                    <div className="text-xs text-gray-500 mt-2 space-y-1">
+                      <p className="font-medium">Logo Requirements:</p>
+                      <p>• Size: 200×200 pixels (ideal)</p>
+                      <p>• Aspect Ratio: 1:1 (square)</p>
+                      <p>• Format: PNG or JPG</p>
+                      <p>• Max Size: 1MB</p>
+                    </div>
+                  )}
                   <div className="mt-4 pt-4 border-t">
                     <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
                       <Calendar className="h-4 w-4" />

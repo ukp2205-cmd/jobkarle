@@ -119,70 +119,19 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-}
-
-@utility slide-in-from-top-2 {
-  animation: slide-in-from-top 0.2s ease-out;
-}
-
-@utility slide-in-from-bottom-2 {
-  animation: slide-in-from-bottom 0.2s ease-out;
-}
-
-@utility slide-in-from-left-2 {
-  animation: slide-in-from-left 0.2s ease-out;
-}
-
-@utility slide-in-from-right-2 {
-  animation: slide-in-from-right 0.2s ease-out;
-}
-
-@utility slide-in-from-left-52 {
-  animation: slide-in-from-left-52 0.2s ease-out;
-}
-
-@utility slide-in-from-right-52 {
-  animation: slide-in-from-right-52 0.2s ease-out;
-}
-
-@utility slide-in-from-top {
-  animation: slide-in-from-top 0.2s ease-out;
-}
-
-@utility slide-in-from-bottom {
-  animation: slide-in-from-bottom 0.2s ease-out;
-}
-
-@utility slide-in-from-left {
-  animation: slide-in-from-left 0.2s ease-out;
-}
-
-@utility slide-in-from-right {
-  animation: slide-in-from-right 0.2s ease-out;
-}
-
-@utility slide-out-to-top {
-  animation: slide-out-to-top 0.2s ease-in;
-}
-
-@utility slide-out-to-bottom {
-  animation: slide-out-to-bottom 0.2s ease-in;
-}
-
-@utility slide-out-to-left {
-  animation: slide-out-to-left 0.2s ease-in;
-}
-
-@utility slide-out-to-right {
-  animation: slide-out-to-right 0.2s ease-in;
-}
-
-@utility slide-out-to-left-52 {
-  animation: slide-out-to-left-52 0.2s ease-in;
-}
-
-@utility slide-out-to-right-52 {
-  animation: slide-out-to-right-52 0.2s ease-in;
+  /* Adding animation keyframe references for Tailwind to use */
+  --animate-slide-in-from-top: slide-in-from-top 0.2s ease-out;
+  --animate-slide-in-from-bottom: slide-in-from-bottom 0.2s ease-out;
+  --animate-slide-in-from-left: slide-in-from-left 0.2s ease-out;
+  --animate-slide-in-from-right: slide-in-from-right 0.2s ease-out;
+  --animate-slide-in-from-left-52: slide-in-from-left-52 0.2s ease-out;
+  --animate-slide-in-from-right-52: slide-in-from-right-52 0.2s ease-out;
+  --animate-slide-out-to-top: slide-out-to-top 0.2s ease-in;
+  --animate-slide-out-to-bottom: slide-out-to-bottom 0.2s ease-in;
+  --animate-slide-out-to-left: slide-out-to-left 0.2s ease-in;
+  --animate-slide-out-to-right: slide-out-to-right 0.2s ease-in;
+  --animate-slide-out-to-left-52: slide-out-to-left-52 0.2s ease-in;
+  --animate-slide-out-to-right-52: slide-out-to-right-52 0.2s ease-in;
 }
 
 @keyframes slide-in-from-top {

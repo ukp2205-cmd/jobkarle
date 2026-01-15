@@ -19,7 +19,6 @@ export function CandidateLoginForm({ redirectUrl }: { redirectUrl?: string }) {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [showGoogleComingSoon, setShowGoogleComingSoon] = useState(false)
 
   const isTimeout = searchParams.get("timeout") === "true"
 
@@ -56,14 +55,26 @@ export function CandidateLoginForm({ redirectUrl }: { redirectUrl?: string }) {
   }
 
   const handleGoogleSignIn = async () => {
-    console.log("[v0] Google sign-in initiated - showing coming soon message")
-    setError("") // Clear any existing errors
-    setShowGoogleComingSoon(true)
+    console.log("[v0] Google sign-in initiated")
+    setError("")
+    setIsLoading(true)
 
-    // Auto-hide message after 5 seconds
-    setTimeout(() => {
-      setShowGoogleComingSoon(false)
-    }, 5000)
+    try {
+      const { loginCandidateWithGoogle } = await import("@/app/actions/candidate-auth-actions")
+      const result = await loginCandidateWithGoogle()
+
+      if (result.success && result.url) {
+        console.log("[v0] Redirecting to Google OAuth")
+        window.location.href = result.url
+      } else {
+        setError(result.error || "Failed to initiate Google sign-in")
+        setIsLoading(false)
+      }
+    } catch (error) {
+      console.error("[v0] Google sign-in error:", error)
+      setError("An unexpected error occurred")
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -130,20 +141,6 @@ export function CandidateLoginForm({ redirectUrl }: { redirectUrl?: string }) {
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
                   <span className="font-medium">⚠️</span>
                   <span>{error}</span>
-                </div>
-              )}
-
-              {showGoogleComingSoon && (
-                <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-xl animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">🚀</span>
-                    <div>
-                      <h4 className="font-semibold text-blue-900 mb-1">Google Sign-In Coming Soon!</h4>
-                      <p className="text-sm text-blue-700">
-                        We're working on bringing you a seamless Google sign-in experience. Stay tuned!
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
 

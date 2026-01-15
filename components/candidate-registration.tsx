@@ -354,20 +354,64 @@ export default function CandidateRegistration() {
 
   const [formData, setFormData] = useState<RegistrationData>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("candidateRegistrationData")
-      if (saved) {
-        try {
-          const parsed = JSON.JSON.parse(saved)
-          // Don't restore password or OTP for security
-          return {
-            ...parsed,
-            password: "",
-            otp: "",
-            resume: null, // File objects can't be serialized
+      try {
+        const saved = localStorage.getItem("candidateRegistrationData")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // Validate that parsed data is an object
+          if (parsed && typeof parsed === "object") {
+            console.log("[v0] Loaded saved registration data from localStorage")
+            // Don't restore password or OTP for security
+            // Ensure essential fields are present, even if empty, to prevent runtime errors
+            const defaultFormData = {
+              fullName: "",
+              email: "",
+              password: "",
+              mobileNumber: "",
+              mobileVerified: false,
+              workStatus: "",
+              resume: null,
+              resumeUrl: "",
+              otp: "",
+              candidateId: null,
+              currentEmployment: null,
+              additionalEmployment: [],
+              totalExperienceYears: "",
+              totalExperienceMonths: "",
+              skills: [],
+              industry: "",
+              department: "",
+              roleCategory: "",
+              jobRole: "",
+              highestQualification: "",
+              course: "",
+              courseType: "",
+              specialization: "",
+              university: "",
+              startingYear: "",
+              passingYear: "",
+              passingYearFrom: "",
+              passingYearTo: "",
+              certifications: [],
+              resumeHeadline: "",
+              preferredLocations: [],
+              preferredSalary: "",
+              gender: "",
+              currentCity: "",
+              currentState: "",
+              availabilityToJoin: "",
+              dateOfBirth: "",
+              maritalStatus: "",
+              languagesKnown: [],
+              projects: [],
+            }
+            return { ...defaultFormData, ...parsed, password: "", otp: "", resume: null }
           }
-        } catch (e) {
-          console.error("[v0] Failed to parse saved registration data:", e)
         }
+      } catch (error) {
+        console.error("[v0] Failed to parse saved registration data:", error)
+        // Clear corrupted data
+        localStorage.removeItem("candidateRegistrationData")
       }
     }
     return {
@@ -724,17 +768,20 @@ export default function CandidateRegistration() {
                         {/* Step Item */}
                         <div className="flex items-start gap-3 py-2">
                           {/* Step Circle */}
-                          <div
-                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm ${
+                          <button
+                            type="button"
+                            onClick={() => isCompleted && setStep(stepInfo.step)}
+                            disabled={!isCompleted}
+                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm transition-all ${
                               isCompleted
-                                ? "bg-green-500 text-white"
+                                ? "bg-green-500 text-white cursor-pointer hover:bg-green-600 hover:scale-110"
                                 : isCurrent
                                   ? "bg-purple-600 text-white ring-4 ring-purple-100"
-                                  : "bg-gray-200 text-gray-500"
+                                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
                             }`}
                           >
                             {isCompleted ? <Check className="w-4 h-4" /> : stepInfo.step}
-                          </div>
+                          </button>
 
                           {/* Step Content */}
                           <div className="flex-1 min-w-0">
@@ -1741,6 +1788,7 @@ function Step3EmploymentAndSkills({
           department: "", // Reset department
           roleCategory: "", // Reset roleCategory
           jobRole: "", // Reset jobRole
+          currentlyEmployed: "yes", // Explicitly set to 'yes'
         })
       }
 
@@ -1818,19 +1866,36 @@ function Step3EmploymentAndSkills({
     )
   }
 
+  // CHANGE: Moved handleSaveAndContinue logic to this specific function
   const handleSaveAndContinue = async () => {
-    if (isLoading) return
+    // Helper function to get email from localStorage
+    const getEmailFromStorage = (): string => {
+      if (typeof window === "undefined") return ""
+      try {
+        const registrationData = localStorage.getItem("candidateRegistrationData")
+        if (registrationData) {
+          const parsed = JSON.JSON.parse(registrationData)
+          if (parsed.email) return parsed.email
+        }
+      } catch (e) {
+        console.error("[v0] Failed to get email from localStorage:", e)
+      }
+      return ""
+    }
+
+    const email = formData.email || getEmailFromStorage()
+
+    if (!email) {
+      alert("Email not found. Please start registration again.")
+      setIsLoading?.(false)
+      return
+    }
 
     setIsLoading?.(true)
-    console.log("[v0] Step3 saving employment data...")
+    console.log("[v0] Step3 saving employment data for email:", email)
 
     try {
-      // Ensure to pass correct data based on the `updateEmploymentDetails` function signature.
-      // The current `formData` structure might not directly map to what `updateEmploymentDetails` expects.
-      // For example, it might expect a flat structure or different key names.
-      // I'll assume `updateEmploymentDetails` can handle the `formData` object directly or a subset of it.
-      const result = await updateEmploymentDetails(formData.email, {
-        // Assuming these keys are expected by the backend action:
+      const result = await updateEmploymentDetails(email, {
         employmentHistory: formData.additionalEmployment, // Assuming this maps to previous jobs
         currentEmployment: formData.currentEmployment, // Assuming this is the current job details
         workStatus: formData.workStatus,
@@ -2135,21 +2200,20 @@ function Step3EmploymentAndSkills({
                   onClick={() => {
                     updateFormData("currentEmployment", {
                       currentlyEmployed: "yes",
-                      companyName: "",
-                      currentJobTitle: "",
-                      currentCity: "",
-                      currentState: "",
-                      durationFrom: "",
-                      durationTo: "Present", // Set to "Present" by default
-                      annualSalary: "",
-                      noticePeriod: "",
-                      industry: "", // Reset industry
-                      department: "", // Reset department
-                      roleCategory: "", // Reset roleCategory
-                      jobRole: "", // Reset jobRole
-                      currentlyEmployed: "yes", // Explicitly set to 'yes'
+                      companyName: formData.currentEmployment?.companyName || "",
+                      currentJobTitle: formData.currentEmployment?.currentJobTitle || "",
+                      currentCity: formData.currentEmployment?.currentCity || "",
+                      currentState: formData.currentEmployment?.currentState || "",
+                      durationFrom: formData.currentEmployment?.durationFrom || "",
+                      durationTo: "Present", // Always set to "Present" when Yes is clicked
+                      annualSalary: formData.currentEmployment?.annualSalary || "",
+                      noticePeriod: formData.currentEmployment?.noticePeriod || "",
+                      industry: formData.currentEmployment?.industry || "",
+                      department: formData.currentEmployment?.department || "",
+                      roleCategory: formData.currentEmployment?.roleCategory || "",
+                      jobRole: formData.currentEmployment?.jobRole || "",
+                      currentlyEmployed: "yes",
                     })
-                    // updateFormData("workStatus", "experienced") // This line was causing an issue if workStatus was already set to fresher
                   }}
                   className="rounded-full"
                 >
@@ -3083,7 +3147,7 @@ const Step4EducationAndProjects = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="courseType" className="text-sm font-medium">
-                  Course Type <span className="text-red-500">*</span>
+                  Degree Type <span className="text-red-500">*</span>
                 </Label>
                 <select
                   id="courseType"
@@ -3413,7 +3477,7 @@ const Step4EducationAndProjects = ({
             <div className="space-y-4">
               {formData.projects.map((project, index) => (
                 <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <Label htmlFor={`projectTitle-${index}`} className="text-sm">
                         Project Title
@@ -3459,7 +3523,7 @@ const Step4EducationAndProjects = ({
                       />
                     </div>
                   </div>
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <Label className="text-sm">Start Date</Label>
                       <Input
