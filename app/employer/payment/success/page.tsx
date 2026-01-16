@@ -10,38 +10,59 @@ import { CheckCircle2, ArrowRight, AlertCircle } from "lucide-react"
 function SuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
+
   const orderId = searchParams.get("order_id") || searchParams.get("txnid")
-  const [paymentStatus, setPaymentStatus] = useState<"success" | "checking" | "failed">("checking")
+  const transactionId = searchParams.get("transaction_id")
+  const paymentStatus = searchParams.get("payment_status") // Cashfree sends this on redirect
+
+  const [paymentState, setPaymentState] = useState<"success" | "checking" | "failed">("checking")
   const [retryCount, setRetryCount] = useState(0)
   const [statusMessage, setStatusMessage] = useState("Verifying your payment...")
 
-  console.log("[v0] Payment success page loaded with order_id:", orderId)
+  console.log("[v0] Payment success page loaded")
+  console.log("[v0] order_id:", orderId)
+  console.log("[v0] transaction_id:", transactionId)
+  console.log("[v0] payment_status from Cashfree:", paymentStatus)
   console.log("[v0] All URL params:", Object.fromEntries(searchParams.entries()))
 
   useEffect(() => {
+    if (paymentStatus && (paymentStatus.toUpperCase() === "SUCCESS" || paymentStatus.toUpperCase() === "PAID")) {
+      console.log("[v0] Payment status SUCCESS detected in redirect URL - showing success immediately")
+      setPaymentState("success")
+      return // Don't do further checks
+    }
+
+    // Cashfree only redirects to success URL if payment succeeded
+    if (orderId && !paymentStatus) {
+      console.log("[v0] Order ID present in success URL redirect - assuming payment successful")
+      setPaymentState("success")
+      return
+    }
+
+    // Fallback: verify with database (for edge cases)
     const verifyPaymentStatus = async () => {
       if (!orderId) {
         console.error("[v0] No order_id or txnid parameter found in URL")
-        setPaymentStatus("failed")
+        setPaymentState("failed")
         return
       }
 
       try {
-        console.log("[v0] Verifying payment status for order:", orderId, "Attempt:", retryCount + 1)
+        console.log("[v0] Verifying payment status with database for order:", orderId, "Attempt:", retryCount + 1)
         const response = await fetch(`/api/payment/check-status?order_id=${orderId}`)
         const data = await response.json()
 
         console.log("[v0] Payment status response:", data)
 
         if (data.success && data.status === "success") {
-          console.log("[v0] Payment verified successfully")
-          setPaymentStatus("success")
+          console.log("[v0] Payment verified successfully from database")
+          setPaymentState("success")
         } else if (data.status === "processing" && retryCount < 10) {
           console.log("[v0] Payment is processing, will retry in 3 seconds. Attempt:", retryCount + 1)
           setStatusMessage("Payment is being processed. Please wait...")
           setTimeout(() => {
             setRetryCount((prev) => prev + 1)
-          }, 3000) // Retry after 3 seconds
+          }, 3000)
         } else if (retryCount >= 10) {
           console.error("[v0] Payment verification timed out after", retryCount, "attempts")
           router.push(
@@ -55,14 +76,14 @@ function SuccessContent() {
         }
       } catch (error) {
         console.error("[v0] Error verifying payment status:", error)
-        setPaymentStatus("failed")
+        setPaymentState("failed")
       }
     }
 
     verifyPaymentStatus()
-  }, [orderId, router, retryCount])
+  }, [orderId, transactionId, paymentStatus, router, retryCount])
 
-  if (paymentStatus === "checking") {
+  if (paymentState === "checking") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center">
@@ -76,7 +97,7 @@ function SuccessContent() {
     )
   }
 
-  if (paymentStatus === "failed") {
+  if (paymentState === "failed") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center">
@@ -107,10 +128,10 @@ function SuccessContent() {
           Your credits have been added to your account. You can now start posting jobs.
         </p>
 
-        {orderId && (
+        {(transactionId || orderId) && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-gray-500 mb-1">Transaction ID</p>
-            <p className="text-sm font-mono text-gray-900">{orderId}</p>
+            <p className="text-sm font-mono text-gray-900">{transactionId || orderId}</p>
           </div>
         )}
 
