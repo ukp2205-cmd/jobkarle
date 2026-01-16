@@ -114,14 +114,30 @@ export async function initiatePayment(data: PaymentInitiationData) {
       return { success: false, message: "Payment gateway not configured" }
     }
 
+    console.log("[v0] ========== CASHFREE CREDENTIAL DEBUG ==========")
     console.log("[v0] Client ID length:", clientId.length)
     console.log("[v0] Client Secret length:", clientSecret.length)
     console.log("[v0] Client ID first 12 chars:", clientId.substring(0, 12))
+    console.log("[v0] Client ID last 4 chars:", clientId.substring(clientId.length - 4))
+    console.log("[v0] Client Secret first 8 chars:", clientSecret.substring(0, 8))
+    console.log("[v0] Client ID has whitespace:", /\s/.test(clientId))
+    console.log("[v0] Client Secret has whitespace:", /\s/.test(clientSecret))
+    console.log("[v0] Client ID format (UUID):", /^[a-f0-9]{8}-[a-f0-9]{4}-/i.test(clientId))
+
+    // Trim any whitespace
+    const trimmedClientId = clientId.trim()
+    const trimmedClientSecret = clientSecret.trim()
+
+    if (trimmedClientId !== clientId || trimmedClientSecret !== clientSecret) {
+      console.warn("[v0] WARNING: Credentials had whitespace! Using trimmed values.")
+    }
 
     const sandboxMode = isSandboxMode()
     const apiUrl = getCashfreeApiUrl()
     console.log("[v0] Cashfree mode:", sandboxMode ? "SANDBOX" : "PRODUCTION")
     console.log("[v0] Cashfree API URL:", apiUrl)
+    console.log("[v0] CASHFREE_MODE env var:", process.env.CASHFREE_MODE || "(not set)")
+    console.log("[v0] ================================================")
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jobkarle.com"
 
@@ -146,15 +162,22 @@ export async function initiatePayment(data: PaymentInitiationData) {
     console.log("[v0] Creating Cashfree order:", orderId, "for plan:", planDetails.name)
     console.log("[v0] Order request:", JSON.stringify(orderRequest, null, 2))
 
+    const requestHeaders = {
+      "x-client-id": trimmedClientId,
+      "x-client-secret": trimmedClientSecret,
+      "Content-Type": "application/json",
+      "x-api-version": "2025-01-01",
+      "x-request-id": `${orderId}_${Date.now()}`,
+    }
+
+    console.log("[v0] Request headers (masked secret):", {
+      ...requestHeaders,
+      "x-client-secret": `${requestHeaders["x-client-secret"].substring(0, 8)}...masked`,
+    })
+
     const cashfreeResponse = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        "x-client-id": clientId,
-        "x-client-secret": clientSecret,
-        "Content-Type": "application/json",
-        "x-api-version": "2025-01-01",
-        "x-request-id": `${orderId}_${Date.now()}`,
-      },
+      headers: requestHeaders,
       body: JSON.stringify(orderRequest),
     })
 
