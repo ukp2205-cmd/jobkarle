@@ -17,36 +17,14 @@ interface PaymentInitiationData {
   employerPhone: string
 }
 
-// Production credentials are typically alphanumeric without hyphens
 function isSandboxMode(): boolean {
-  const clientId = process.env.CASHFREE_CLIENT_ID || ""
-
-  // Check explicit patterns first
-  if (clientId.startsWith("TEST") || clientId.toLowerCase().includes("sandbox")) {
-    return true
-  }
-
-  // Cashfree sandbox credentials are typically UUIDs (contain hyphens)
-  // Production credentials are alphanumeric strings without hyphens
-  // Example sandbox: dc911e8f-b... (UUID format)
-  // Example production: 123456abcdef... (no hyphens)
-  const isUUID = /^[a-f0-9]{8}-[a-f0-9]{4}-/i.test(clientId)
-
-  return isUUID
+  console.log("[v0] HARDCODED: Using PRODUCTION mode only")
+  return false // Always production
 }
 
 function getCashfreeApiUrl(): string {
-  // Allow explicit override via environment variable
-  const explicitMode = process.env.CASHFREE_MODE?.toLowerCase()
-  if (explicitMode === "sandbox" || explicitMode === "test") {
-    return "https://sandbox.cashfree.com/pg/orders"
-  }
-  if (explicitMode === "production" || explicitMode === "live") {
-    return "https://api.cashfree.com/pg/orders"
-  }
-
-  // Auto-detect based on credential format
-  return isSandboxMode() ? "https://sandbox.cashfree.com/pg/orders" : "https://api.cashfree.com/pg/orders"
+  console.log("[v0] HARDCODED: Using production API URL")
+  return "https://api.cashfree.com/pg/orders" // Always production
 }
 
 /**
@@ -132,11 +110,10 @@ export async function initiatePayment(data: PaymentInitiationData) {
       console.warn("[v0] WARNING: Credentials had whitespace! Using trimmed values.")
     }
 
-    const sandboxMode = isSandboxMode()
-    const apiUrl = getCashfreeApiUrl()
-    console.log("[v0] Cashfree mode:", sandboxMode ? "SANDBOX" : "PRODUCTION")
+    const sandboxMode = false // HARDCODED: Always production
+    const apiUrl = "https://api.cashfree.com/pg/orders" // HARDCODED: Always production URL
+    console.log("[v0] Cashfree mode: PRODUCTION (HARDCODED)")
     console.log("[v0] Cashfree API URL:", apiUrl)
-    console.log("[v0] CASHFREE_MODE env var:", process.env.CASHFREE_MODE || "(not set)")
     console.log("[v0] ================================================")
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jobkarle.com"
