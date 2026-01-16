@@ -358,3 +358,47 @@ export async function getPaymentHistory(employerId: string) {
     return { success: false, message: error.message, data: [] }
   }
 }
+
+/**
+ * Fetch payment status directly from Cashfree API
+ * Used as fallback when webhook doesn't fire
+ */
+async function fetchCashfreeOrderStatus(orderId: string) {
+  const clientId = process.env.CASHFREE_CLIENT_ID?.trim() || ""
+  const clientSecret = process.env.CASHFREE_CLIENT_SECRET?.trim() || ""
+  const apiUrl = "https://api.cashfree.com/pg/orders"
+
+  try {
+    console.log("[v0] Fetching order status from Cashfree for:", orderId)
+
+    const response = await fetch(`${apiUrl}/${orderId}`, {
+      method: "GET",
+      headers: {
+        "x-client-id": clientId,
+        "x-client-secret": clientSecret,
+        "Content-Type": "application/json",
+        "x-api-version": "2025-01-01",
+      },
+    })
+
+    if (!response.ok) {
+      console.error("[v0] Failed to fetch order status:", response.status)
+      return null
+    }
+
+    const data = await response.json()
+    console.log("[v0] Cashfree order status response:", data)
+
+    return {
+      orderId: data.order_id,
+      orderAmount: data.order_amount,
+      referenceId: data.cf_order_id,
+      paymentStatus: data.order_status, // SUCCESS, PAID, ACTIVE, EXPIRED, etc.
+      paymentMethod: data.payment_method || "unknown",
+      rawResponse: data,
+    }
+  } catch (error: any) {
+    console.error("[v0] Error fetching Cashfree order status:", error)
+    return null
+  }
+}
