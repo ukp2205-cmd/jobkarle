@@ -43,10 +43,10 @@ export default function EmployerPricingPage() {
     setPlansLoading(true)
     try {
       const fetchedPlans = await getActivePlans()
-      console.log("[v0] Loaded plans:", fetchedPlans)
+      console.log("[v2.1.0] Loaded plans:", fetchedPlans)
       setPlans(fetchedPlans)
     } catch (error) {
-      console.error("[v0] Error loading plans:", error)
+      console.error("[v2.1.0] Error loading plans:", error)
     } finally {
       setPlansLoading(false)
     }
@@ -67,7 +67,7 @@ export default function EmployerPricingPage() {
         }
       }
     } catch (error) {
-      console.error("[v0] Error checking employer session:", error)
+      console.error("[v2.1.0] Error checking employer session:", error)
     } finally {
       setSessionLoading(false)
     }
