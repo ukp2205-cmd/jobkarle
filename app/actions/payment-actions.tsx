@@ -152,8 +152,8 @@ export async function initiatePayment(data: PaymentInitiationData) {
         "x-client-id": clientId,
         "x-client-secret": clientSecret,
         "Content-Type": "application/json",
-        "x-api-version": "2026-01-01", // Updated from 2023-08-01
-        "x-request-id": `${orderId}_${Date.now()}`, // Added unique request ID
+        "x-api-version": "2025-01-01",
+        "x-request-id": `${orderId}_${Date.now()}`,
       },
       body: JSON.stringify(orderRequest),
     })
