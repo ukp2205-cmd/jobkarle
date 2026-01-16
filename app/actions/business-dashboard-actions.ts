@@ -402,9 +402,12 @@ export async function getAllEmployers(page = 1, limit = 10, search = "") {
 
     let query = supabase
       .from("employers")
-      .select("id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified", {
-        count: "exact",
-      })
+      .select(
+        "id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified, approval_status, approved_at",
+        {
+          count: "exact",
+        },
+      )
 
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,email.ilike.%${search}%`)
@@ -1069,5 +1072,124 @@ export async function updateJob(
     console.error("Error updating job:", error)
     const errorMessage = error instanceof Error ? error.message : "Failed to update job"
     return { success: false, error: errorMessage }
+  }
+}
+
+// Approval management functions
+export async function approveEmployer(employerId: string, approvedBy: string) {
+  try {
+    const supabase = createAdminClient()
+
+    console.log("[v0] Approving employer:", employerId, "by admin:", approvedBy)
+
+    const { data: employer, error } = await supabase
+      .from("employers")
+      .update({
+        approval_status: "approved",
+        approved_at: new Date().toISOString(),
+        approved_by: approvedBy,
+        rejection_reason: null, // Clear any previous rejection reason
+      })
+      .eq("id", employerId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Error approving employer:", error)
+      throw error
+    }
+
+    console.log("[v0] Employer approved successfully")
+
+    // TODO: Send approval email to employer
+
+    return { success: true, employer }
+  } catch (error) {
+    console.error("Error approving employer:", error)
+    return { success: false, error: "Failed to approve employer" }
+  }
+}
+
+export async function rejectEmployer(employerId: string, reason: string) {
+  try {
+    const supabase = createAdminClient()
+
+    console.log("[v0] Rejecting employer:", employerId, "reason:", reason)
+
+    const { data: employer, error } = await supabase
+      .from("employers")
+      .update({
+        approval_status: "rejected",
+        rejection_reason: reason,
+        approved_at: null,
+        approved_by: null,
+      })
+      .eq("id", employerId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Error rejecting employer:", error)
+      throw error
+    }
+
+    console.log("[v0] Employer rejected successfully")
+
+    // TODO: Send rejection email to employer
+
+    return { success: true, employer }
+  } catch (error) {
+    console.error("Error rejecting employer:", error)
+    return { success: false, error: "Failed to reject employer" }
+  }
+}
+
+export async function getPendingEmployers(page = 1, limit = 10, search = "") {
+  try {
+    const supabase = await createServerClient()
+    const offset = (page - 1) * limit
+
+    let query = supabase
+      .from("employers")
+      .select(
+        "id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified, approval_status, website, employee_count, year_established, description",
+        {
+          count: "exact",
+        },
+      )
+      .eq("approval_status", "pending")
+      .eq("otp_verified", true) // Only show employers who completed OTP verification
+
+    if (search) {
+      query = query.or(`company_name.ilike.%${search}%,email.ilike.%${search}%,contact_person.ilike.%${search}%`)
+    }
+
+    const {
+      data: employers,
+      count,
+      error,
+    } = await query.order("created_at", { ascending: false }).range(offset, offset + limit - 1)
+
+    if (error) throw error
+
+    const totalPages = Math.ceil((count || 0) / limit)
+
+    return {
+      success: true,
+      employers: employers || [],
+      pagination: {
+        total: count || 0,
+        page,
+        limit,
+        totalPages,
+      },
+    }
+  } catch (error) {
+    console.error("Error fetching pending employers:", error)
+    return {
+      success: false,
+      employers: [],
+      pagination: { total: 0, page: 1, limit: 10, totalPages: 0 },
+    }
   }
 }

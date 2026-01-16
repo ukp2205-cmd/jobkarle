@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Check, X, ArrowLeft, Sparkles, ChevronDown, Coins, Loader2 } from "lucide-react"
+import { Check, X, ArrowLeft, Sparkles, ChevronDown, Loader2 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PaymentCheckoutModal } from "@/components/payment-checkout-modal"
 import { getEmployerSession } from "@/app/actions/employer-auth-actions"
@@ -22,11 +22,22 @@ export default function EmployerPricingPage() {
   const [sessionLoading, setSessionLoading] = useState(true)
   const [plansLoading, setPlansLoading] = useState(true)
   const [plans, setPlans] = useState<Plan[]>([])
+  const [planQuantities, setPlanQuantities] = useState<Record<string, number>>({})
 
   useEffect(() => {
     checkEmployerSession()
     loadPlans()
   }, [])
+
+  useEffect(() => {
+    if (plans.length > 0) {
+      const initialQuantities: Record<string, number> = {}
+      plans.forEach((plan) => {
+        initialQuantities[plan.id] = 1
+      })
+      setPlanQuantities(initialQuantities)
+    }
+  }, [plans])
 
   async function loadPlans() {
     setPlansLoading(true)
@@ -63,8 +74,21 @@ export default function EmployerPricingPage() {
   }
 
   const handlePlanSelection = (plan: Plan) => {
-    setSelectedPlan({ planType: plan.slug, amount: plan.price })
+    const quantity = planQuantities[plan.id] || 1
+    const totalAmount = calculateTotalPrice(plan.price, quantity)
+    setSelectedPlan({ planType: plan.slug, amount: totalAmount })
     setShowPaymentModal(true)
+  }
+
+  const calculateTotalPrice = (basePrice: number, quantity: number) => {
+    return basePrice * quantity
+  }
+
+  const getPlanDisplayName = (plan: Plan) => {
+    if (plan.slug === "free") return "Free"
+    if (plan.slug === "classic") return "Classified"
+    if (plan.slug === "premium") return "Premium"
+    return plan.name
   }
 
   if (plansLoading) {
@@ -139,103 +163,137 @@ export default function EmployerPricingPage() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {plans.map((plan) => (
-            <Card
-              key={plan.id}
-              className={`relative p-8 hover:shadow-xl transition-shadow ${
-                plan.slug === "premium" ? "border-2 border-blue-600" : ""
-              }`}
-            >
-              {plan.slug === "premium" && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-1 rounded-full text-sm font-medium flex items-center gap-1 shadow-lg">
-                    <Sparkles className="w-4 h-4" />
-                    Most Popular
+          {plans.map((plan) => {
+            const quantity = planQuantities[plan.id] || 1
+            const basePrice = plan.price
+            const totalPrice = calculateTotalPrice(basePrice, quantity)
+            const displayName = getPlanDisplayName(plan)
+
+            return (
+              <Card
+                key={plan.id}
+                className={`relative p-6 hover:shadow-xl transition-shadow flex flex-col ${
+                  plan.slug === "premium" ? "border-2 border-blue-600" : ""
+                } ${plan.slug === "free" ? "bg-gradient-to-br from-green-50 to-green-100" : ""}`}
+              >
+                {plan.slug === "premium" && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 shadow-lg">
+                      <Sparkles className="w-3 h-3" />
+                      Most Popular
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <h3 className="text-xl font-bold text-gray-900 mb-1">{displayName}</h3>
+                  {plan.slug === "free" && <p className="text-sm text-gray-600">Job Posting</p>}
+                </div>
+
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-gray-500">₹</span>
+                    <span
+                      className={`text-3xl font-bold ${
+                        plan.slug === "premium"
+                          ? "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+                          : plan.slug === "free"
+                            ? "text-green-600"
+                            : "text-gray-900"
+                      }`}
+                    >
+                      {plan.slug === "free" ? "Free" : Math.round(totalPrice).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  {plan.slug !== "free" && <p className="text-xs text-gray-500 mt-1">*GST as applicable</p>}
+                </div>
+
+                <div className="mb-6 flex-grow">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">KEY FEATURES</p>
+                  <div className="space-y-2">
+                    {Array.isArray(plan.features) &&
+                      plan.features.slice(0, 8).map((feature, index) => {
+                        const featureName = typeof feature === "string" ? feature : feature.name
+                        const isIncluded = typeof feature === "string" ? true : feature.included
+
+                        return (
+                          <div key={index} className="flex items-start gap-2">
+                            {isIncluded ? (
+                              <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <X className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5" />
+                            )}
+                            <span className={`text-xs ${isIncluded ? "text-gray-700" : "text-gray-400"}`}>
+                              {featureName}
+                            </span>
+                          </div>
+                        )
+                      })}
                   </div>
                 </div>
-              )}
 
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-                {plan.description && <p className="text-gray-600">{plan.description}</p>}
-              </div>
-
-              <div
-                className={`mb-4 inline-flex items-center gap-2 ${
-                  plan.slug === "premium"
-                    ? "bg-gradient-to-r from-blue-600 to-purple-600"
-                    : "bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200"
-                } px-4 py-2 rounded-full`}
-              >
-                <Coins className={`w-5 h-5 ${plan.slug === "premium" ? "text-white" : "text-blue-600"}`} />
-                <span className={`text-sm font-semibold ${plan.slug === "premium" ? "text-white" : "text-gray-900"}`}>
-                  {plan.credits_allocated} Job Credit{plan.credits_allocated > 1 ? "s" : ""}
-                </span>
-                {plan.credits_validity_days && (
-                  <span className={`text-xs ${plan.slug === "premium" ? "text-blue-100" : "text-gray-500"}`}>
-                    (Valid {plan.credits_validity_days} days)
-                  </span>
+                {plan.job_validity_days && (
+                  <div className="mb-4 text-center">
+                    <p className="text-sm text-gray-600">
+                      Job validity <span className="font-semibold">{plan.job_validity_days} days</span>
+                    </p>
+                  </div>
                 )}
-              </div>
 
-              <div className="mb-6">
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className={`text-4xl font-bold ${
-                      plan.slug === "premium"
-                        ? "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
-                        : "text-gray-900"
-                    }`}
-                  >
-                    ₹{Math.round(plan.price).toLocaleString("en-IN")}
-                  </span>
-                  <span className="text-gray-600">
-                    {plan.billing_cycle === "per_job"
-                      ? "/ job"
-                      : plan.billing_cycle === "one_time"
-                        ? ""
-                        : `/ ${plan.billing_cycle}`}
-                  </span>
+                {plan.slug !== "free" && quantity >= 5 && (
+                  <div className="mb-4 flex items-center justify-center gap-2 bg-orange-50 border border-orange-200 rounded-lg py-2 px-3">
+                    <Sparkles className="w-4 h-4 text-orange-600" />
+                    <span className="text-xs font-semibold text-orange-700">
+                      Flat 10% OFF on {quantity} Job Postings or more
+                    </span>
+                  </div>
+                )}
+
+                <div className="space-y-3 mt-auto">
+                  {plan.slug !== "free" && (
+                    <div className="flex items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="w-20 justify-between bg-transparent">
+                            {quantity.toString().padStart(2, "0")}
+                            <ChevronDown className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                            <DropdownMenuItem
+                              key={num}
+                              onClick={() => setPlanQuantities({ ...planQuantities, [plan.id]: num })}
+                            >
+                              {num.toString().padStart(2, "0")}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        onClick={() => handlePlanSelection(plan)}
+                        className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                        size="lg"
+                      >
+                        Buy now
+                      </Button>
+                    </div>
+                  )}
+                  {plan.slug === "free" && (
+                    <Button
+                      onClick={() => router.push("/employer/register")}
+                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                      size="lg"
+                    >
+                      Post a free job
+                    </Button>
+                  )}
                 </div>
-              </div>
-
-              <Button
-                onClick={() => handlePlanSelection(plan)}
-                className={`w-full mb-6 ${
-                  plan.slug === "premium"
-                    ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                    : "bg-transparent"
-                }`}
-                variant={plan.slug === "premium" ? "default" : "outline"}
-                size="lg"
-              >
-                {plan.slug === "free" ? "Get Started Free" : "Get Started"}
-              </Button>
-
-              <div className="space-y-3">
-                {Array.isArray(plan.features) &&
-                  plan.features.map((feature, index) => {
-                    // Handle both string arrays and object arrays
-                    const featureName = typeof feature === "string" ? feature : feature.name
-                    const isIncluded = typeof feature === "string" ? true : feature.included
-
-                    return (
-                      <div key={index} className="flex items-start gap-3">
-                        {isIncluded ? (
-                          <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <X className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" />
-                        )}
-                        <span className={isIncluded ? "text-gray-700" : "text-gray-400 text-sm"}>{featureName}</span>
-                      </div>
-                    )
-                  })}
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
 
-        {/* Additional Information */}
         <div className="mt-16 text-center">
           <p className="text-gray-600 mb-4">
             Need a custom plan for your enterprise? Contact our sales team for tailored solutions.
@@ -275,9 +333,9 @@ export default function EmployerPricingPage() {
               </p>
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-2">What's the difference between Classic and Premium?</h3>
+              <h3 className="text-lg font-semibold mb-2">What's the difference between Classified and Premium?</h3>
               <p className="text-gray-600">
-                Classic allows 1 location per job (45 days application validity), while Premium supports 3 locations
+                Classified allows 1 location per job (45 days application validity), while Premium supports 3 locations
                 with a diamond badge (60 days validity). Premium jobs also get better visibility.
               </p>
             </div>

@@ -134,9 +134,14 @@ export async function createJobPosting(data: any) {
       urgent_hiring: data.urgentHiring !== undefined ? data.urgentHiring : data.urgent_hiring,
     }
 
-    // Set published_at if status is published
     if (insertData.status === "published") {
-      insertData.published_at = new Date().toISOString()
+      const now = new Date()
+      insertData.published_at = now.toISOString()
+
+      // Calculate expiry date as 30 days from now
+      const expiresAt = new Date(now)
+      expiresAt.setDate(expiresAt.getDate() + 30)
+      insertData.expires_at = expiresAt.toISOString()
     }
 
     console.log("[v0] [Request ID:", requestId, "] Inserting job into database...")

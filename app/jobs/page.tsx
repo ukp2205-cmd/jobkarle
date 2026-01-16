@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { MapPin, Briefcase, IndianRupee, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react"
+import { MapPin, Briefcase, IndianRupee, ChevronDown, ChevronUp, ArrowLeft, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { getJobsByIndustry, type JobsByIndustry } from "@/app/actions/jobs-actions"
+import { getTimeAgo } from "@/lib/time-utils"
 
 export default function JobsPage() {
   const [jobsByIndustry, setJobsByIndustry] = useState<JobsByIndustry[]>([])
@@ -122,15 +123,53 @@ export default function JobsPage() {
                 {expandedIndustries.has(industryGroup.industry) && (
                   <div className="border-t border-gray-200 divide-y divide-gray-200">
                     {industryGroup.jobs.map((job) => (
-                      <div key={job.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors relative bg-white">
+                      <div
+                        key={job.id}
+                        className={`p-4 sm:p-6 hover:bg-gray-50 transition-colors relative overflow-visible ${
+                          job.category === "premium" ? "border-blue-200" : "bg-white"
+                        }`}
+                      >
                         {job.category === "premium" && (
-                          <div className="absolute -left-2 -top-3.5 z-20">
-                            <span className="text-3xl">💎</span>
+                          <div className="absolute left-0 top-0 z-[5]">
+                            <div className="relative">
+                              {/* Corner triangle background */}
+                              <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+                                <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientJobs)" />
+                                <defs>
+                                  <linearGradient id="cornerGradientJobs" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stopColor="#3B82F6" />
+                                    <stop offset="100%" stopColor="#1D4ED8" />
+                                  </linearGradient>
+                                </defs>
+                              </svg>
+                              <div className="absolute left-1 top-1">
+                                <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                                  <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientJobs)" />
+                                  <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                                  <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                                  <defs>
+                                    <linearGradient
+                                      id="goldDiamondGradientJobs"
+                                      x1="10"
+                                      y1="1"
+                                      x2="10"
+                                      y2="19"
+                                      gradientUnits="userSpaceOnUse"
+                                    >
+                                      <stop offset="0%" stopColor="#FEF3C7" />
+                                      <stop offset="30%" stopColor="#FCD34D" />
+                                      <stop offset="70%" stopColor="#F59E0B" />
+                                      <stop offset="100%" stopColor="#D97706" />
+                                    </linearGradient>
+                                  </defs>
+                                </svg>
+                              </div>
+                            </div>
                           </div>
                         )}
 
                         <Link href={`/candidate/jobs/${job.id}`} className="block">
-                          <div className="flex items-start gap-3 pl-6">
+                          <div className="flex items-start gap-3">
                             {/* Main job content */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2 mb-2">
@@ -157,6 +196,26 @@ export default function JobsPage() {
                                   </span>
                                 )}
                               </div>
+                              {/* Skills display section */}
+                              {job.required_skills && job.required_skills.length > 0 && (
+                                <div className="mt-3 mb-3">
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {job.required_skills.slice(0, 5).map((skill: string, index: number) => (
+                                      <span
+                                        key={index}
+                                        className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200"
+                                      >
+                                        {skill}
+                                      </span>
+                                    ))}
+                                    {job.required_skills.length > 5 && (
+                                      <span className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200">
+                                        +{job.required_skills.length - 5} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                               <div className="flex flex-wrap gap-2">
                                 {job.employment_type && (
                                   <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">
@@ -172,6 +231,13 @@ export default function JobsPage() {
                             </div>
                           </div>
                         </Link>
+
+                        {job.created_at && (
+                          <div className="absolute bottom-4 right-4 flex items-center gap-1 text-xs text-gray-500">
+                            <Clock className="w-3 h-3" />
+                            {getTimeAgo(job.created_at)}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

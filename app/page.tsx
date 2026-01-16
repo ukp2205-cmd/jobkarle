@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { Briefcase, Users, TrendingUp, Award, ChevronDown, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,33 +30,51 @@ export default function HomePage() {
   const [currentInputValue, setCurrentInputValue] = useState("")
   const [industries, setIndustries] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const isMountedRef = useRef(true)
 
   useEffect(() => {
+    isMountedRef.current = true
+
     const loadSuggestions = async () => {
       try {
         const { designations, companies } = await getSearchSuggestions()
+        if (!isMountedRef.current) return
         const combined = [...POPULAR_SKILLS, ...designations, ...companies]
         const uniqueSuggestions = [...new Set(combined)].sort()
         setSearchSuggestions(uniqueSuggestions)
       } catch (err) {
+        if (!isMountedRef.current) return
         console.error("[v0] Error loading suggestions:", err)
         setError("Failed to load search suggestions")
       }
     }
     loadSuggestions()
+
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
+    isMountedRef.current = true
+
     const loadIndustries = async () => {
       try {
         const { jobsByIndustry } = await getJobsByIndustry()
+        if (!isMountedRef.current) return
         const industryNames = jobsByIndustry.map((item) => item.industry)
         setIndustries(industryNames)
       } catch (err) {
+        if (!isMountedRef.current) return
+        if (err instanceof Error && err.name === "AbortError") return
         console.error("[v0] Error loading industries:", err)
       }
     }
     loadIndustries()
+
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   const handleSearch = () => {
@@ -606,7 +624,7 @@ export default function HomePage() {
             <Link href="/register" className="w-full sm:w-auto max-w-xs sm:max-w-none mx-auto sm:mx-0">
               <Button
                 size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11"
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11 rounded-full"
               >
                 Register as Candidate
               </Button>
@@ -614,7 +632,7 @@ export default function HomePage() {
             <Link href="/employer/register" className="w-full sm:w-auto max-w-xs sm:max-w-none mx-auto sm:mx-0">
               <Button
                 size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11"
+                className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-sm sm:text-base h-8 sm:h-11 rounded-full"
               >
                 Register as Employer
               </Button>
@@ -669,12 +687,20 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center px-4">
             <Link href="/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11">
+              <Button
+                size="lg"
+                variant="secondary"
+                className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11 rounded-full"
+              >
                 Register Now
               </Button>
             </Link>
             <Link href="/employer/register" className="w-full sm:w-auto">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11">
+              <Button
+                size="lg"
+                variant="secondary"
+                className="w-full sm:w-auto text-sm sm:text-base h-9 sm:h-11 rounded-full"
+              >
                 Post a Job
               </Button>
             </Link>

@@ -263,13 +263,6 @@ export default function CandidateSearchInterface({ candidateId }: { candidateId:
     setShowDateFilter(false) // Hide date filter
   }
 
-  const getDaysAgo = (dateString: string) => {
-    const days = Math.floor((Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24))
-    if (days === 0) return "Today"
-    if (days === 1) return "1 day ago"
-    return `${days} days ago`
-  }
-
   const getSalaryString = (min: number, max: number) => {
     if (!min && !max) return "Not disclosed"
     const minLPA = min

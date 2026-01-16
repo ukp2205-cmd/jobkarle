@@ -17,6 +17,7 @@ export interface JobsByIndustry {
     work_mode: string
     created_at: string
     category: string // Added category field for displaying Premium/Urgent Hiring tag
+    required_skills: string[] // Added required_skills to interface
   }>
 }
 
@@ -60,6 +61,7 @@ export async function getJobsByIndustry() {
           work_mode: job.work_mode,
           created_at: job.created_at,
           category: job.category, // Added category field for displaying Premium/Urgent Hiring tag
+          required_skills: job.required_skills || [], // Added required_skills to data mapping
         })
       } else {
         // Add job to each of its industries
@@ -80,6 +82,7 @@ export async function getJobsByIndustry() {
             work_mode: job.work_mode,
             created_at: job.created_at,
             category: job.category, // Added category field for displaying Premium/Urgent Hiring tag
+            required_skills: job.required_skills || [], // Added required_skills to data mapping
           })
         })
       }

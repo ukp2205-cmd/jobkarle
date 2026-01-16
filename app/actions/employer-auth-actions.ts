@@ -13,7 +13,9 @@ export async function loginEmployer(email: string, password: string) {
     // Fetch employer from database
     const { data: employer, error: employerError } = await supabase
       .from("employers")
-      .select("id, email, password_hash, company_name, contact_person, otp_verified, mobile_number, logo_url")
+      .select(
+        "id, email, password_hash, company_name, contact_person, otp_verified, approval_status, mobile_number, logo_url",
+      )
       .eq("email", email)
       .maybeSingle()
 
@@ -24,11 +26,25 @@ export async function loginEmployer(email: string, password: string) {
 
     if (!employer) {
       console.log("[v0] Employer not found in database")
-      return { success: false, error: "Invalid login credentials" }
+      return { success: false, error: "Account not found. Please register first to create an employer account." }
     }
 
     if (!employer.otp_verified) {
       return { success: false, error: "Please complete your registration and verify your mobile number first" }
+    }
+
+    if (employer.approval_status === "pending") {
+      return {
+        success: false,
+        error: "Your account is pending admin approval. You will receive an email once approved.",
+      }
+    }
+
+    if (employer.approval_status === "rejected") {
+      return {
+        success: false,
+        error: "Your account application was not approved. Please contact support for more information.",
+      }
     }
 
     if (!employer.password_hash) {

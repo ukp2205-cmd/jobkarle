@@ -22,6 +22,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { applyToJob, saveJob, unsaveJob } from "@/app/actions/candidate-dashboard-actions"
+import { getTimeAgo } from "@/lib/time-utils"
 
 type Job = {
   id: string
@@ -249,6 +250,12 @@ export function JobDetailView({
                   <Clock className="w-4 h-4" />
                   <span>{job.employment_type}</span>
                 </div>
+                {job.created_at && (
+                  <div className="flex items-center gap-1 text-gray-500">
+                    <Calendar className="w-4 h-4" />
+                    <span>Posted {getTimeAgo(job.created_at)}</span>
+                  </div>
+                )}
               </div>
             </div>
 

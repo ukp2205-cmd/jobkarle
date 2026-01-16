@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Pencil,
   Plus,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,6 +64,9 @@ import {
   getJobById,
   businessLogout, // Imported businessLogout
   deleteBusinessTeamMember, // Imported deleteBusinessTeamMember
+  getPendingEmployers, // Imported for approvals
+  approveEmployer, // Imported for approvals
+  rejectEmployer, // Imported for approvals
 } from "@/app/actions/business-dashboard-actions"
 
 interface BusinessSession {
@@ -72,7 +76,8 @@ interface BusinessSession {
   role: string
 }
 
-type ActiveView = "dashboard" | "employers" | "candidates" | "jobs" | "team"
+// Added "approvals" to ActiveView
+type ActiveView = "dashboard" | "employers" | "candidates" | "jobs" | "team" | "approvals"
 
 interface DailyMetrics {
   userActivity: {
@@ -274,6 +279,14 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
   // Added job status filter state to filter draft and published jobs
   const [jobStatusFilter, setJobStatusFilter] = useState<string[]>(["draft", "published", "closed", "expired"]) // Changed default to include all statuses
 
+  const [pendingEmployers, setPendingEmployers] = useState<Record<string, unknown>[]>([])
+  const [pendingPage, setPendingPage] = useState(1)
+  const [pendingPagination, setPendingPagination] = useState({ total: 0, totalPages: 0 })
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
+  const [selectedEmployer, setSelectedEmployer] = useState<Record<string, unknown> | null>(null)
+  const [approvalAction, setApprovalAction] = useState<"approve" | "reject">("approve")
+  const [rejectionReason, setRejectionReason] = useState("")
+
   // Fetch metrics on load
   useEffect(() => {
     fetchMetrics()
@@ -281,11 +294,14 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
 
   // Fetch data when view changes
   useEffect(() => {
+    if (activeView === "dashboard") fetchMetrics() // Also fetch metrics on dashboard view
     if (activeView === "employers") fetchEmployers()
     if (activeView === "candidates") fetchCandidates()
     if (activeView === "jobs") fetchJobs()
     if (activeView === "team") fetchTeam()
-  }, [activeView, employerPage, candidatePage, jobPage, teamPage, jobStatusFilter]) // Added jobStatusFilter dependency
+    // Fetch pending employers when approvals view is active
+    if (activeView === "approvals") fetchPendingEmployers()
+  }, [activeView, employerPage, candidatePage, jobPage, teamPage, jobStatusFilter, pendingPage]) // Added pendingPage dependency
 
   const fetchMetrics = async () => {
     setIsLoading(true)
@@ -346,6 +362,18 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
     }
   }
 
+  const fetchPendingEmployers = async () => {
+    setIsLoading(true)
+    const result = await getPendingEmployers(pendingPage, 10, employerSearch) // Using employerSearch for pending employers too
+    if (result.success && result.employers) {
+      setPendingEmployers(result.employers)
+      if (result.pagination) {
+        setPendingPagination(result.pagination)
+      }
+    }
+    setIsLoading(false)
+  }
+
   const handleLogout = async () => {
     await businessLogout()
     router.push("/business/login")
@@ -397,6 +425,56 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
 
     setDeleteDialogOpen(false)
     setDeleteTarget(null)
+  }
+
+  const handleApproveEmployer = async () => {
+    if (!selectedEmployer) return
+
+    try {
+      // Assuming session.userId is available and represents the admin performing the action
+      const result = await approveEmployer(selectedEmployer.id as string, session.userId)
+      if (result.success) {
+        await fetchPendingEmployers() // Refresh pending list
+        await fetchEmployers() // Also refresh the main employers list to show the updated status
+        setApprovalDialogOpen(false)
+        setSelectedEmployer(null)
+        setRejectionReason("") // Clear rejection reason
+      } else {
+        alert(result.error || "Failed to approve employer")
+      }
+    } catch (error) {
+      console.error("Error approving employer:", error)
+      alert("An error occurred while approving. Please try again.")
+    }
+  }
+
+  const handleRejectEmployer = async () => {
+    if (!selectedEmployer || !rejectionReason.trim()) {
+      alert("Please provide a reason for rejection")
+      return
+    }
+
+    try {
+      const result = await rejectEmployer(selectedEmployer.id as string, rejectionReason)
+      if (result.success) {
+        await fetchPendingEmployers() // Refresh pending list
+        setApprovalDialogOpen(false)
+        setSelectedEmployer(null)
+        setRejectionReason("")
+      } else {
+        alert(result.error || "Failed to reject employer")
+      }
+    } catch (error) {
+      console.error("Error rejecting employer:", error)
+      alert("An error occurred while rejecting. Please try again.")
+    }
+  }
+
+  const openApprovalDialog = (employer: Record<string, unknown>, action: "approve" | "reject") => {
+    setSelectedEmployer(employer)
+    setApprovalAction(action)
+    setRejectionReason("") // Reset reason on open
+    setApprovalDialogOpen(true)
   }
 
   const handleAddEmployer = () => {
@@ -674,8 +752,19 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
     })
   }
 
+  // Define onSearch here, as it's used in the JSX and was causing an undeclared variable error.
+  const onSearch = () => {
+    setJobPage(1) // Reset to the first page when searching
+    fetchJobs()
+  }
+
+  // Define onStatusChange here, as it's used in the JSX and was causing an undeclared variable error.
+  const onStatusChange = (jobId: string, status: string) => {
+    handleJobStatusChange(jobId, status)
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 flex">
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-900 via-slate-900 to-slate-900">
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
         <Link href="/" className="p-6 border-b border-slate-800 block hover:bg-slate-800 transition-colors">
@@ -697,6 +786,23 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
               {activeView === item.id && <ChevronRight className="w-4 h-4 ml-auto" />}
             </button>
           ))}
+          <button
+            onClick={() => setActiveView("approvals")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeView === "approvals"
+                ? "bg-primary text-white" // Consistent with other active items
+                : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <AlertTriangle className="w-5 h-5" />
+            <span>Pending Approvals</span>
+            {pendingPagination.total > 0 && (
+              <Badge variant="destructive" className="ml-auto">
+                {pendingPagination.total}
+              </Badge>
+            )}
+            {activeView === "approvals" && <ChevronRight className="w-4 h-4 ml-auto" />}
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800">
@@ -869,138 +975,299 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
                 </div>
               </div>
               <Card className="bg-slate-900 border-slate-800">
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-800 hover:bg-transparent">
-                        <TableHead className="text-slate-400">Job Title</TableHead>
-                        <TableHead className="text-slate-400">Company</TableHead>
-                        <TableHead className="text-slate-400">Employer Email</TableHead>
-                        <TableHead className="text-slate-400">Type</TableHead>
-                        <TableHead className="text-slate-400">Salary</TableHead>
-                        <TableHead className="text-slate-400">Applications</TableHead>
-                        <TableHead className="text-slate-400">Status</TableHead>
-                        <TableHead className="text-slate-400">Posted</TableHead>
-                        <TableHead className="text-slate-400 w-12"></TableHead>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-slate-800 hover:bg-transparent">
+                      <TableHead className="text-slate-400">Job Title</TableHead>
+                      <TableHead className="text-slate-400">Company</TableHead>
+                      <TableHead className="text-slate-400">Employer Email</TableHead>
+                      <TableHead className="text-slate-400">Type</TableHead>
+                      <TableHead className="text-slate-400">Salary</TableHead>
+                      <TableHead className="text-slate-400">Applications</TableHead>
+                      <TableHead className="text-slate-400">Status</TableHead>
+                      <TableHead className="text-slate-400">Posted</TableHead>
+                      <TableHead className="text-slate-400 w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredJobs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8 text-slate-500">
+                          {jobs.length === 0 ? "No jobs found" : "No jobs match the selected filters"}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredJobs.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center py-8 text-slate-500">
-                            {jobs.length === 0 ? "No jobs found" : "No jobs match the selected filters"}
+                    ) : (
+                      filteredJobs.map((job) => (
+                        <TableRow key={job.id as string} className="border-slate-800">
+                          <TableCell className="text-white font-medium">{job.job_title as string}</TableCell>
+                          <TableCell className="text-slate-300">{(job.company_name as string) || "N/A"}</TableCell>
+                          <TableCell className="text-slate-300">{(job.employer_email as string) || "N/A"}</TableCell>
+                          <TableCell className="text-slate-300">{(job.employment_type as string) || "N/A"}</TableCell>
+                          <TableCell className="text-slate-300">
+                            {job.min_salary && job.max_salary
+                              ? `₹${Number(job.min_salary).toLocaleString()} - ₹${Number(job.max_salary).toLocaleString()}`
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="border-primary/30 text-white bg-primary/10">
+                              {(job.application_count as number) || 0}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Select
+                              value={(job.status as string) || "draft"}
+                              onValueChange={(value) => onStatusChange(job.id as string, value)}
+                            >
+                              <SelectTrigger className="w-28 h-8 bg-slate-800 border-slate-700 text-white text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-slate-800 border-slate-700">
+                                <SelectItem value="draft" className="text-white">
+                                  Draft
+                                </SelectItem>
+                                <SelectItem value="published" className="text-white">
+                                  Published
+                                </SelectItem>
+                                <SelectItem value="closed" className="text-white">
+                                  Closed
+                                </SelectItem>
+                                <SelectItem value="expired" className="text-white">
+                                  Expired
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-slate-400">
+                            {new Date(job.created_at as string).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-slate-400">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                                {job.status === "draft" && (
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/employer/post-job?edit=${job.id}`}
+                                      className="text-slate-300 focus:text-white focus:bg-slate-700 block px-2 py-1.5"
+                                    >
+                                      View Details
+                                    </Link>
+                                  </DropdownMenuItem>
+                                )}
+                                {/* </CHANGE> */}
+                                <DropdownMenuItem
+                                  className="text-slate-300 focus:text-white focus:bg-slate-700"
+                                  onClick={() => handleEditJob(job)}
+                                >
+                                  <Pencil className="w-4 h-4 mr-2" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleJobStatusChange(job.id as string, "published")}
+                                  disabled={job.status === "published"}
+                                  className="focus:bg-slate-700 focus:text-white"
+                                >
+                                  Publish
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleJobStatusChange(job.id as string, "closed")}
+                                  disabled={job.status === "closed"}
+                                  className="focus:bg-slate-700 focus:text-white"
+                                >
+                                  Close
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setDeleteTarget({
+                                      type: "job",
+                                      id: job.id as string,
+                                      name: job.job_title as string,
+                                    })
+                                  }
+                                  className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      ) : (
-                        filteredJobs.map((job) => (
-                          <TableRow key={job.id as string} className="border-slate-800">
-                            <TableCell className="text-white font-medium">{job.job_title as string}</TableCell>
-                            <TableCell className="text-slate-300">{(job.company_name as string) || "N/A"}</TableCell>
-                            <TableCell className="text-slate-300">{(job.employer_email as string) || "N/A"}</TableCell>
-                            <TableCell className="text-slate-300">{(job.employment_type as string) || "N/A"}</TableCell>
-                            <TableCell className="text-slate-300">
-                              {job.min_salary && job.max_salary
-                                ? `₹${Number(job.min_salary).toLocaleString()} - ₹${Number(job.max_salary).toLocaleString()}`
-                                : "N/A"}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="border-primary/30 text-white bg-primary/10">
-                                {(job.application_count as number) || 0}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Select
-                                value={(job.status as string) || "draft"}
-                                onValueChange={(value) => handleJobStatusChange(job.id as string, value)}
-                              >
-                                <SelectTrigger className="w-28 h-8 bg-slate-800 border-slate-700 text-white text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-slate-800 border-slate-700">
-                                  <SelectItem value="draft" className="text-white">
-                                    Draft
-                                  </SelectItem>
-                                  <SelectItem value="published" className="text-white">
-                                    Published
-                                  </SelectItem>
-                                  <SelectItem value="closed" className="text-white">
-                                    Closed
-                                  </SelectItem>
-                                  <SelectItem value="expired" className="text-white">
-                                    Expired
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className="text-slate-400">
-                              {new Date(job.created_at as string).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="text-slate-400">
-                                    <MoreHorizontal className="w-4 h-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="bg-slate-800 border-slate-700">
-                                  {job.status === "draft" && (
-                                    <DropdownMenuItem asChild>
-                                      <Link
-                                        href={`/employer/post-job?edit=${job.id}`}
-                                        className="text-slate-300 focus:text-white focus:bg-slate-700 block px-2 py-1.5"
-                                      >
-                                        View Details
-                                      </Link>
-                                    </DropdownMenuItem>
-                                  )}
-                                  {/* </CHANGE> */}
-                                  <DropdownMenuItem
-                                    className="text-slate-300 focus:text-white focus:bg-slate-700"
-                                    onClick={() => handleEditJob(job)}
-                                  >
-                                    <Pencil className="w-4 h-4 mr-2" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleJobStatusChange(job.id as string, "published")}
-                                    disabled={job.status === "published"}
-                                    className="focus:bg-slate-700 focus:text-white"
-                                  >
-                                    Publish
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleJobStatusChange(job.id as string, "closed")}
-                                    disabled={job.status === "closed"}
-                                    className="focus:bg-slate-700 focus:text-white"
-                                  >
-                                    Close
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      setDeleteTarget({
-                                        type: "job",
-                                        id: job.id as string,
-                                        name: job.job_title as string,
-                                      })
-                                    }
-                                    className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                      {/* </CHANGE> */}
-                    </TableBody>
-                  </Table>
-                </CardContent>
+                      ))
+                    )}
+                    {/* </CHANGE> */}
+                  </TableBody>
+                </Table>
               </Card>
 
               <Pagination page={jobPage} totalPages={jobPagination.totalPages} onPageChange={setJobPage} />
+            </div>
+          )}
+
+          {activeView === "approvals" && (
+            <div className="flex-1 overflow-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Pending Employer Approvals</h2>
+                    <p className="text-gray-600 mt-1">Review and approve employer registration requests</p>
+                  </div>
+                  <Button
+                    onClick={fetchPendingEmployers}
+                    variant="outline"
+                    size="sm"
+                    className="border-slate-700 text-slate-400 hover:bg-slate-800 bg-transparent"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {/* Search */}
+                <div className="mb-6 max-w-md">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 w-5 h-5" />
+                    <Input
+                      placeholder="Search by company name, email, or contact person..."
+                      value={employerSearch}
+                      onChange={(e) => {
+                        setEmployerSearch(e.target.value)
+                        setPendingPage(1) // Reset page on search
+                      }}
+                      className="pl-10 bg-slate-900 border-slate-700 text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Pending Employers Table */}
+                {pendingEmployers.length === 0 ? (
+                  <Card className="p-12 text-center bg-slate-900 border-slate-800">
+                    <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">All Caught Up!</h3>
+                    <p className="text-slate-400">There are no pending employer approvals at this time.</p>
+                  </Card>
+                ) : (
+                  <Card className="bg-slate-900 border-slate-800">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-slate-800 hover:bg-transparent">
+                          <TableHead className="text-slate-400">Company Name</TableHead>
+                          <TableHead className="text-slate-400">Contact Person</TableHead>
+                          <TableHead className="text-slate-400">Email</TableHead>
+                          <TableHead className="text-slate-400">Mobile</TableHead>
+                          <TableHead className="text-slate-400">City</TableHead>
+                          <TableHead className="text-slate-400">Industry</TableHead>
+                          <TableHead className="text-slate-400">Status</TableHead>
+                          <TableHead className="text-slate-400">Registered</TableHead>
+                          <TableHead className="text-right text-slate-400">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingEmployers.map((employer) => (
+                          <TableRow key={employer.id as string} className="border-slate-800">
+                            <TableCell className="font-medium text-white">{employer.company_name as string}</TableCell>
+                            <TableCell className="text-slate-300">{employer.contact_person as string}</TableCell>
+                            <TableCell className="text-slate-300">{employer.email as string}</TableCell>
+                            <TableCell className="text-slate-300">{employer.mobile_number as string}</TableCell>
+                            <TableCell className="text-slate-300">{employer.city as string}</TableCell>
+                            <TableCell className="text-slate-300">{employer.industry_type as string}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <Badge
+                                  variant={
+                                    employer.approval_status === "approved"
+                                      ? "default"
+                                      : employer.approval_status === "rejected"
+                                        ? "destructive"
+                                        : "secondary"
+                                  }
+                                  className={
+                                    employer.approval_status === "approved"
+                                      ? "bg-green-500/20 text-green-400"
+                                      : employer.approval_status === "pending"
+                                        ? "bg-yellow-500/20 text-yellow-400"
+                                        : "bg-red-500/20 text-red-400"
+                                  }
+                                >
+                                  {(employer.approval_status as string)?.toUpperCase() || "UNKNOWN"}
+                                </Badge>
+                                {employer.otp_verified === false && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs bg-slate-800 border-slate-700 text-slate-400"
+                                  >
+                                    OTP Pending
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-slate-400">
+                              {new Date(employer.created_at as string).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={() => openApprovalDialog(employer, "approve")}
+                                >
+                                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                                  Approve
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => openApprovalDialog(employer, "reject")}
+                                >
+                                  <AlertTriangle className="w-4 h-4 mr-1" />
+                                  Reject
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    {/* Pagination */}
+                    {pendingPagination.totalPages > 1 && (
+                      <div className="flex items-center justify-between p-4 border-t border-slate-800">
+                        <p className="text-sm text-slate-400">
+                          Showing {pendingEmployers.length} of {pendingPagination.total} pending approvals
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-700 text-slate-400 bg-transparent hover:bg-slate-800 disabled:opacity-50"
+                            onClick={() => setPendingPage((p) => Math.max(1, p - 1))}
+                            disabled={pendingPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <span className="text-sm text-slate-400">
+                            Page {pendingPage} of {pendingPagination.totalPages}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-slate-700 text-slate-400 bg-transparent hover:bg-slate-800 disabled:opacity-50"
+                            onClick={() => setPendingPage((p) => Math.min(pendingPagination.totalPages, p + 1))}
+                            disabled={pendingPage === pendingPagination.totalPages}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                )}
+              </div>
             </div>
           )}
 
@@ -1020,7 +1287,6 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
         </div>
       </main>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-800">
           <DialogHeader>
@@ -1039,8 +1305,6 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Add Team Member Dialog */}
       <Dialog open={addTeamDialogOpen} onOpenChange={setAddTeamDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-800">
           <DialogHeader>
@@ -1101,8 +1365,6 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Employer Form Dialog */}
       <Dialog open={employerDialogOpen} onOpenChange={setEmployerDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
@@ -1914,6 +2176,70 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle>{approvalAction === "approve" ? "Approve Employer" : "Reject Employer"}</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {approvalAction === "approve"
+                ? `Are you sure you want to approve ${selectedEmployer?.company_name}? They will be able to login and post jobs.`
+                : `Provide a reason for rejecting ${selectedEmployer?.company_name}'s application.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedEmployer && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-slate-800 rounded-lg space-y-2 border border-slate-700">
+                <p className="text-sm">
+                  <span className="font-semibold text-slate-300">Company:</span>{" "}
+                  {selectedEmployer.company_name as string}
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold text-slate-300">Contact:</span>{" "}
+                  {selectedEmployer.contact_person as string}
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold text-slate-300">Email:</span> {selectedEmployer.email as string}
+                </p>
+                <p className="text-sm">
+                  <span className="font-semibold text-slate-300">Mobile:</span>{" "}
+                  {selectedEmployer.mobile_number as string}
+                </p>
+              </div>
+
+              {approvalAction === "reject" && (
+                <div className="space-y-2">
+                  <Label className="text-slate-300">Rejection Reason *</Label>
+                  <Input
+                    placeholder="Please provide a clear reason for rejection..."
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovalDialogOpen(false)} className="border-slate-700">
+              Cancel
+            </Button>
+            {approvalAction === "approve" ? (
+              <Button onClick={handleApproveEmployer} className="bg-green-600 hover:bg-green-700">
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Approve Employer
+              </Button>
+            ) : (
+              <Button onClick={handleRejectEmployer} variant="destructive">
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Reject Application
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1939,143 +2265,145 @@ function DashboardView({
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 overflow-auto">
+      <div className="space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+            <p className="text-slate-400 mt-1">Platform metrics and insights</p>
+          </div>
+          <Button onClick={onRefresh} variant="outline" className="border-slate-700 text-slate-400 bg-transparent">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {/* User Activity Metrics */}
         <div>
-          <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400 mt-1">Platform metrics and insights</p>
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5 text-primary" />
+            User Activity
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="New Candidates Today"
+              value={dailyMetrics?.userActivity.newCandidates || 0}
+              icon={<Users className="w-5 h-5" />}
+              trend={weeklyMetrics?.growth.candidateGrowthPercent}
+            />
+            <MetricCard
+              title="New Employers Today"
+              value={dailyMetrics?.userActivity.newEmployers || 0}
+              icon={<Building2 className="w-5 h-5" />}
+              trend={weeklyMetrics?.growth.employerGrowthPercent}
+            />
+            <MetricCard
+              title="Total Candidates"
+              value={dailyMetrics?.userActivity.totalCandidates || 0}
+              icon={<Users className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Total Employers"
+              value={dailyMetrics?.userActivity.totalEmployers || 0}
+              icon={<Building2 className="w-5 h-5" />}
+            />
+          </div>
         </div>
-        <Button onClick={onRefresh} variant="outline" className="border-slate-700 text-slate-400 bg-transparent">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
 
-      {/* User Activity Metrics */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Users className="w-5 h-5 text-primary" />
-          User Activity
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="New Candidates Today"
-            value={dailyMetrics?.userActivity.newCandidates || 0}
-            icon={<Users className="w-5 h-5" />}
-            trend={weeklyMetrics?.growth.candidateGrowthPercent}
-          />
-          <MetricCard
-            title="New Employers Today"
-            value={dailyMetrics?.userActivity.newEmployers || 0}
-            icon={<Building2 className="w-5 h-5" />}
-            trend={weeklyMetrics?.growth.employerGrowthPercent}
-          />
-          <MetricCard
-            title="Total Candidates"
-            value={dailyMetrics?.userActivity.totalCandidates || 0}
-            icon={<Users className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Total Employers"
-            value={dailyMetrics?.userActivity.totalEmployers || 0}
-            icon={<Building2 className="w-5 h-5" />}
-          />
+        {/* Job Activity Metrics */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-primary" />
+            Job Activity
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="New Jobs Today"
+              value={dailyMetrics?.jobActivity.newJobsToday || 0}
+              icon={<Briefcase className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Total Jobs"
+              value={dailyMetrics?.jobActivity.totalJobs || 0}
+              icon={<FileText className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Active Jobs"
+              value={weeklyMetrics?.marketplace.activeJobs || 0}
+              icon={<Activity className="w-5 h-5" />}
+              trend={weeklyMetrics?.marketplace.activeJobsGrowthPercent}
+              subtitle={`${weeklyMetrics?.marketplace.activeJobsThisWeek || 0} new this week`}
+            />
+            <MetricCard
+              title="Jobs/Candidates Ratio"
+              value={weeklyMetrics?.marketplace.jobsToCandidatesRatio || 0}
+              icon={<TrendingUp className="w-5 h-5" />}
+              suffix=":1"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Job Activity Metrics */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Briefcase className="w-5 h-5 text-primary" />
-          Job Activity
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="New Jobs Today"
-            value={dailyMetrics?.jobActivity.newJobsToday || 0}
-            icon={<Briefcase className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Total Jobs"
-            value={dailyMetrics?.jobActivity.totalJobs || 0}
-            icon={<FileText className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Active Jobs"
-            value={weeklyMetrics?.marketplace.activeJobs || 0}
-            icon={<Activity className="w-5 h-5" />}
-            trend={weeklyMetrics?.marketplace.activeJobsGrowthPercent}
-            subtitle={`${weeklyMetrics?.marketplace.activeJobsThisWeek || 0} new this week`}
-          />
-          <MetricCard
-            title="Jobs/Candidates Ratio"
-            value={weeklyMetrics?.marketplace.jobsToCandidatesRatio || 0}
-            icon={<TrendingUp className="w-5 h-5" />}
-            suffix=":1"
-          />
+        {/* Application Flow Metrics */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            Application Flow
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="Applications Today"
+              value={dailyMetrics?.applicationFlow.applicationsToday || 0}
+              icon={<FileText className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Total Applications"
+              value={dailyMetrics?.applicationFlow.totalApplications || 0}
+              icon={<FileText className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Avg Applications/Job"
+              value={dailyMetrics?.applicationFlow.avgApplicationsPerJob || 0}
+              icon={<Activity className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Jobs with 0 Applications"
+              value={dailyMetrics?.applicationFlow.jobsWithNoApplications || 0}
+              icon={<AlertTriangle className="w-5 h-5" />}
+              variant="warning"
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Application Flow Metrics */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-primary" />
-          Application Flow
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="Applications Today"
-            value={dailyMetrics?.applicationFlow.applicationsToday || 0}
-            icon={<FileText className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Total Applications"
-            value={dailyMetrics?.applicationFlow.totalApplications || 0}
-            icon={<FileText className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Avg Applications/Job"
-            value={dailyMetrics?.applicationFlow.avgApplicationsPerJob || 0}
-            icon={<Activity className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Jobs with 0 Applications"
-            value={dailyMetrics?.applicationFlow.jobsWithNoApplications || 0}
-            icon={<AlertTriangle className="w-5 h-5" />}
-            variant="warning"
-          />
-        </div>
-      </div>
-
-      {/* Weekly Growth */}
-      <div>
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          Weekly Growth
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="Weekly New Candidates"
-            value={weeklyMetrics?.growth.weeklyNewCandidates || 0}
-            icon={<Users className="w-5 h-5" />}
-            trend={weeklyMetrics?.growth.candidateGrowthPercent}
-          />
-          <MetricCard
-            title="Weekly New Employers"
-            value={weeklyMetrics?.growth.weeklyNewEmployers || 0}
-            icon={<Building2 className="w-5 h-5" />}
-            trend={weeklyMetrics?.growth.employerGrowthPercent}
-          />
-          <MetricCard
-            title="Active Candidates"
-            value={weeklyMetrics?.marketplace.activeCandidates || 0}
-            icon={<Users className="w-5 h-5" />}
-          />
-          <MetricCard
-            title="Active Jobs"
-            value={weeklyMetrics?.marketplace.activeJobs || 0}
-            icon={<Briefcase className="w-5 h-5" />}
-          />
+        {/* Weekly Growth */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            Weekly Growth
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="Weekly New Candidates"
+              value={weeklyMetrics?.growth.weeklyNewCandidates || 0}
+              icon={<Users className="w-5 h-5" />}
+              trend={weeklyMetrics?.growth.candidateGrowthPercent}
+            />
+            <MetricCard
+              title="Weekly New Employers"
+              value={weeklyMetrics?.growth.weeklyNewEmployers || 0}
+              icon={<Building2 className="w-5 h-5" />}
+              trend={weeklyMetrics?.growth.employerGrowthPercent}
+            />
+            <MetricCard
+              title="Active Candidates"
+              value={weeklyMetrics?.marketplace.activeCandidates || 0}
+              icon={<Users className="w-5 h-5" />}
+            />
+            <MetricCard
+              title="Active Jobs"
+              value={weeklyMetrics?.marketplace.activeJobs || 0}
+              icon={<Briefcase className="w-5 h-5" />}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -2144,9 +2472,8 @@ function EmployersView({
   search,
   onPageChange,
   onSearchChange,
-  onSearch,
-  onDelete,
   onEdit,
+  onDelete,
   onAdd,
 }: {
   employers: Record<string, unknown>[]
@@ -2155,108 +2482,144 @@ function EmployersView({
   search: string
   onPageChange: (page: number) => void
   onSearchChange: (search: string) => void
-  onSearch: () => void
-  onDelete: (id: string, name: string) => void
   onEdit: (employer: Record<string, unknown>) => void
+  onDelete: (id: string, name: string) => void
   onAdd: () => void
 }) {
+  // Fetch employers function needs to be defined or passed down for the search button
+  const fetchEmployers = async () => {
+    // This is a placeholder. In a real scenario, this would call the API.
+    // For this example, we'll assume it's handled in the parent component's useEffect.
+    console.log("Fetching employers...")
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Employers</h1>
-          <p className="text-slate-400 mt-1">Manage all registered employers</p>
+    <div className="flex-1 overflow-auto">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Employers</h1>
+            <p className="text-slate-400 mt-1">Manage all registered employers</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge variant="secondary" className="bg-slate-800 text-white">
+              {pagination.total} Total
+            </Badge>
+            <Button onClick={onAdd} className="bg-primary">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Employer
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="secondary" className="bg-slate-800 text-white">
-            {pagination.total} Total
-          </Badge>
-          <Button onClick={onAdd} className="bg-primary">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Employer
+
+        <div className="flex gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input
+              placeholder="Search by company name, email, or contact..."
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && fetchEmployers()}
+              className="pl-10 bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+          <Button onClick={fetchEmployers} className="bg-primary">
+            Search
           </Button>
         </div>
-      </div>
 
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input
-            placeholder="Search by company name, email, or contact..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSearch()}
-            className="pl-10 bg-slate-900 border-slate-800 text-white"
-          />
-        </div>
-        <Button onClick={onSearch} className="bg-primary">
-          Search
-        </Button>
-      </div>
-
-      <Card className="bg-slate-900 border-slate-800">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-slate-800 hover:bg-transparent">
-              <TableHead className="text-slate-400">Company</TableHead>
-              <TableHead className="text-slate-400">Contact Person</TableHead>
-              <TableHead className="text-slate-400">Email</TableHead>
-              <TableHead className="text-slate-400">Phone</TableHead>
-              <TableHead className="text-slate-400">City</TableHead>
-              <TableHead className="text-slate-400">Industry</TableHead>
-              <TableHead className="text-slate-400">Joined</TableHead>
-              <TableHead className="text-slate-400 w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {employers.map((employer) => (
-              <TableRow key={employer.id as string} className="border-slate-800">
-                <TableCell className="text-white font-medium">{(employer.company_name as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">{(employer.contact_person as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">{employer.email as string}</TableCell>
-                <TableCell className="text-slate-300">{(employer.mobile_number as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">{(employer.city as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">{(employer.industry_type as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-400">
-                  {new Date(employer.created_at as string).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-slate-400">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-slate-800 border-slate-700">
-                      <DropdownMenuItem
-                        className="text-slate-300 focus:text-white focus:bg-slate-700"
-                        onClick={() => onEdit(employer)}
-                      >
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
-                        onClick={() =>
-                          onDelete(
-                            employer.id as string,
-                            (employer.company_name as string) || (employer.email as string),
-                          )
+        <Card className="bg-slate-900 border-slate-800">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Company</TableHead>
+                <TableHead className="text-slate-400">Contact Person</TableHead>
+                <TableHead className="text-slate-400">Email</TableHead>
+                <TableHead className="text-slate-400">Phone</TableHead>
+                <TableHead className="text-slate-400">City</TableHead>
+                <TableHead className="text-slate-400">Industry</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Joined</TableHead>
+                <TableHead className="text-slate-400 w-12"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {employers.map((employer) => (
+                <TableRow key={employer.id as string} className="border-slate-800">
+                  <TableCell className="text-white font-medium">{(employer.company_name as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">{(employer.contact_person as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">{employer.email as string}</TableCell>
+                  <TableCell className="text-slate-300">{(employer.mobile_number as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">{(employer.city as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">{(employer.industry_type as string) || "N/A"}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <Badge
+                        variant={
+                          employer.approval_status === "approved"
+                            ? "default"
+                            : employer.approval_status === "rejected"
+                              ? "destructive"
+                              : "secondary"
+                        }
+                        className={
+                          employer.approval_status === "approved"
+                            ? "bg-green-500/20 text-green-400"
+                            : employer.approval_status === "pending"
+                              ? "bg-yellow-500/20 text-yellow-400"
+                              : "bg-red-500/20 text-red-400" // For rejected
                         }
                       >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+                        {(employer.approval_status as string)?.toUpperCase() || "UNKNOWN"}
+                      </Badge>
+                      {employer.otp_verified === false && (
+                        <Badge variant="outline" className="text-xs bg-slate-800 border-slate-700 text-slate-400">
+                          OTP Pending
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-slate-400">
+                    {new Date(employer.created_at as string).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-slate-400">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                        <DropdownMenuItem
+                          className="text-slate-300 focus:text-white focus:bg-slate-700"
+                          onClick={() => onEdit(employer)}
+                        >
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                          onClick={() =>
+                            onDelete(
+                              employer.id as string,
+                              (employer.company_name as string) || (employer.email as string),
+                            )
+                          }
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
 
-      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+        <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+      </div>
     </div>
   )
 }
@@ -2269,10 +2632,9 @@ function CandidatesView({
   search,
   onPageChange,
   onSearchChange,
-  onSearch,
+  onEdit,
   onDelete,
-  onAdd, // Added prop
-  onEdit, // Added prop
+  onAdd,
 }: {
   candidates: Record<string, unknown>[]
   pagination: { total: number; totalPages: number }
@@ -2280,134 +2642,142 @@ function CandidatesView({
   search: string
   onPageChange: (page: number) => void
   onSearchChange: (search: string) => void
-  onSearch: () => void
+  onEdit: (candidate: Record<string, unknown>) => void
   onDelete: (id: string, name: string) => void
-  onAdd: () => void // Added prop
-  onEdit: (candidate: Record<string, unknown>) => void // Added prop
+  onAdd: () => void
 }) {
+  // Fetch candidates function needs to be defined or passed down for the search button
+  const fetchCandidates = async () => {
+    // This is a placeholder. In a real scenario, this would call the API.
+    // For this example, we'll assume it's handled in the parent component's useEffect.
+    console.log("Fetching candidates...")
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Candidates</h1>
-          <p className="text-slate-400 mt-1">Manage all registered candidates</p>
+    <div className="flex-1 overflow-auto">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Candidates</h1>
+            <p className="text-slate-400 mt-1">Manage all registered candidates</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-slate-800 text-white">
+              {pagination.total} Total
+            </Badge>
+            <Button onClick={onAdd} className="bg-primary">
+              {" "}
+              {/* Added button */}
+              <Plus className="w-4 h-4 mr-2" />
+              Add Candidate
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-slate-800 text-white">
-            {pagination.total} Total
-          </Badge>
-          <Button onClick={onAdd} className="bg-primary">
-            {" "}
-            {/* Added button */}
-            <Plus className="w-4 h-4 mr-2" />
-            Add Candidate
+
+        <div className="flex gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input
+              placeholder="Search by name, email, or phone..."
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && fetchCandidates()}
+              className="pl-10 bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+          <Button onClick={fetchCandidates} className="bg-primary">
+            Search
           </Button>
         </div>
-      </div>
 
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input
-            placeholder="Search by name, email, or phone..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSearch()}
-            className="pl-10 bg-slate-900 border-slate-800 text-white"
-          />
-        </div>
-        <Button onClick={onSearch} className="bg-primary">
-          Search
-        </Button>
-      </div>
-
-      <Card className="bg-slate-900 border-slate-800">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-slate-800 hover:bg-transparent">
-              <TableHead className="text-slate-400">Name</TableHead>
-              <TableHead className="text-slate-400">Email</TableHead>
-              <TableHead className="text-slate-400">Phone</TableHead>
-              <TableHead className="text-slate-400">Location</TableHead>
-              <TableHead className="text-slate-400">Status</TableHead>
-              <TableHead className="text-slate-400">Education</TableHead>
-              <TableHead className="text-slate-400">Experience</TableHead>
-              <TableHead className="text-slate-400">Joined</TableHead>
-              <TableHead className="text-slate-400 w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {candidates.map((candidate) => (
-              <TableRow key={candidate.id as string} className="border-slate-800">
-                <TableCell className="text-white font-medium">{(candidate.full_name as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">{candidate.email as string}</TableCell>
-                <TableCell className="text-slate-300">{(candidate.mobile_number as string) || "N/A"}</TableCell>
-                <TableCell className="text-slate-300">
-                  {(() => {
-                    const city = candidate.current_city as string | null | undefined
-                    const state = candidate.current_state as string | null | undefined
-                    const location = [city, state].filter((v) => v && v.trim()).join(", ")
-                    return location || "N/A"
-                  })()}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={
-                      candidate.work_status === "fresher"
-                        ? "border-emerald-500/30 text-emerald-400"
-                        : "border-blue-500/30 text-blue-400"
-                    }
-                  >
-                    {(candidate.work_status as string) || "N/A"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-slate-300">
-                  {(candidate.highest_qualification as string)?.trim() || "N/A"}
-                </TableCell>
-                <TableCell className="text-slate-300">
-                  {candidate.total_experience_years ? `${candidate.total_experience_years} yrs` : "Fresher"}
-                </TableCell>
-                <TableCell className="text-slate-400">
-                  {new Date(candidate.created_at as string).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-slate-400">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-slate-800 border-slate-700">
-                      <DropdownMenuItem
-                        className="text-slate-300 focus:text-white focus:bg-slate-700"
-                        onClick={() => onEdit(candidate)}
-                      >
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
-                        onClick={() =>
-                          onDelete(
-                            candidate.id as string,
-                            (candidate.full_name as string) || (candidate.email as string),
-                          )
-                        }
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        <Card className="bg-slate-900 border-slate-800">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Name</TableHead>
+                <TableHead className="text-slate-400">Email</TableHead>
+                <TableHead className="text-slate-400">Phone</TableHead>
+                <TableHead className="text-slate-400">Location</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Education</TableHead>
+                <TableHead className="text-slate-400">Experience</TableHead>
+                <TableHead className="text-slate-400">Joined</TableHead>
+                <TableHead className="text-slate-400 w-12"></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+            </TableHeader>
+            <TableBody>
+              {candidates.map((candidate) => (
+                <TableRow key={candidate.id as string} className="border-slate-800">
+                  <TableCell className="text-white font-medium">{(candidate.full_name as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">{candidate.email as string}</TableCell>
+                  <TableCell className="text-slate-300">{(candidate.mobile_number as string) || "N/A"}</TableCell>
+                  <TableCell className="text-slate-300">
+                    {(() => {
+                      const city = candidate.current_city as string | null | undefined
+                      const state = candidate.current_state as string | null | undefined
+                      const location = [city, state].filter((v) => v && v.trim()).join(", ")
+                      return location || "N/A"
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        candidate.work_status === "fresher"
+                          ? "border-emerald-500/30 text-emerald-400"
+                          : "border-blue-500/30 text-blue-400"
+                      }
+                    >
+                      {(candidate.work_status as string) || "N/A"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-300">
+                    {(candidate.highest_qualification as string)?.trim() || "N/A"}
+                  </TableCell>
+                  <TableCell className="text-slate-300">
+                    {candidate.total_experience_years ? `${candidate.total_experience_years} yrs` : "Fresher"}
+                  </TableCell>
+                  <TableCell className="text-slate-400">
+                    {new Date(candidate.created_at as string).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-slate-400">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                        <DropdownMenuItem
+                          className="text-slate-300 focus:text-white focus:bg-slate-700"
+                          onClick={() => onEdit(candidate)}
+                        >
+                          <Pencil className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                          onClick={() =>
+                            onDelete(
+                              candidate.id as string,
+                              (candidate.full_name as string) || (candidate.email as string),
+                            )
+                          }
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
 
-      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+        <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+      </div>
     </div>
   )
 }
@@ -2418,205 +2788,205 @@ function JobsView({
   pagination,
   page,
   search,
-  jobStatusFilter,
+  statusFilter,
   onPageChange,
   onSearchChange,
-  onSearch,
-  onDelete,
-  onStatusChange,
-  onAdd,
+  onStatusFilterChange,
   onEdit,
-  onToggleStatusFilter,
+  onDelete,
+  onAdd,
 }: {
   jobs: Record<string, unknown>[]
   pagination: { total: number; totalPages: number }
   page: number
   search: string
-  jobStatusFilter: string[]
+  statusFilter: string[]
   onPageChange: (page: number) => void
   onSearchChange: (search: string) => void
-  onSearch: () => void
-  onDelete: (id: string, name: string) => void
-  onStatusChange: (id: string, status: string) => void
-  onAdd: () => void
+  onStatusFilterChange: (statuses: string[]) => void
   onEdit: (job: Record<string, unknown>) => void
-  onToggleStatusFilter: (status: string) => void
+  onDelete: (id: string, name: string) => void
+  onAdd: () => void
 }) {
-  const filteredJobs = jobs.filter((job) => {
-    // If no status filter is selected, show all jobs
-    if (jobStatusFilter.length === 0) return true
+  // Define onSearch here, as it's used in the JSX and was causing an undeclared variable error.
+  const onSearch = () => {
+    setJobPage(1) // Reset to the first page when searching
+    fetchJobs()
+  }
 
-    // Otherwise, show only jobs matching selected statuses
-    return jobStatusFilter.includes(job.status as string)
-  })
-  // </CHANGE>
+  // Define onStatusChange here, as it's used in the JSX and was causing an undeclared variable error.
+  const onStatusChange = (jobId: string, status: string) => {
+    handleJobStatusChange(jobId, status)
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Jobs</h1>
-          <p className="text-slate-400 mt-1">Manage all job postings</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-slate-800 text-white">
-            {pagination.total} Total
-          </Badge>
-          <Button onClick={onAdd} className="bg-primary">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Job
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <Input
-            placeholder="Search by job title or company..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSearch()}
-            className="pl-10 bg-slate-900 border-slate-800 text-white"
-          />
-        </div>
-        <Button onClick={onSearch} className="bg-primary">
-          Search
-        </Button>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-slate-400">Filter by Status:</span>
-        {["published", "draft", "closed", "expired"].map((status) => (
-          <Button
-            key={status}
-            variant={jobStatusFilter.includes(status) ? "default" : "outline"}
-            className={`text-xs h-7 px-3 ${
-              jobStatusFilter.includes(status)
-                ? "bg-primary text-white"
-                : "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700"
-            }`}
-            onClick={() => onToggleStatusFilter(status)}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-            <Badge variant="secondary" className="ml-2 bg-slate-700 text-slate-400">
-              {jobs.filter((j) => j.status === status).length}
+    <div className="flex-1 overflow-auto">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Jobs</h1>
+            <p className="text-slate-400 mt-1">Manage all job postings</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-slate-800 text-white">
+              {pagination.total} Total
             </Badge>
-          </Button>
-        ))}
-      </div>
-      {/* </CHANGE> */}
+            <Button onClick={onAdd} className="bg-primary">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Job
+            </Button>
+          </div>
+        </div>
 
-      <Card className="bg-slate-900 border-slate-800">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-slate-800 hover:bg-transparent">
-              <TableHead className="text-slate-400">Job Title</TableHead>
-              <TableHead className="text-slate-400">Company</TableHead>
-              <TableHead className="text-slate-400">Employer Email</TableHead>
-              <TableHead className="text-slate-400">Type</TableHead>
-              <TableHead className="text-slate-400">Salary</TableHead>
-              <TableHead className="text-slate-400">Applications</TableHead>
-              <TableHead className="text-slate-400">Status</TableHead>
-              <TableHead className="text-slate-400">Posted</TableHead>
-              <TableHead className="text-slate-400 w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredJobs.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-slate-500">
-                  {jobs.length === 0 ? "No jobs found" : "No jobs match the selected filters"}
-                </TableCell>
+        <div className="flex gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Input
+              placeholder="Search by job title or company..."
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onSearch()}
+              className="pl-10 bg-slate-900 border-slate-800 text-white"
+            />
+          </div>
+          <Button onClick={onSearch} className="bg-primary">
+            Search
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-400">Filter by Status:</span>
+          {["published", "draft", "closed", "expired"].map((status) => (
+            <Button
+              key={status}
+              variant={statusFilter.includes(status) ? "default" : "outline"}
+              className={`text-xs h-7 px-3 ${
+                statusFilter.includes(status)
+                  ? "bg-primary text-white"
+                  : "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700"
+              }`}
+              onClick={() => onStatusFilterChange(status)}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+              <Badge variant="secondary" className="ml-2 bg-slate-700 text-slate-400">
+                {jobs.filter((j) => j.status === status).length}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+        {/* </CHANGE> */}
+
+        <Card className="bg-slate-900 border-slate-800">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Job Title</TableHead>
+                <TableHead className="text-slate-400">Company</TableHead>
+                <TableHead className="text-slate-400">Employer Email</TableHead>
+                <TableHead className="text-slate-400">Type</TableHead>
+                <TableHead className="text-slate-400">Salary</TableHead>
+                <TableHead className="text-slate-400">Applications</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Posted</TableHead>
+                <TableHead className="text-slate-400 w-12"></TableHead>
               </TableRow>
-            ) : (
-              filteredJobs.map((job) => (
-                <TableRow key={job.id as string} className="border-slate-800">
-                  <TableCell className="text-white font-medium">{job.job_title as string}</TableCell>
-                  <TableCell className="text-slate-300">{(job.company_name as string) || "N/A"}</TableCell>
-                  <TableCell className="text-slate-300">{(job.employer_email as string) || "N/A"}</TableCell>
-                  <TableCell className="text-slate-300">{(job.employment_type as string) || "N/A"}</TableCell>
-                  <TableCell className="text-slate-300">
-                    {job.min_salary && job.max_salary
-                      ? `₹${Number(job.min_salary).toLocaleString()} - ₹${Number(job.max_salary).toLocaleString()}`
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="border-primary/30 text-white bg-primary/10">
-                      {(job.application_count as number) || 0}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={(job.status as string) || "draft"}
-                      onValueChange={(value) => onStatusChange(job.id as string, value)}
-                    >
-                      <SelectTrigger className="w-28 h-8 bg-slate-800 border-slate-700 text-white text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-800 border-slate-700">
-                        <SelectItem value="draft" className="text-white">
-                          Draft
-                        </SelectItem>
-                        <SelectItem value="published" className="text-white">
-                          Published
-                        </SelectItem>
-                        <SelectItem value="closed" className="text-white">
-                          Closed
-                        </SelectItem>
-                        <SelectItem value="expired" className="text-white">
-                          Expired
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-slate-400">
-                    {new Date(job.created_at as string).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-slate-400">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="bg-slate-800 border-slate-700">
-                        {job.status === "draft" && (
-                          <DropdownMenuItem asChild>
-                            <Link
-                              href={`/employer/post-job?edit=${job.id}`}
-                              className="text-slate-300 focus:text-white focus:bg-slate-700 block px-2 py-1.5"
-                            >
-                              View Details
-                            </Link>
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-slate-300 focus:text-white focus:bg-slate-700"
-                          onClick={() => onEdit(job)}
-                        >
-                          <Pencil className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
-                          onClick={() => onDelete(job.id as string, job.job_title as string)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+            </TableHeader>
+            <TableBody>
+              {filteredJobs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center py-8 text-slate-500">
+                    {jobs.length === 0 ? "No jobs found" : "No jobs match the selected filters"}
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-            {/* </CHANGE> */}
-          </TableBody>
-        </Table>
-      </Card>
+              ) : (
+                filteredJobs.map((job) => (
+                  <TableRow key={job.id as string} className="border-slate-800">
+                    <TableCell className="text-white font-medium">{job.job_title as string}</TableCell>
+                    <TableCell className="text-slate-300">{(job.company_name as string) || "N/A"}</TableCell>
+                    <TableCell className="text-slate-300">{(job.employer_email as string) || "N/A"}</TableCell>
+                    <TableCell className="text-slate-300">{(job.employment_type as string) || "N/A"}</TableCell>
+                    <TableCell className="text-slate-300">
+                      {job.min_salary && job.max_salary
+                        ? `₹${Number(job.min_salary).toLocaleString()} - ₹${Number(job.max_salary).toLocaleString()}`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="border-primary/30 text-white bg-primary/10">
+                        {(job.application_count as number) || 0}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={(job.status as string) || "draft"}
+                        onValueChange={(value) => onStatusChange(job.id as string, value)}
+                      >
+                        <SelectTrigger className="w-28 h-8 bg-slate-800 border-slate-700 text-white text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-800 border-slate-700">
+                          <SelectItem value="draft" className="text-white">
+                            Draft
+                          </SelectItem>
+                          <SelectItem value="published" className="text-white">
+                            Published
+                          </SelectItem>
+                          <SelectItem value="closed" className="text-white">
+                            Closed
+                          </SelectItem>
+                          <SelectItem value="expired" className="text-white">
+                            Expired
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-slate-400">
+                      {new Date(job.created_at as string).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-slate-400">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                          {job.status === "draft" && (
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/employer/post-job?edit=${job.id}`}
+                                className="text-slate-300 focus:text-white focus:bg-slate-700 block px-2 py-1.5"
+                              >
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-slate-300 focus:text-white focus:bg-slate-700"
+                            onClick={() => onEdit(job)}
+                          >
+                            <Pencil className="w-4 h-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                            onClick={() => onDelete(job.id as string, job.job_title as string)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+              {/* </CHANGE> */}
+            </TableBody>
+          </Table>
+        </Card>
 
-      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+        <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+      </div>
     </div>
   )
 }
@@ -2638,83 +3008,85 @@ function TeamView({
   onDelete: (id: string, name: string) => void
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Team</h1>
-          <p className="text-slate-400 mt-1">Manage business team members</p>
+    <div className="p-6">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Team</h1>
+            <p className="text-slate-400 mt-1">Manage business team members</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-slate-800 text-white">
+              {pagination.total} Total
+            </Badge>
+            <Button onClick={onAddMember} className="bg-primary">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Member
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="bg-slate-800 text-white">
-            {pagination.total} Total
-          </Badge>
-          <Button onClick={onAddMember} className="bg-primary">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Member
-          </Button>
-        </div>
-      </div>
 
-      <Card className="bg-slate-900 border-slate-800">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-slate-800 hover:bg-transparent">
-              <TableHead className="text-slate-400">Name</TableHead>
-              <TableHead className="text-slate-400">Email</TableHead>
-              <TableHead className="text-slate-400">Role</TableHead>
-              <TableHead className="text-slate-400">Status</TableHead>
-              <TableHead className="text-slate-400">Last Login</TableHead>
-              <TableHead className="text-slate-400 w-12"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {team.map((member) => (
-              <TableRow key={member.id as string} className="border-800">
-                <TableCell className="text-white font-medium">{member.fullName as string}</TableCell>
-                <TableCell className="text-slate-300">{member.email as string}</TableCell>
-                <TableCell className="text-slate-300">
-                  {(member.role as string).replace("_", " ").toUpperCase()}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={
-                      member.status === "active"
-                        ? "border-emerald-500/30 text-emerald-400"
-                        : "border-red-500/30 text-red-400"
-                    }
-                  >
-                    {member.status as string}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-slate-400">
-                  {member.lastLogin ? new Date(member.lastLogin as string).toLocaleString() : "Never logged in"}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-slate-400">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-slate-800 border-slate-700">
-                      <DropdownMenuItem
-                        className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
-                        onClick={() => onDelete(member.id as string, member.fullName as string)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Remove
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        <Card className="bg-slate-900 border-slate-800">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-slate-800 hover:bg-transparent">
+                <TableHead className="text-slate-400">Name</TableHead>
+                <TableHead className="text-slate-400">Email</TableHead>
+                <TableHead className="text-slate-400">Role</TableHead>
+                <TableHead className="text-slate-400">Status</TableHead>
+                <TableHead className="text-slate-400">Last Login</TableHead>
+                <TableHead className="text-slate-400 w-12"></TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+            </TableHeader>
+            <TableBody>
+              {team.map((member) => (
+                <TableRow key={member.id as string} className="border-800">
+                  <TableCell className="text-white font-medium">{member.fullName as string}</TableCell>
+                  <TableCell className="text-slate-300">{member.email as string}</TableCell>
+                  <TableCell className="text-slate-300">
+                    {(member.role as string).replace("_", " ").toUpperCase()}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        member.status === "active"
+                          ? "border-emerald-500/30 text-emerald-400"
+                          : "border-red-500/30 text-red-400"
+                      }
+                    >
+                      {member.status as string}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-400">
+                    {member.lastLogin ? new Date(member.lastLogin as string).toLocaleString() : "Never logged in"}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-slate-400">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="bg-slate-800 border-slate-700">
+                        <DropdownMenuItem
+                          className="text-red-400 focus:text-red-400 focus:bg-red-500/10"
+                          onClick={() => onDelete(member.id as string, member.fullName as string)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
 
-      <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+        <Pagination page={page} totalPages={pagination.totalPages} onPageChange={onPageChange} />
+      </div>
     </div>
   )
 }

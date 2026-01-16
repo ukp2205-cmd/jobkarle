@@ -115,6 +115,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [jobRequiredSkills, setJobRequiredSkills] = useState<string[]>([])
   const searchParams = useSearchParams()
   const router = useRouter()
   const { toast } = useToast()
@@ -125,7 +126,30 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
 
   useEffect(() => {
     loadCandidateProfile()
-  }, [candidateId])
+    if (jobId) {
+      loadJobRequiredSkills()
+    }
+  }, [candidateId, jobId])
+
+  const loadJobRequiredSkills = async () => {
+    if (!jobId) return
+
+    try {
+      console.log("[v0] Fetching job required skills for jobId:", jobId)
+      const response = await fetch(`/api/jobs/${jobId}/details`)
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.job?.required_skills) {
+          const skills = Array.isArray(data.job.required_skills) ? data.job.required_skills : []
+          setJobRequiredSkills(skills)
+          console.log("[v0] Loaded required skills for highlighting:", skills)
+        }
+      }
+    } catch (err) {
+      console.error("[v0] Error loading job required skills:", err)
+    }
+  }
 
   const loadCandidateProfile = async () => {
     setLoading(true)
@@ -190,7 +214,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
         title: "Application Deleted",
         description: "The application has been permanently deleted",
       })
-      // Navigate back to job responses page after a short delay
       setTimeout(() => {
         router.push(`/employer/job-responses/${jobId}`)
       }, 1500)
@@ -217,7 +240,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   }
 
   const getExperienceText = () => {
-    if (!candidate) return "Not specified" // Added null check for candidate
+    if (!candidate) return "Not specified"
     if (candidate.work_status === "fresher") return "Fresher"
     const years = candidate.total_experience_years || 0
     const months = candidate.total_experience_months || 0
@@ -228,7 +251,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   }
 
   const getLocationText = () => {
-    if (!candidate) return "Not specified" // Added null check for candidate
+    if (!candidate) return "Not specified"
     if (candidate.current_city && candidate.current_state) {
       return `${candidate.current_city}, ${candidate.current_state}`
     }
@@ -251,16 +274,13 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   const formatSalaryToLPA = (salary: string | null | undefined): string => {
     if (!salary) return "Not specified"
 
-    // Remove commas and any non-numeric characters except decimal point
     const numericValue = salary.replace(/[^0-9.]/g, "")
     const salaryNumber = Number.parseFloat(numericValue)
 
     if (isNaN(salaryNumber)) return "Not specified"
 
-    // Convert to LPA (1 Lakh = 100,000)
     const lpa = salaryNumber / 100000
 
-    // Format to 2 decimal places if needed
     return `₹${lpa.toFixed(lpa % 1 === 0 ? 0 : 2)} LPA`
   }
 
@@ -307,7 +327,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </span>
               </Link>
 
-              {/* Breadcrumb */}
               <div className="hidden md:flex items-center gap-2 text-sm text-gray-600">
                 <ChevronRight className="w-4 h-4" />
                 <Link href="/employer/dashboard" className="hover:text-gray-900">
@@ -407,15 +426,12 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
         </div>
       </header>
 
-      {/* Profile Content */}
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="space-y-3">
-          {/* Header with Candidate Info */}
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4 flex-1">
-                  {/* Profile Picture */}
                   <Avatar className="w-20 h-20 border-4 border-white shadow-lg">
                     <AvatarImage src={candidate.profile_picture_url || undefined} alt={candidate.full_name} />
                     <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xl font-semibold">
@@ -428,7 +444,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     </AvatarFallback>
                   </Avatar>
 
-                  {/* Basic Info */}
                   <div className="flex-1">
                     <h1 className="text-2xl font-bold text-gray-900 mb-2">{candidate.full_name}</h1>
 
@@ -457,7 +472,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            {/* Left Column */}
             <div className="lg:col-span-2 space-y-3">
               {candidate.resume_url && (
                 <Card className="border-0 shadow-md">
@@ -506,13 +520,14 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     <ResumeViewer
                       resumeUrl={candidate.resume_url}
                       candidateName={candidate.full_name}
-                      candidatePhone={candidate.mobile_number} // Added phone number for WhatsApp button
+                      candidatePhone={candidate.mobile_number}
+                      jobRequiredSkills={jobRequiredSkills}
+                      candidateSkills={[...(candidate.skills_for_role || []), ...(candidate.skills_you_know || [])]}
                     />
                   </CardContent>
                 </Card>
               )}
 
-              {/* Professional Summary */}
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -544,7 +559,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </CardContent>
               </Card>
 
-              {/* Employment History */}
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -601,7 +615,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </CardContent>
               </Card>
 
-              {/* Education */}
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -630,49 +643,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </CardContent>
               </Card>
 
-              {/* Projects */}
-              <Card className="border-0 shadow-md">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Target className="w-5 h-5 text-blue-600" />
-                    <h2 className="text-lg font-semibold text-gray-900">Projects</h2>
-                  </div>
-                  {candidate.projects && candidate.projects.length > 0 ? (
-                    <div className="space-y-4">
-                      {candidate.projects.map((project, index) => (
-                        <div key={index} className="p-4 border border-gray-200 rounded-lg space-y-2">
-                          <h3 className="font-semibold text-gray-900">{project.title}</h3>
-                          {project.role && <p className="text-sm text-gray-600">Role: {project.role}</p>}
-                          <p className="text-sm text-gray-700">{project.description}</p>
-                          {project.technologies && (
-                            <p className="text-sm text-gray-600">Technologies: {project.technologies}</p>
-                          )}
-                          <div className="flex gap-4 text-xs text-gray-500">
-                            <span>
-                              {project.start_date} - {project.end_date || "Present"}
-                            </span>
-                          </div>
-                          {project.url && (
-                            <a
-                              href={project.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-blue-600 hover:underline"
-                            >
-                              View Project
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No projects added</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Accomplishments */}
-              {/* Added Accomplishments section */}
               {candidate.accomplishments && candidate.accomplishments.length > 0 && (
                 <Card className="border-0 shadow-md">
                   <CardContent className="p-4">
@@ -697,7 +667,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </Card>
               )}
 
-              {/* Languages Known */}
               {candidate.languages_known && (
                 <Card className="border-0 shadow-md">
                   <CardContent className="p-4">
@@ -707,7 +676,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {candidate.languages_known.map((language, index) => {
-                        // Check if language is an object with language property
                         const languageName =
                           typeof language === "object" && language !== null ? language.language : language
 
@@ -725,7 +693,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </Card>
               )}
 
-              {/* Certifications */}
               {candidate.certifications && candidate.certifications.length > 0 && (
                 <Card className="border-0 shadow-md">
                   <CardContent className="p-4">
@@ -757,9 +724,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
               )}
             </div>
 
-            {/* Right Column */}
             <div className="space-y-3">
-              {/* Skills */}
               {(candidate.skills_for_role?.length > 0 || candidate.skills_you_know?.length > 0) && (
                 <Card className="border-0 shadow-md">
                   <CardContent className="p-4">
@@ -782,7 +747,7 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                       )}
                       {candidate.skills_you_know && candidate.skills_you_know.length > 0 && (
                         <div>
-                          <p className="text-sm font-medium text-gray-700 mb-2">All Skills</p>
+                          <p className="text-sm font-medium text-gray-600 mb-2">All Skills</p>
                           <div className="flex flex-wrap gap-2">
                             {candidate.skills_you_know.map((skill, index) => (
                               <Badge key={index} variant="outline" className="text-xs">
@@ -797,7 +762,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </Card>
               )}
 
-              {/* Languages Known */}
               {candidate.languages_known && (
                 <Card className="border-0 shadow-md">
                   <CardContent className="p-4">
@@ -807,7 +771,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {candidate.languages_known.map((language, index) => {
-                        // Check if language is an object with language property
                         const languageName =
                           typeof language === "object" && language !== null ? language.language : language
 
@@ -825,7 +788,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </Card>
               )}
 
-              {/* Job Preferences */}
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -857,7 +819,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                 </CardContent>
               </Card>
 
-              {/* Personal Information */}
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -889,7 +850,6 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   )
 }
 
-// Helper component for displaying info items
 function InfoItem({ label, value }: { label: string; value: string }) {
   return (
     <div>

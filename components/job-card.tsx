@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { MapPin, Briefcase, DollarSign, Clock, Bookmark, BookmarkCheck } from "lucide-react"
+import { getTimeAgo } from "@/lib/time-utils"
 
 type Job = {
   id: string
@@ -33,13 +34,6 @@ interface JobCardProps {
 }
 
 export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
-  const getDaysAgo = (dateString: string) => {
-    const days = Math.floor((Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60 * 24))
-    if (days === 0) return "Today"
-    if (days === 1) return "1 day ago"
-    return `${days} days ago`
-  }
-
   const getSalaryString = (min: number, max: number) => {
     if (!min && !max) return "Not disclosed"
     const minLPA = min / 100000
@@ -76,11 +70,62 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
   const isPremium = job.category === "premium"
   const showUrgentHiring = isPremium && job.urgent_hiring
 
+  console.log("[v0] JobCard created_at:", job.job_title, "->", job.created_at)
+
   return (
-    <Card className={`overflow-hidden hover:shadow-md transition-shadow bg-white border relative ${"border-gray-200"}`}>
+    <Card
+      className={`overflow-hidden hover:shadow-md transition-shadow bg-white border relative ${isPremium ? "border-blue-200" : "border-gray-200"}`}
+    >
+      {isPremium && (
+        <div className="absolute left-0 top-0 z-[5]">
+          <div className="relative">
+            {/* Corner triangle background */}
+            <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+              <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientCard)" />
+              <defs>
+                <linearGradient id="cornerGradientCard" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#3B82F6" />
+                  <stop offset="100%" stopColor="#1D4ED8" />
+                </linearGradient>
+              </defs>
+            </svg>
+            {/* Larger gold diamond icon on corner */}
+            <div className="absolute left-1 top-1">
+              <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradient)" />
+                <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                <defs>
+                  <linearGradient
+                    id="goldDiamondGradient"
+                    x1="10"
+                    y1="1"
+                    x2="10"
+                    y2="19"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop offset="0%" stopColor="#FEF3C7" />
+                    <stop offset="30%" stopColor="#FCD34D" />
+                    <stop offset="70%" stopColor="#F59E0B" />
+                    <stop offset="100%" stopColor="#D97706" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showUrgentHiring && (
         <div className="absolute top-0 right-0 bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg z-10">
           URGENT HIRING
+        </div>
+      )}
+
+      {job.created_at && (
+        <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center gap-1 text-xs text-gray-500">
+          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span>{getTimeAgo(job.created_at)}</span>
         </div>
       )}
 
@@ -163,23 +208,16 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 pt-3 sm:pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-500">
-            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Posted {getDaysAgo(job.created_at)}
-          </div>
-
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-3 sm:pt-4 border-t border-gray-100">
           <div className="flex gap-2">
             <Button
               onClick={onView}
-              className="flex-1 sm:flex-none h-8 sm:h-9 px-4 sm:px-6 bg-[#0277bd] hover:bg-[#01579b] text-white text-xs sm:text-sm"
+              variant="outline"
+              className="flex-1 sm:flex-none h-8 sm:h-9 px-4 sm:px-6 border-gray-300 text-gray-700 hover:bg-gray-50 text-xs sm:text-sm bg-transparent"
             >
               View Details
             </Button>
-            <Button
-              variant="outline"
-              className="flex-1 sm:flex-none h-8 sm:h-9 px-4 sm:px-6 border-[#0277bd] text-[#0277bd] hover:bg-blue-50 text-xs sm:text-sm bg-transparent"
-            >
+            <Button className="flex-1 sm:flex-none h-8 sm:h-9 px-4 sm:px-6 bg-[#0277bd] hover:bg-[#01579b] text-white text-xs sm:text-sm">
               Apply Now
             </Button>
           </div>

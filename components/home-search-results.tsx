@@ -11,12 +11,14 @@ import {
   ChevronUp,
   SlidersHorizontal,
   X,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { searchJobsWithElastic } from "@/app/actions/elastic-search-actions"
 import Link from "next/link"
+import { getTimeAgo } from "@/lib/time-utils"
 
 type SearchParams = {
   skills: string[]
@@ -497,8 +499,49 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 {jobs.map((job) => (
                   <div
                     key={job.id}
-                    className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow relative"
+                    className={`bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow relative ${
+                      job.category === "premium" ? "border-blue-200" : ""
+                    }`}
                   >
+                    {job.category === "premium" && (
+                      <div className="absolute left-0 top-0 z-[5]">
+                        <div className="relative">
+                          {/* Corner triangle background */}
+                          <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+                            <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientHome)" />
+                            <defs>
+                              <linearGradient id="cornerGradientHome" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#3B82F6" />
+                                <stop offset="100%" stopColor="#1D4ED8" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          <div className="absolute left-1 top-1">
+                            <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                              <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientHome)" />
+                              <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                              <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                              <defs>
+                                <linearGradient
+                                  id="goldDiamondGradientHome"
+                                  x1="10"
+                                  y1="1"
+                                  x2="10"
+                                  y2="19"
+                                  gradientUnits="userSpaceOnUse"
+                                >
+                                  <stop offset="0%" stopColor="#FEF3C7" />
+                                  <stop offset="30%" stopColor="#FCD34D" />
+                                  <stop offset="70%" stopColor="#F59E0B" />
+                                  <stop offset="100%" stopColor="#D97706" />
+                                </linearGradient>
+                              </defs>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {job.category === "premium" && job.urgent_hiring && (
                       <div className="absolute top-0 right-0 bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg z-10">
                         URGENT HIRING
@@ -541,7 +584,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                               <p className="text-sm text-gray-600 mb-3 break-words">{job.company_name}</p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-4">
+                          <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-3">
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                               {(job.job_locations || []).join(", ") || "Not specified"}
@@ -555,6 +598,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                               {job.min_salary || 0}L - {job.max_salary || 0}L
                             </span>
                           </div>
+                          {job.required_skills && job.required_skills.length > 0 && (
+                            <div className="mb-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {job.required_skills.slice(0, 5).map((skill: string, index: number) => (
+                                  <span
+                                    key={index}
+                                    className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200"
+                                  >
+                                    {skill}
+                                  </span>
+                                ))}
+                                {job.required_skills.length > 5 && (
+                                  <span className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200">
+                                    +{job.required_skills.length - 5} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">
                               {job.employment_type}
@@ -565,17 +627,27 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                           </div>
                         </div>
                       </div>
-                      <div className="mt-4 flex flex-col sm:flex-row gap-2">
-                        <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
-                          <Button size="sm" variant="outline" className="w-full bg-transparent">
-                            View Details
-                          </Button>
-                        </Link>
-                        <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
-                          <Button size="sm" className="w-full bg-[#0277bd] hover:bg-[#0277bd]/90">
-                            Apply Now
-                          </Button>
-                        </Link>
+                      <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 order-2 sm:order-1">
+                          {job.created_at && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                              <Clock className="w-3 h-3 flex-shrink-0" />
+                              {getTimeAgo(job.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-2 order-1 sm:order-2">
+                          <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
+                            <Button size="sm" variant="outline" className="w-full bg-transparent">
+                              View Details
+                            </Button>
+                          </Link>
+                          <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
+                            <Button size="sm" className="w-full bg-[#0277bd] hover:bg-[#0277bd]/90">
+                              Apply Now
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>

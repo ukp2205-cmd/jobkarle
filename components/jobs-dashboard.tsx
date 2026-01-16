@@ -21,6 +21,7 @@ import {
   Eye,
   X,
   RotateCcw,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -356,6 +357,25 @@ export default function JobsDashboard({
     })}`
   }
 
+  const getDaysUntilExpiry = (expiresAt?: string) => {
+    if (!expiresAt) return null
+
+    const expiryDate = new Date(expiresAt)
+    const now = new Date()
+    const diffTime = expiryDate.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 0) {
+      return "Expired"
+    } else if (diffDays === 0) {
+      return "Expires today"
+    } else if (diffDays === 1) {
+      return "Expires in 1 day"
+    } else {
+      return `Expires in ${diffDays} days`
+    }
+  }
+
   const canRefreshJob = (job: any) => {
     return job.status === "published"
   }
@@ -371,94 +391,41 @@ export default function JobsDashboard({
   const getCategoryBadge = (category: string) => {
     if (category === "premium") {
       return (
-        <div className="absolute -left-2 -top-3.5 z-20">
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-lg"
-          >
-            {/* Main diamond body with blue gradient */}
-            <path
-              d="M12 2L2 7L12 22L22 7L12 2Z"
-              fill="url(#blueDiamondGradient)"
-              stroke="url(#blueStroke)"
-              strokeWidth="0.5"
-            />
-
-            {/* Diamond facets for depth and realism */}
-            <path d="M12 2L7 7H17L12 2Z" fill="rgba(59, 130, 246, 0.4)" stroke="none" />
-            <path d="M7 7L2 7L12 22L7 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
-            <path d="M17 7L22 7L12 22L17 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
-            <path d="M12 7L12 22" stroke="rgba(29, 78, 216, 0.3)" strokeWidth="0.5" />
-
-            {/* White highlight for sparkle effect on diamond */}
-            <ellipse cx="10" cy="5" rx="2.5" ry="2" fill="white" opacity="0.9" />
-            <circle cx="10" cy="5" r="1.2" fill="white" opacity="1" />
-            <circle cx="14" cy="8" r="0.8" fill="white" opacity="0.7" />
-
-            {/* Animated gold sparkles around diamond */}
-            <g className="animate-pulse" style={{ animationDuration: "2s" }}>
-              {/* Top right large gold sparkle */}
-              <path
-                d="M20 3L20.8 5.2L23 6L20.8 6.8L20 9L19.2 6.8L17 6L19.2 5.2Z"
-                fill="url(#sparkleGold1)"
-                opacity="0.95"
-              />
-              {/* Bottom left gold sparkle */}
-              <path
-                d="M4 17L4.6 18.8L6.5 19.5L4.6 20.2L4 22L3.4 20.2L1.5 19.5L3.4 18.8Z"
-                fill="url(#sparkleGold2)"
-                opacity="0.9"
-              />
-              {/* Top left gold sparkle */}
-              <path d="M5.5 1.5L5.9 2.7L7 3.1L5.9 3.5L5.5 4.7L5.1 3.5L4 3.1L5.1 2.7Z" fill="#FEF3C7" opacity="0.85" />
-              {/* Right side gold sparkle */}
-              <path
-                d="M21.5 12L21.8 13L22.8 13.3L21.8 13.6L21.5 14.6L21.2 13.6L20.2 13.3L21.2 13Z"
-                fill="#FDE68A"
-                opacity="0.8"
-              />
-            </g>
-
-            {/* Additional subtle shimmer gold sparkles */}
-            <g className="animate-pulse" style={{ animationDuration: "3s", animationDelay: "0.5s" }}>
-              <circle cx="8" cy="10" r="0.5" fill="#FEF3C7" opacity="0.7" />
-              <circle cx="16" cy="13" r="0.5" fill="#FDE68A" opacity="0.7" />
-              <circle cx="11" cy="15" r="0.4" fill="#FBBF24" opacity="0.6" />
-            </g>
-
-            <defs>
-              {/* Blue gradient for diamond */}
-              <linearGradient id="blueDiamondGradient" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#93C5FD" />
-                <stop offset="30%" stopColor="#60A5FA" />
-                <stop offset="60%" stopColor="#3B82F6" />
-                <stop offset="100%" stopColor="#2563EB" />
-              </linearGradient>
-
-              {/* Blue stroke for definition */}
-              <linearGradient id="blueStroke" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#2563EB" />
-                <stop offset="100%" stopColor="#1D4ED8" />
-              </linearGradient>
-
-              {/* Gold sparkle gradients */}
-              <radialGradient id="sparkleGold1">
-                <stop offset="0%" stopColor="#FEF3C7" />
-                <stop offset="50%" stopColor="#FCD34D" />
-                <stop offset="100%" stopColor="#FBBF24" />
-              </radialGradient>
-
-              <radialGradient id="sparkleGold2">
-                <stop offset="0%" stopColor="#FFFBEB" />
-                <stop offset="50%" stopColor="#FDE68A" />
-                <stop offset="100%" stopColor="#FCD34D" />
-              </radialGradient>
-            </defs>
-          </svg>
+        <div className="absolute left-0 top-0 z-20">
+          <div className="relative">
+            {/* Corner triangle background */}
+            <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+              <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientEmployer)" />
+              <defs>
+                <linearGradient id="cornerGradientEmployer" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#3B82F6" />
+                  <stop offset="100%" stopColor="#1D4ED8" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="absolute left-0.5 top-0.5">
+              <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientEmployer)" />
+                <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                <defs>
+                  <linearGradient
+                    id="goldDiamondGradientEmployer"
+                    x1="10"
+                    y1="1"
+                    x2="10"
+                    y2="19"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop offset="0%" stopColor="#FEF3C7" />
+                    <stop offset="30%" stopColor="#FCD34D" />
+                    <stop offset="70%" stopColor="#F59E0B" />
+                    <stop offset="100%" stopColor="#D97706" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
         </div>
       )
     }
@@ -561,11 +528,19 @@ export default function JobsDashboard({
                   </button>
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500" />
                 </div>
+                <Link
+                  href="/employer/search-candidates"
+                  className="flex items-center gap-1.5 px-2 md:px-4 py-2 md:py-3 text-xs md:text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-t-md transition-colors"
+                >
+                  <Users className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                  <span className="hidden sm:inline">Search Candidates</span>
+                  <span className="sm:hidden">Search</span>
+                </Link>
               </nav>
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="relative w-24 sm:w-40 md:w-64">
+              <div className="relative w-20 sm:w-32 md:w-48">
                 <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 h-3 md:h-4 w-3 md:w-4 text-gray-400" />
                 <input
                   type="text"
@@ -1246,6 +1221,11 @@ export default function JobsDashboard({
                           </div>
                         </div>
                       </div>
+                      {job.status !== "closed" && job.expires_at && getDaysUntilExpiry(job.expires_at) && (
+                        <div className="absolute bottom-2 right-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 font-medium">
+                          {getDaysUntilExpiry(job.expires_at)}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

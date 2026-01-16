@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Pencil, SlidersHorizontal, ChevronUp } from "lucide-react"
+import { Pencil, SlidersHorizontal, ChevronUp, Check, AlertCircle, Clock, MapPin, Phone } from "lucide-react"
 import {
   X,
   ChevronDown,
@@ -69,6 +69,13 @@ interface Application {
     total_experience?: number
     gender?: string
     diversity?: string
+    resume_headline?: string // Added for resume headline
+    previous_employment?: string // Added for previous employment
+    employment_history?: any // Changed to any to handle object or string
+    current_salary?: string // Added for current salary
+    expected_salary?: string // Added for expected salary
+    languages_known?: string[] // Added for languages known
+    recommended?: boolean // Added for recommended status
   }
 }
 
@@ -94,6 +101,83 @@ const getNoticePeriodOrAvailability = (candidate: Application["candidate"]): str
   return "Not specified"
 }
 
+const getCurrentEmployment = (candidate: Application["candidate"]): string | null => {
+  if (candidate.current_job_title && candidate.company_name) {
+    return `${candidate.current_job_title} at ${candidate.company_name}`
+  }
+  if (candidate.current_job_title) {
+    return candidate.current_job_title
+  }
+  return null
+}
+
+// Function to format salary to LPA
+const formatSalary = (salary: string | null): string => {
+  if (!salary) return "Not specified"
+  const num = Number.parseFloat(salary.replace(/[^0-9.]/g, ""))
+  if (isNaN(num)) return "Invalid format"
+  if (num >= 100) {
+    return `₹${num.toFixed(2)} LPA`
+  }
+  return `₹${num.toFixed(2)} LPA`
+}
+
+const getColumnValue = (app: Application, columnKey: string): string => {
+  switch (columnKey) {
+    case "candidateName":
+      return app.candidate.full_name
+    case "designation":
+      return getDesignation(app.candidate)
+    case "company":
+      return app.candidate.company_name || "Not specified"
+    case "skills":
+      return (app.candidate.skills_you_know || app.candidate.skills_for_role || []).join(", ")
+    case "phone":
+      return app.candidate.mobile_number || "-"
+    case "location":
+      return app.candidate.current_city && app.candidate.current_state
+        ? `${app.candidate.current_city}, ${app.candidate.current_state}`
+        : app.candidate.current_city || app.candidate.current_state || "-"
+    case "noticePeriod":
+      return getNoticePeriodOrAvailability(app.candidate)
+    case "salary":
+      return formatSalary(app.candidate.preferred_salary)
+    case "experience":
+      return app.candidate.total_experience_years !== undefined
+        ? `${app.candidate.total_experience_years} yrs ${app.candidate.total_experience_months || 0} months`
+        : "Not specified"
+    case "preferredLocation":
+      return app.candidate.preferred_locations?.join(", ") || "Not specified"
+    case "industry":
+      return app.candidate.industry || "Not specified"
+    case "email":
+      return app.candidate.email || "Not specified"
+    case "applyDate":
+      return app.applied_at ? new Date(app.applied_at).toLocaleDateString() : "N/A"
+    case "cvScore":
+      return app.cv_score !== null && app.cv_score !== undefined ? `${Math.round(app.cv_score)}%` : "-"
+    case "status":
+      return app.status.charAt(0).toUpperCase() + app.status.slice(1)
+    case "resumeHeadline":
+      return app.candidate.resume_headline || "-"
+    case "previousEmployment":
+      // This case might need adjustment based on how employment_history is stored and displayed
+      // For now, returning as is, assuming it might be a string or an object that needs stringification.
+      if (typeof app.candidate.previous_employment === "object" && app.candidate.previous_employment !== null) {
+        return JSON.stringify(app.candidate.previous_employment)
+      }
+      return app.candidate.previous_employment || "-"
+    case "currentSalary":
+      return app.candidate.current_salary || "-"
+    case "expectedSalary":
+      return app.candidate.expected_salary || "-"
+    case "languages":
+      return app.candidate.languages_known?.join(", ") || "-"
+    default:
+      return "-"
+  }
+}
+
 interface ColumnConfig {
   key: string
   label: string
@@ -117,8 +201,11 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
   const [sortBy, setSortBy] = useState("relevance")
   const [visibleContacts, setVisibleContacts] = useState<Set<string>>(new Set())
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [showCommentInput, setShowCommentInput] = useState<string | null>(null) // State for comment input
 
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({}) // Use a record for boolean visibility
+
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
 
   const [filters, setFilters] = useState({
     keywords: "",
@@ -295,6 +382,11 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     // </CHANGE> Removed keySkillScore from available columns
     { key: "cvScore", label: "CV Score", selected: true },
     { key: "status", label: "Status", selected: true },
+    { key: "resumeHeadline", label: "Resume Headline", selected: false }, // Added Resume Headline
+    { key: "previousEmployment", label: "Previous Employment", selected: false }, // Added Previous Employment
+    { key: "currentSalary", label: "Current Salary", selected: false }, // Added Current Salary
+    { key: "expectedSalary", label: "Expected Salary", selected: false }, // Added Expected Salary
+    { key: "languages", label: "Languages", selected: false }, // Added Languages
   ])
   const [columnSearch, setColumnSearch] = useState("")
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
@@ -423,15 +515,6 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     }
   }
 
-  const formatSalary = (salary: string | null) => {
-    if (!salary) return "Not specified"
-    const num = Number.parseFloat(salary)
-    if (num >= 100) {
-      return `₹${(num / 100000).toFixed(2)} LPA`
-    }
-    return `₹${num} LPA`
-  }
-
   const stats = useMemo(() => {
     const newApplications = applications.filter((app) => app.status === "applied")
     const shortlistedApplications = applications.filter((app) => app.status === "shortlisted")
@@ -524,6 +607,11 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           "applyDate",
           "cvScore",
           "status",
+          "resumeHeadline", // Added valid keys
+          "previousEmployment",
+          "currentSalary",
+          "expectedSalary",
+          "languages",
         ]
 
         const filteredPreferences = storedPreferences.filter((pref: any) => validColumnKeys.includes(pref.columnKey))
@@ -533,7 +621,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
 
         // First add columns that are in preferences, in their saved order
         filteredPreferences
-          .sort((a: any, b: any) => (a.order ?? 999) - (b.order ?? 999))
+          .sort((a: any, b: any) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
           .forEach((pref: any) => {
             orderedColumns.push({
               key: pref.columnKey,
@@ -559,6 +647,11 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           { key: "applyDate", label: "Apply date", selected: false },
           { key: "cvScore", label: "CV Score", selected: true },
           { key: "status", label: "Status", selected: true },
+          { key: "resumeHeadline", label: "Resume Headline", selected: false },
+          { key: "previousEmployment", label: "Previous Employment", selected: false },
+          { key: "currentSalary", label: "Current Salary", selected: false },
+          { key: "expectedSalary", label: "Expected Salary", selected: false },
+          { key: "languages", label: "Languages", selected: false },
         ]
 
         validColumnKeys.forEach((key) => {
@@ -1105,6 +1198,10 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
 
       return newColumns
     })
+  }
+
+  const handleCheckboxChange = (id: string, checked: boolean) => {
+    setSelectedApplications((prev) => (checked ? [...prev, id] : prev.filter((appId) => appId !== id)))
   }
 
   if (loading) {
@@ -1824,6 +1921,41 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 border border-gray-300 rounded-md p-1">
+                <Button
+                  variant={viewMode === "table" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                  className="h-7 px-2 text-xs"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="ml-1">Table</span>
+                </Button>
+                <Button
+                  variant={viewMode === "cards" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("cards")}
+                  className="h-7 px-2 text-xs"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <span className="ml-1">Cards</span>
+                </Button>
+              </div>
+
               <span className="text-xs md:text-sm text-gray-600 whitespace-nowrap">Sort by:</span>
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-full sm:w-32 h-8 text-xs md:text-sm">
@@ -1848,49 +1980,124 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           </div>
 
           <div className="overflow-x-auto">
-            {/* Desktop table view */}
-            <div className="hidden md:block">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="w-12 px-4 py-3">
-                      <Checkbox
-                        checked={selectedApplications.length === paginatedApplications.length}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </th>
-                    {getSelectedColumns().map((column) => (
-                      <th key={column.key} className="px-4 py-3 font-medium text-left">
-                        {column.label}
-                      </th>
-                    ))}
-                    <th className="w-12 px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedApplications.map((app) => (
-                    <tr key={app.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <Checkbox
-                          checked={selectedApplications.includes(app.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedApplications([...selectedApplications, app.id])
-                            } else {
-                              setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
-                            }
-                          }}
-                        />
-                      </td>
-                      {getSelectedColumns().map((column) => (
-                        <td key={column.key} className="px-4 py-3">
-                          {renderCellContent(app, column.key)}
-                        </td>
+            {viewMode === "table" ? (
+              <>
+                {/* Desktop table view */}
+                <div className="hidden md:block">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="w-12 px-4 py-3">
+                          <Checkbox
+                            checked={selectedApplications.length === paginatedApplications.length}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </th>
+                        {getSelectedColumns().map((column) => (
+                          <th key={column.key} className="px-4 py-3 font-medium text-left">
+                            {column.label}
+                          </th>
+                        ))}
+                        <th className="w-12 px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedApplications.map((app) => (
+                        <tr key={app.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <Checkbox
+                              checked={selectedApplications.includes(app.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedApplications([...selectedApplications, app.id])
+                                } else {
+                                  setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
+                                }
+                              }}
+                            />
+                          </td>
+                          {getSelectedColumns().map((column) => (
+                            <td key={column.key} className="px-4 py-3">
+                              {renderCellContent(app, column.key)}
+                            </td>
+                          ))}
+                          <td className="px-4 py-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                  <MoreVertical className="h-4 w-4 text-gray-600" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    window.location.href = `mailto:${app.candidate.email}`
+                                  }}
+                                >
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  Email
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedApplication(app)
+                                    setShowForwardModal(true)
+                                  }}
+                                >
+                                  <Forward className="h-4 w-4 mr-2" />
+                                  Forward
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
+                                    if (phoneNumber) {
+                                      window.open(`https://wa.me/${phoneNumber}`, "_blank")
+                                    } else {
+                                      alert("Candidate has no valid phone number for WhatsApp.")
+                                    }
+                                  }}
+                                >
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  WhatsApp
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
                       ))}
-                      <td className="px-4 py-3">
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card view (existing) */}
+                <div className="md:hidden space-y-3">
+                  {paginatedApplications.map((app) => (
+                    <div key={app.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Checkbox
+                            checked={selectedApplications.includes(app.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedApplications([...selectedApplications, app.id])
+                              } else {
+                                setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
+                              }
+                            }}
+                            className="mt-1 flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-gray-900 break-words">
+                              {app.candidate.full_name}
+                            </h3>
+                            <p className="text-xs text-gray-600 break-words">{getDesignation(app.candidate)}</p>
+                            {app.cv_score !== null && app.cv_score !== undefined && (
+                              <div className="mt-1">{getCVScoreBadge(app.cv_score)}</div>
+                            )}
+                          </div>
+                        </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button className="p-1 hover:bg-gray-100 rounded">
+                            <button className="p-1 hover:bg-gray-100 rounded flex-shrink-0">
                               <MoreVertical className="h-4 w-4 text-gray-600" />
                             </button>
                           </DropdownMenuTrigger>
@@ -1927,168 +2134,425 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
 
-            <div className="md:hidden space-y-3">
-              {paginatedApplications.map((app) => (
-                <div key={app.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      <div className="space-y-2 text-xs">
+                        {app.candidate.company_name && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Company:</span>
+                            <span className="text-gray-900 break-words flex-1">{app.candidate.company_name}</span>
+                          </div>
+                        )}
+                        {app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Skills:</span>
+                            <span className="text-gray-900 break-words flex-1">
+                              {app.candidate.skills_for_role.slice(0, 3).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {(app.candidate.current_city || app.candidate.current_state) && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Location:</span>
+                            <span className="text-gray-900 break-words flex-1">
+                              {app.candidate.current_city && app.candidate.current_state
+                                ? `${app.candidate.current_city}, ${app.candidate.current_state}`
+                                : app.candidate.current_city || app.candidate.current_state}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Notice Period:</span>
+                          <span className="text-gray-900 break-words flex-1">
+                            {getNoticePeriodOrAvailability(app.candidate)}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Salary:</span>
+                          <span className="text-gray-900 break-words flex-1">
+                            {formatSalary(app.candidate.preferred_salary)}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Phone:</span>
+                          <div className="flex-1">
+                            {visibleContacts.has(app.candidate_id) ? (
+                              <span className="text-gray-900 font-mono">{app.candidate.mobile_number}</span>
+                            ) : (
+                              <button
+                                onClick={() => toggleContactVisibility(app.candidate_id)}
+                                className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
+                              >
+                                Show contact
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 font-medium">Status:</span>
+                          <Select
+                            value={app.status || "applied"}
+                            onValueChange={(value) => handleStatusUpdate(app.id, value)}
+                          >
+                            <SelectTrigger
+                              className={`flex-1 h-8 text-xs border ${
+                                app.status === "shortlisted"
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : app.status === "rejected"
+                                    ? "bg-red-50 text-red-700 border-red-200"
+                                    : app.status === "maybe"
+                                      ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                      : "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}
+                            >
+                              <SelectValue>
+                                {app.status === "applied"
+                                  ? "Select"
+                                  : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="applied">Select</SelectItem>
+                              <SelectItem value="shortlisted">Shortlisted</SelectItem>
+                              <SelectItem value="maybe">Maybe</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              /* Card View */
+              <div className="space-y-4">
+                {paginatedApplications.map((app) => (
+                  <div
+                    key={app.id}
+                    className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                  >
+                    {/* Checkbox and Name Header */}
+                    <div className="flex items-start gap-3 mb-4">
                       <Checkbox
                         checked={selectedApplications.includes(app.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedApplications([...selectedApplications, app.id])
-                          } else {
-                            setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
-                          }
-                        }}
-                        className="mt-1 flex-shrink-0"
+                        onCheckedChange={(checked) => handleCheckboxChange(app.id, checked as boolean)}
                       />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-gray-900 break-words">{app.candidate.full_name}</h3>
-                        <p className="text-xs text-gray-600 break-words">{getDesignation(app.candidate)}</p>
-                        {app.cv_score !== null && app.cv_score !== undefined && (
-                          <div className="mt-1">{getCVScoreBadge(app.cv_score)}</div>
-                        )}
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="p-1 hover:bg-gray-100 rounded flex-shrink-0">
-                          <MoreVertical className="h-4 w-4 text-gray-600" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            window.location.href = `mailto:${app.candidate.email}`
-                          }}
-                        >
-                          <Mail className="h-4 w-4 mr-2" />
-                          Email
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedApplication(app)
-                            setShowForwardModal(true)
-                          }}
-                        >
-                          <Forward className="h-4 w-4 mr-2" />
-                          Forward
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
-                            if (phoneNumber) {
-                              window.open(`https://wa.me/${phoneNumber}`, "_blank")
-                            } else {
-                              alert("Candidate has no valid phone number for WhatsApp.")
-                            }
-                          }}
-                        >
-                          <MessageSquare className="h-4 w-4 mr-2" />
-                          WhatsApp
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    {app.candidate.company_name && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Company:</span>
-                        <span className="text-gray-900 break-words flex-1">{app.candidate.company_name}</span>
-                      </div>
-                    )}
-                    {app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0 && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Skills:</span>
-                        <span className="text-gray-900 break-words flex-1">
-                          {app.candidate.skills_for_role.slice(0, 3).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                    {(app.candidate.current_city || app.candidate.current_state) && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Location:</span>
-                        <span className="text-gray-900 break-words flex-1">
-                          {app.candidate.current_city && app.candidate.current_state
-                            ? `${app.candidate.current_city}, ${app.candidate.current_state}`
-                            : app.candidate.current_city || app.candidate.current_state}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Notice Period:</span>
-                      <span className="text-gray-900 break-words flex-1">
-                        {getNoticePeriodOrAvailability(app.candidate)}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Salary:</span>
-                      <span className="text-gray-900 break-words flex-1">
-                        {formatSalary(app.candidate.preferred_salary)}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Phone:</span>
                       <div className="flex-1">
-                        {visibleContacts.has(app.candidate_id) ? (
-                          <span className="text-gray-900 font-mono">{app.candidate.mobile_number}</span>
-                        ) : (
-                          <button
-                            onClick={() => toggleContactVisibility(app.candidate_id)}
-                            className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
-                          >
-                            Show contact
-                          </button>
+                        <Link
+                          href={`/employer/candidate-profile/${app.candidate_id}?jobId=${jobId}`}
+                          className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        >
+                          {app.candidate.full_name}
+                        </Link>
+                        {app.candidate.recommended && (
+                          <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                            Recommended
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 font-medium">Status:</span>
-                      <Select
-                        value={app.status || "applied"}
-                        onValueChange={(value) => handleStatusUpdate(app.id, value)}
-                      >
-                        <SelectTrigger
-                          className={`flex-1 h-8 text-xs border ${
+                    {/* Main Content: Left (Details) | Divider | Right (Profile + Actions) */}
+                    <div className="flex gap-6">
+                      {/* LEFT SIDE - All Professional Details */}
+                      <div className="flex-1 space-y-2">
+                        {/* Experience, Notice Period, Location Row */}
+                        <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+                          {app.candidate.total_experience_years > 0 && (
+                            <span className="flex items-center gap-1">
+                              <Briefcase className="h-4 w-4" />
+                              {app.candidate.total_experience_years}y
+                            </span>
+                          )}
+                          {app.candidate.notice_period && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              {app.candidate.notice_period}
+                            </span>
+                          )}
+                          {app.candidate.current_city && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              {app.candidate.current_city}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Current Employment */}
+                        {getCurrentEmployment(app.candidate) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Current</span>
+                            <span className="text-gray-900">{getCurrentEmployment(app.candidate)}</span>
+                          </div>
+                        )}
+
+                        {/* Previous Employment */}
+                        {app.candidate.employment_history && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Previous</span>
+                            <span className="text-gray-900">
+                              {typeof app.candidate.employment_history === "object" &&
+                              app.candidate.employment_history !== null
+                                ? `${app.candidate.employment_history.currentJobTitle || app.candidate.employment_history.jobRole || ""} ${app.candidate.employment_history.companyName ? `at ${app.candidate.employment_history.companyName}` : ""}`.trim() ||
+                                  "Not specified"
+                                : app.candidate.employment_history}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Education */}
+                        {(app.candidate.highest_qualification ||
+                          app.candidate.course ||
+                          app.candidate.highest_education ||
+                          app.candidate.education) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Education</span>
+                            <span className="text-gray-900">
+                              {app.candidate.highest_qualification ||
+                                app.candidate.course ||
+                                app.candidate.highest_education ||
+                                app.candidate.education}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Salary Details */}
+                        {(app.candidate.current_salary || app.candidate.preferred_salary) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Salary</span>
+                            <span className="text-gray-900">
+                              {app.candidate.current_salary && `₹${app.candidate.current_salary}`}
+                              {app.candidate.current_salary && app.candidate.preferred_salary && " | "}
+                              {app.candidate.preferred_salary && `Expected: ₹${app.candidate.preferred_salary}`}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Preferred Locations */}
+                        {app.candidate.preferred_locations && app.candidate.preferred_locations.length > 0 && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Pref. locations</span>
+                            <span className="text-gray-900">
+                              {app.candidate.preferred_locations.slice(0, 2).join(", ")}
+                              {app.candidate.preferred_locations.length > 2 && (
+                                <span className="text-blue-600 ml-1">
+                                  +{app.candidate.preferred_locations.length - 2} more
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Languages Known */}
+                        {app.candidate.languages_known && app.candidate.languages_known.length > 0 && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Languages</span>
+                            <span className="text-gray-900">{app.candidate.languages_known.join(", ")}</span>
+                          </div>
+                        )}
+
+                        {/* Key Skills */}
+                        {((app.candidate.skills_you_know && app.candidate.skills_you_know.length > 0) ||
+                          (app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0)) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Key skills</span>
+                            <span className="text-gray-700">
+                              {(app.candidate.skills_you_know || app.candidate.skills_for_role)?.join(" | ")}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Dynamic Custom Column Fields */}
+                        {availableColumns
+                          .filter(
+                            (col) =>
+                              col.selected &&
+                              ![
+                                "candidateName",
+                                "skills",
+                                "current",
+                                "education",
+                                "location",
+                                "noticePeriod",
+                                "experience",
+                                "salary",
+                                "preferredLocations",
+                                "languages",
+                              ].includes(col.key),
+                          )
+                          .map((col) => {
+                            const value = getColumnValue(app, col.key)
+                            if (!value || value === "-") return null
+
+                            return (
+                              <div key={col.key} className="flex gap-2 text-sm">
+                                <span className="text-gray-500 font-medium min-w-[80px]">{col.label}</span>
+                                <span className="text-gray-900">{value}</span>
+                              </div>
+                            )
+                          })}
+                      </div>
+
+                      {/* VERTICAL DIVIDER */}
+                      <div className="w-px bg-gray-200 flex-shrink-0" />
+
+                      {/* RIGHT SIDE - Profile, Headline, Contact, Action Icons */}
+                      <div className="w-48 flex-shrink-0 flex flex-col items-center space-y-3">
+                        {/* Profile Avatar */}
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+                          {app.candidate.full_name.charAt(0).toUpperCase()}
+                        </div>
+
+                        <p className="text-xs text-center text-gray-600 italic leading-relaxed px-2 min-h-[32px]">
+                          {app.candidate.resume_headline || "Professional seeking opportunities"}
+                        </p>
+
+                        {/* Contact Button */}
+                        {visibleContacts.has(app.candidate_id) ? (
+                          <span className="text-xs text-gray-900 font-mono px-3 py-1.5 bg-gray-50 rounded border border-gray-200 text-center w-full">
+                            {app.candidate.mobile_number}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleContactVisibility(app.candidate_id)}
+                            className="text-xs w-full"
+                          >
+                            <Phone className="h-3 w-3 mr-1" />
+                            Contact
+                          </Button>
+                        )}
+
+                        {/* Action Icons */}
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <button
+                            onClick={() => (window.location.href = `mailto:${app.candidate.email}`)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Email"
+                          >
+                            <Mail className="h-4 w-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedApplication(app)
+                              setShowForwardModal(true)
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Forward"
+                          >
+                            <Forward className="h-4 w-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
+                              if (phoneNumber) {
+                                window.open(`https://wa.me/${phoneNumber}`, "_blank")
+                              }
+                            }}
+                            className="p-2 hover:bg-green-50 rounded-lg transition-colors group"
+                            title="WhatsApp"
+                          >
+                            <svg
+                              className="h-5 w-5 text-green-600 group-hover:text-green-700"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Row - Status Buttons */}
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "shortlisted")}
+                          className={`text-xs ${
                             app.status === "shortlisted"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : app.status === "rejected"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : app.status === "maybe"
-                                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                              ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                              : "bg-green-100 text-green-700 border-green-300 hover:bg-green-600 hover:text-white hover:border-green-600"
                           }`}
                         >
-                          <SelectValue>
-                            {app.status === "applied"
-                              ? "Select"
-                              : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="applied">Select</SelectItem>
-                          <SelectItem value="shortlisted">Shortlisted</SelectItem>
-                          <SelectItem value="maybe">Maybe</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                      </Select>
+                          <Check className="h-3 w-3 mr-1" />
+                          Shortlist
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "maybe")}
+                          className={`text-xs ${
+                            app.status === "maybe"
+                              ? "bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700"
+                              : "bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-600 hover:text-white hover:border-yellow-600"
+                          }`}
+                        >
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Maybe
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "rejected")}
+                          className={`text-xs ${
+                            app.status === "rejected"
+                              ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
+                              : "bg-red-100 text-red-700 border-red-300 hover:bg-red-600 hover:text-white hover:border-red-600"
+                          }`}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+
+                      {/* Applied Date & CV Score */}
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        {app.cv_score !== null && app.cv_score !== undefined && (
+                          <span className="font-medium text-blue-600">{Math.round(app.cv_score)}% Match</span>
+                        )}
+                        <span>Applied on {new Date(app.applied_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
+
+                    {/* Comment Section */}
+                    {showCommentInput === app.id ? (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <Textarea placeholder="Add your comment here..." className="w-full text-sm mb-2" rows={3} />
+                        <div className="flex gap-2">
+                          <Button size="sm" className="text-xs">
+                            Save Comment
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs bg-transparent"
+                            onClick={() => setShowCommentInput(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowCommentInput(app.id)}
+                        className="mt-4 text-sm text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Add comment
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs md:text-sm text-gray-600">

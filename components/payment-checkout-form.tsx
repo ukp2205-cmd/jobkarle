@@ -145,6 +145,10 @@ export function PaymentCheckoutForm({
     }
   }
 
+  const GST_RATE = 0.18
+  const gstAmount = Math.round(amount * GST_RATE)
+  const grandTotal = amount + gstAmount
+
   return (
     <Card className="p-6">
       <h3 className="text-lg font-semibold mb-4">Payment Summary</h3>
@@ -160,6 +164,16 @@ export function PaymentCheckoutForm({
           <span className="text-gray-600">Amount:</span>
           <span className="font-medium">₹{amount.toLocaleString("en-IN")}</span>
         </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-600">GST (18%):</span>
+          <span className="font-medium">₹{gstAmount.toLocaleString("en-IN")}</span>
+        </div>
+        <div className="flex justify-between pt-3 border-t border-gray-200">
+          <span className="text-gray-900 font-semibold">Grand Total:</span>
+          <span className="text-lg font-bold text-blue-600">₹{grandTotal.toLocaleString("en-IN")}</span>
+        </div>
+        {/* </CHANGE> */}
       </div>
 
       {error && (

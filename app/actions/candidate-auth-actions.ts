@@ -106,45 +106,87 @@ export async function getCandidateSession() {
 
 export async function loginCandidateWithGoogle() {
   try {
-    const supabase = await createServerClient()
+    console.log("[v0] Initiating direct Google OAuth sign-in for candidate")
 
-    console.log("[v0] Initiating Google OAuth sign-in for candidate")
+    const googleClientId = "92551279196-1988194felgep14d3t7p4ahhsdlm9rg5.apps.googleusercontent.com"
+    const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback/google`
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback/candidate`,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
+    // Generate random state for CSRF protection
+    const state = Math.random().toString(36).substring(7)
+
+    // Build Google OAuth URL
+    const params = new URLSearchParams({
+      client_id: googleClientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      prompt: "consent",
+      state: state,
     })
 
-    if (error) {
-      console.error("[v0] Google OAuth error:", error)
-      return { success: false, error: error.message }
-    }
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
 
-    console.log("[v0] Google OAuth URL generated:", data.url)
-    return { success: true, url: data.url }
+    console.log("[v0] Google OAuth URL generated:", googleAuthUrl)
+    return { success: true, url: googleAuthUrl, state }
   } catch (error) {
     console.error("[v0] Google OAuth initiation error:", error)
     return { success: false, error: "Failed to initiate Google sign-in" }
   }
 }
 
-export async function handleGoogleOAuthCallback(user: any) {
+export async function handleGoogleOAuthCallback(code: string) {
   try {
     const supabase = await createServerClient()
 
-    console.log("[v0] Processing Google OAuth callback for:", user.email)
+    console.log("[v0] Processing direct Google OAuth callback")
+
+    const googleClientId = "92551279196-1988194felgep14d3t7p4ahhsdlm9rg5.apps.googleusercontent.com"
+    const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || ""
+    const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback/google`
+
+    // Exchange code for tokens
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+    })
+
+    if (!tokenResponse.ok) {
+      console.error("[v0] Token exchange failed:", await tokenResponse.text())
+      return { success: false, error: "Failed to exchange authorization code" }
+    }
+
+    const tokens = await tokenResponse.json()
+
+    // Get user info from Google
+    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: {
+        Authorization: `Bearer ${tokens.access_token}`,
+      },
+    })
+
+    if (!userInfoResponse.ok) {
+      console.error("[v0] Failed to get user info")
+      return { success: false, error: "Failed to get user information" }
+    }
+
+    const googleUser = await userInfoResponse.json()
+    console.log("[v0] Google user info received:", googleUser.email)
 
     // Check if candidate already exists
     const { data: existingCandidate, error: fetchError } = await supabase
       .from("candidates")
       .select("id, email, full_name, is_mobile_verified, registration_completed")
-      .eq("email", user.email)
+      .eq("email", googleUser.email)
       .maybeSingle()
 
     if (fetchError) {
@@ -165,12 +207,12 @@ export async function handleGoogleOAuthCallback(user: any) {
       const { data: newCandidate, error: insertError } = await supabase
         .from("candidates")
         .insert({
-          email: user.email,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email.split("@")[0],
-          is_mobile_verified: false, // Will need to verify mobile separately
+          email: googleUser.email,
+          full_name: googleUser.name || googleUser.email.split("@")[0],
+          is_mobile_verified: false,
           registration_completed: false,
           current_registration_step: 1,
-          profile_picture_url: user.user_metadata?.avatar_url,
+          profile_picture_url: googleUser.picture,
         })
         .select("id")
         .single()
@@ -187,9 +229,10 @@ export async function handleGoogleOAuthCallback(user: any) {
     const cookieStore = await cookies()
     const sessionData = {
       candidateId,
-      email: user.email,
-      fullName: user.user_metadata?.full_name || user.user_metadata?.name || user.email.split("@")[0],
+      email: googleUser.email,
+      fullName: googleUser.name || googleUser.email.split("@")[0],
       loginTime: new Date().toISOString(),
+      profilePicture: googleUser.picture,
     }
 
     cookieStore.set("candidate_session", JSON.stringify(sessionData), {
@@ -200,13 +243,13 @@ export async function handleGoogleOAuthCallback(user: any) {
       path: "/",
     })
 
-    console.log("[v0] Google OAuth login successful for:", user.email)
+    console.log("[v0] Google OAuth login successful for:", googleUser.email)
 
     return {
       success: true,
       user: {
         id: candidateId,
-        email: user.email,
+        email: googleUser.email,
         fullName: sessionData.fullName,
       },
       isNewUser: !existingCandidate,
