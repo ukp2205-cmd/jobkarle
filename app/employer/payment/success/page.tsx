@@ -10,26 +10,35 @@ import { CheckCircle2, ArrowRight, AlertCircle } from "lucide-react"
 function SuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const txnid = searchParams.get("txnid")
+  const orderId = searchParams.get("order_id") || searchParams.get("txnid")
   const [paymentStatus, setPaymentStatus] = useState<"success" | "checking" | "failed">("checking")
+
+  console.log("[v0] Payment success page loaded with order_id:", orderId)
+  console.log("[v0] All URL params:", Object.fromEntries(searchParams.entries()))
 
   useEffect(() => {
     const verifyPaymentStatus = async () => {
-      if (!txnid) {
+      if (!orderId) {
+        console.error("[v0] No order_id or txnid parameter found in URL")
         setPaymentStatus("failed")
         return
       }
 
       try {
-        const response = await fetch(`/api/payment/check-status?order_id=${txnid}`)
+        console.log("[v0] Verifying payment status for order:", orderId)
+        const response = await fetch(`/api/payment/check-status?order_id=${orderId}`)
         const data = await response.json()
 
+        console.log("[v0] Payment status response:", data)
+
         if (data.success && data.status === "success") {
+          console.log("[v0] Payment verified successfully")
           setPaymentStatus("success")
         } else {
+          console.error("[v0] Payment verification failed:", data.message, "Status:", data.status)
           // If payment is not successful, redirect to failure page
           router.push(
-            `/employer/payment/failure?message=${encodeURIComponent(data.message || "Payment failed")}&txnid=${txnid}`,
+            `/employer/payment/failure?message=${encodeURIComponent(data.message || "Payment failed")}&txnid=${orderId}`,
           )
         }
       } catch (error) {
@@ -39,7 +48,7 @@ function SuccessContent() {
     }
 
     verifyPaymentStatus()
-  }, [txnid, router])
+  }, [orderId, router])
 
   if (paymentStatus === "checking") {
     return (
@@ -85,10 +94,10 @@ function SuccessContent() {
           Your credits have been added to your account. You can now start posting jobs.
         </p>
 
-        {txnid && (
+        {orderId && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-gray-500 mb-1">Transaction ID</p>
-            <p className="text-sm font-mono text-gray-900">{txnid}</p>
+            <p className="text-sm font-mono text-gray-900">{orderId}</p>
           </div>
         )}
 
