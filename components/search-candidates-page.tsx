@@ -1,6 +1,7 @@
 "use client"
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -8,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Briefcase,
   Search,
@@ -21,28 +21,19 @@ import {
   GraduationCap,
   Users,
   X,
-  Sparkles,
   History,
   Bookmark,
   IndianRupee,
   FileText,
-  Phone,
-  Mail,
   Building2,
-  CheckCircle2,
-  AlertCircle,
   Loader2,
-  Download,
-  Eye,
 } from "lucide-react"
 import {
-  searchCandidates,
   getRecentSearches,
   saveSearch,
   getSearchFilterOptions,
   getSkillsFromDB,
   getLocationsFromDB,
-  type CandidateSearchResult,
 } from "@/app/actions/candidate-search-actions"
 import { toast } from "@/hooks/use-toast"
 
@@ -52,13 +43,11 @@ interface SearchCandidatesPageProps {
 }
 
 export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPageProps) {
-  const [searchResults, setSearchResults] = useState<CandidateSearchResult[]>([])
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
   const [recentSearches, setRecentSearches] = useState<any[]>([])
   const [savedSearches, setSavedSearches] = useState<any[]>([])
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
-  const [totalResults, setTotalResults] = useState(0)
   const [loadingFilters, setLoadingFilters] = useState(true)
 
   // Dynamic filter options from database
@@ -105,7 +94,7 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
     department: [] as string[],
     company: "",
     activeIn: "6months",
-    gender: "",
+    gender: "all",
     diversity: [] as string[],
     ageRange: { min: 18, max: 65 },
     jobType: [] as string[],
@@ -129,7 +118,7 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
   const noticePeriodOptions = ["Immediate", "15 days", "1 month", "2 months", "3 months", "More than 3 months"]
 
   const genderOptions = [
-    { value: "", label: "All candidates" },
+    { value: "all", label: "All candidates" },
     { value: "Male", label: "Male candidates" },
     { value: "Female", label: "Female candidates" },
   ]
@@ -229,46 +218,33 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
 
   const handleSearch = async () => {
     setLoading(true)
-    setSearched(true)
     try {
-      const result = await searchCandidates({
-        employerId,
-        keywords: filters.keywords,
-        skills: filters.skills,
-        excludeKeywords: filters.excludeKeywords,
-        locations: filters.location,
-        includeRelocate: filters.includeRelocate,
-        experienceMin: filters.experience.min,
-        experienceMax: filters.experience.max,
-        salaryMin: filters.salary.min,
-        salaryMax: filters.salary.max,
-        includeSalaryNotMentioned: filters.includeSalaryNotMentioned,
-        noticePeriod: filters.noticePeriod,
-        education: filters.education,
-        industry: filters.industry,
-        department: filters.department,
-        company: filters.company,
-        activeIn: filters.activeIn,
-        gender: filters.gender ? [filters.gender] : [],
-        diversity: filters.diversity,
-        ageMin: filters.ageRange.min,
-        ageMax: filters.ageRange.max,
-        jobType: filters.jobType,
-        employmentType: filters.employmentType,
-        showOnly: filters.showOnly,
-        displayFilter: filters.displayFilter,
-      })
+      // Build search params
+      const searchParams = new URLSearchParams()
 
-      if (result.success) {
-        setSearchResults(result.candidates || [])
-        setTotalResults(result.total || 0)
-      } else {
-        toast({
-          title: "Search Failed",
-          description: result.error || "Unable to search candidates",
-          variant: "destructive",
-        })
-      }
+      if (filters.keywords) searchParams.set("keywords", filters.keywords)
+      if (filters.skills.length > 0) searchParams.set("skills", filters.skills.join(","))
+      if (filters.excludeKeywords) searchParams.set("excludeKeywords", filters.excludeKeywords)
+      if (filters.location.length > 0) searchParams.set("locations", filters.location.join(","))
+      if (filters.includeRelocate) searchParams.set("includeRelocate", "true")
+      if (filters.experience.min > 0) searchParams.set("expMin", String(filters.experience.min))
+      if (filters.experience.max < 30) searchParams.set("expMax", String(filters.experience.max))
+      if (filters.salary.min > 0) searchParams.set("salaryMin", String(filters.salary.min))
+      if (filters.salary.max < 100) searchParams.set("salaryMax", String(filters.salary.max))
+      if (filters.noticePeriod.length > 0) searchParams.set("noticePeriod", filters.noticePeriod.join(","))
+      if (filters.education.length > 0) searchParams.set("education", filters.education.join(","))
+      if (filters.industry.length > 0) searchParams.set("industry", filters.industry.join(","))
+      if (filters.department.length > 0) searchParams.set("department", filters.department.join(","))
+      if (filters.company) searchParams.set("company", filters.company)
+      if (filters.activeIn !== "6months") searchParams.set("activeIn", filters.activeIn)
+      if (filters.gender && filters.gender !== "all") searchParams.set("gender", filters.gender)
+      if (filters.diversity.length > 0) searchParams.set("diversity", filters.diversity.join(","))
+      if (filters.jobType.length > 0) searchParams.set("jobType", filters.jobType.join(","))
+      if (filters.employmentType.length > 0) searchParams.set("employmentType", filters.employmentType.join(","))
+      if (filters.showOnly.length > 0) searchParams.set("showOnly", filters.showOnly.join(","))
+
+      // Navigate to search results page
+      router.push(`/employer/search-candidates/results?${searchParams.toString()}`)
     } catch (error) {
       console.error("Search error:", error)
       toast({
@@ -276,7 +252,6 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
         description: "An error occurred while searching",
         variant: "destructive",
       })
-    } finally {
       setLoading(false)
     }
   }
@@ -363,17 +338,6 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
     })
   }
 
-  const getInitials = (name: string) => {
-    return (
-      name
-        ?.split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2) || "?"
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
       {/* Header */}
@@ -441,21 +405,13 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
             {/* Search Header Card */}
             <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
               <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                      <Search className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-2xl font-bold text-gray-900">Search Candidates</CardTitle>
-                      <p className="text-sm text-gray-500 mt-1">Find the perfect talent for your requirements</p>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
+                    <Search className="h-6 w-6 text-white" />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full">
-                      <Sparkles className="h-3 w-3" />
-                      AI-Powered
-                    </span>
+                  <div>
+                    <CardTitle className="text-2xl font-bold text-gray-900">Search Candidates</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">Find the perfect talent for your requirements</p>
                   </div>
                 </div>
               </CardHeader>
@@ -964,43 +920,6 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                         </div>
                       </div>
 
-                      {/* Age Range */}
-                      <div className="space-y-2">
-                        <Label className="text-sm text-gray-600">Candidate Age</Label>
-                        <div className="flex items-center gap-4">
-                          <Input
-                            type="number"
-                            placeholder="Min age"
-                            value={filters.ageRange.min}
-                            onChange={(e) =>
-                              setFilters((prev) => ({
-                                ...prev,
-                                ageRange: { ...prev.ageRange, min: Number(e.target.value) },
-                              }))
-                            }
-                            className="h-10 w-24"
-                            min={18}
-                            max={65}
-                          />
-                          <span className="text-gray-400">to</span>
-                          <Input
-                            type="number"
-                            placeholder="Max age"
-                            value={filters.ageRange.max}
-                            onChange={(e) =>
-                              setFilters((prev) => ({
-                                ...prev,
-                                ageRange: { ...prev.ageRange, max: Number(e.target.value) },
-                              }))
-                            }
-                            className="h-10 w-24"
-                            min={18}
-                            max={65}
-                          />
-                          <span className="text-sm text-gray-500">Years</span>
-                        </div>
-                      </div>
-
                       {/* Job Type */}
                       <div className="space-y-2">
                         <Label className="text-sm text-gray-600">Job Type Seeking</Label>
@@ -1043,29 +962,9 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                         </div>
                       </div>
 
-                      {/* Display Filter */}
-                      <div className="space-y-2">
-                        <Label className="text-sm text-gray-600">Display</Label>
-                        <Select
-                          value={filters.displayFilter}
-                          onValueChange={(value) => setFilters((prev) => ({ ...prev, displayFilter: value }))}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {displayFilterOptions.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
                       {/* Show Only */}
                       <div className="space-y-2">
-                        <Label className="text-sm text-gray-600">Show only candidates with</Label>
+                        <Label className="text-sm text-gray-600">Show Only</Label>
                         <div className="space-y-2">
                           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                             <Checkbox
@@ -1079,14 +978,14 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                               checked={filters.showOnly.includes("verified_email")}
                               onCheckedChange={() => toggleArrayFilter("showOnly", "verified_email")}
                             />
-                            Verified email ID
+                            Verified email
                           </label>
                           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                             <Checkbox
-                              checked={filters.showOnly.includes("attached_resume")}
-                              onCheckedChange={() => toggleArrayFilter("showOnly", "attached_resume")}
+                              checked={filters.showOnly.includes("has_resume")}
+                              onCheckedChange={() => toggleArrayFilter("showOnly", "has_resume")}
                             />
-                            Attached resume
+                            Resume attached
                           </label>
                         </div>
                       </div>
@@ -1095,233 +994,87 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                 </div>
 
                 {/* Active In Filter */}
-                <div className="flex items-center justify-between pt-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm text-gray-600">Active in</Label>
-                    <Select
-                      value={filters.activeIn}
-                      onValueChange={(value) => setFilters((prev) => ({ ...prev, activeIn: value }))}
-                    >
-                      <SelectTrigger className="w-32 h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {activeInOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm text-gray-600">Active in</span>
+                      <Select
+                        value={filters.activeIn}
+                        onValueChange={(value) => setFilters((prev) => ({ ...prev, activeIn: value }))}
+                      >
+                        <SelectTrigger className="w-32 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeInOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
+                </div>
 
-                  <div className="flex items-center gap-3">
-                    <Button variant="outline" onClick={handleSaveSearch} className="h-10 bg-transparent">
-                      <Bookmark className="h-4 w-4 mr-2" />
-                      Save Search
-                    </Button>
-                    <Button
-                      onClick={handleSearch}
-                      disabled={loading}
-                      className="h-10 px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Searching...
-                        </>
-                      ) : (
-                        <>
-                          <Search className="h-4 w-4 mr-2" />
-                          Search Candidates
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                {/* Search Button */}
+                <div className="pt-4 flex gap-3">
+                  <Button
+                    onClick={handleSearch}
+                    disabled={loading}
+                    className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-200"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-5 w-5 mr-2" />
+                        Search Candidates
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleSaveSearch}
+                    className="h-12 px-6 rounded-xl border-gray-200 hover:bg-gray-50 bg-transparent"
+                  >
+                    <Bookmark className="h-5 w-5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-
-            {/* Search Results */}
-            {searched && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {loading ? "Searching..." : `${totalResults} candidates found`}
-                  </h3>
-                </div>
-
-                {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                  </div>
-                ) : searchResults.length === 0 ? (
-                  <Card className="border-0 shadow-md">
-                    <CardContent className="py-12 text-center">
-                      <AlertCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">No candidates found</h4>
-                      <p className="text-sm text-gray-500">Try adjusting your search filters</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {searchResults.map((candidate) => (
-                      <Card
-                        key={candidate.id}
-                        className="border-0 shadow-md hover:shadow-lg transition-shadow bg-white"
-                      >
-                        <CardContent className="p-5">
-                          <div className="flex gap-4">
-                            {/* Avatar */}
-                            <Avatar className="h-16 w-16 border-2 border-gray-100">
-                              <AvatarImage src={candidate.profile_picture_url || ""} />
-                              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-lg font-semibold">
-                                {getInitials(candidate.full_name || "")}
-                              </AvatarFallback>
-                            </Avatar>
-
-                            {/* Main Content */}
-                            <div className="flex-1 min-w-0">
-                              {/* Header */}
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <h4 className="text-lg font-semibold text-gray-900 hover:text-blue-600 cursor-pointer">
-                                    {candidate.full_name}
-                                  </h4>
-                                  {candidate.resume_headline && (
-                                    <p className="text-sm text-gray-600 line-clamp-1">{candidate.resume_headline}</p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {candidate.is_mobile_verified && (
-                                    <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                                      <CheckCircle2 className="h-3 w-3" />
-                                      Verified
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Info Row */}
-                              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-3">
-                                {candidate.current_job_title && (
-                                  <span className="flex items-center gap-1">
-                                    <Briefcase className="h-4 w-4 text-gray-400" />
-                                    {candidate.current_job_title}
-                                    {candidate.company_name && ` at ${candidate.company_name}`}
-                                  </span>
-                                )}
-                                {(candidate.current_city || candidate.current_state) && (
-                                  <span className="flex items-center gap-1">
-                                    <MapPin className="h-4 w-4 text-gray-400" />
-                                    {[candidate.current_city, candidate.current_state].filter(Boolean).join(", ")}
-                                  </span>
-                                )}
-                                {candidate.total_experience_years !== undefined && (
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="h-4 w-4 text-gray-400" />
-                                    {candidate.total_experience_years}y experience
-                                  </span>
-                                )}
-                                {candidate.preferred_salary && (
-                                  <span className="flex items-center gap-1">
-                                    <IndianRupee className="h-4 w-4 text-gray-400" />
-                                    {candidate.preferred_salary} LPA expected
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Skills */}
-                              {(candidate.skills_for_role?.length > 0 || candidate.skills_you_know?.length > 0) && (
-                                <div className="flex flex-wrap gap-1.5 mb-3">
-                                  {[...(candidate.skills_for_role || []), ...(candidate.skills_you_know || [])]
-                                    .slice(0, 8)
-                                    .map((skill, idx) => (
-                                      <Badge
-                                        key={idx}
-                                        variant="secondary"
-                                        className="text-xs bg-gray-100 text-gray-700"
-                                      >
-                                        {skill}
-                                      </Badge>
-                                    ))}
-                                  {[...(candidate.skills_for_role || []), ...(candidate.skills_you_know || [])].length >
-                                    8 && (
-                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-500">
-                                      +
-                                      {[...(candidate.skills_for_role || []), ...(candidate.skills_you_know || [])]
-                                        .length - 8}{" "}
-                                      more
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Actions */}
-                              <div className="flex items-center gap-2">
-                                <Button variant="outline" size="sm" className="h-8 bg-transparent">
-                                  <Eye className="h-3.5 w-3.5 mr-1" />
-                                  View Profile
-                                </Button>
-                                <Button variant="outline" size="sm" className="h-8 bg-transparent">
-                                  <Phone className="h-3.5 w-3.5 mr-1" />
-                                  Contact
-                                </Button>
-                                <Button variant="outline" size="sm" className="h-8 bg-transparent">
-                                  <Mail className="h-3.5 w-3.5 mr-1" />
-                                  Email
-                                </Button>
-                                {candidate.resume_url && (
-                                  <Button variant="outline" size="sm" className="h-8 bg-transparent">
-                                    <Download className="h-3.5 w-3.5 mr-1" />
-                                    Resume
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Right Sidebar */}
+          {/* Right Sidebar - Recent & Saved Searches */}
           <div className="space-y-6">
             {/* Recent Searches */}
-            <Card className="border-0 shadow-md">
+            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <CardTitle className="text-base font-semibold text-gray-900 flex items-center gap-2">
                   <History className="h-4 w-4 text-blue-500" />
                   Recent Searches
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2">
                 {recentSearches.length === 0 ? (
-                  <p className="text-sm text-gray-500">No recent searches</p>
+                  <p className="text-sm text-gray-500 text-center py-4">No recent searches</p>
                 ) : (
-                  recentSearches.map((search) => (
-                    <div key={search.id} className="group">
-                      <p className="text-sm font-medium text-gray-900 truncate">{search.keywords || "Untitled"}</p>
-                      <div className="flex items-center gap-2 mt-1">
+                  recentSearches.slice(0, 5).map((search) => (
+                    <div
+                      key={search.id}
+                      className="p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-900 truncate">{search.keywords || "Search"}</p>
+                      <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => fillSearch(search)}
-                          className="text-xs text-blue-600 hover:text-blue-700"
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                         >
                           Fill this search
-                        </button>
-                        <span className="text-gray-300">|</span>
-                        <button
-                          onClick={() => {
-                            fillSearch(search)
-                            handleSearch()
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-700"
-                        >
-                          Search profiles
                         </button>
                       </div>
                     </div>
@@ -1331,43 +1084,32 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
             </Card>
 
             {/* Saved Searches */}
-            <Card className="border-0 shadow-md">
+            <Card className="border-0 shadow-lg bg-white/80 backdrop-blur">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <CardTitle className="text-base font-semibold text-gray-900 flex items-center gap-2">
                     <Bookmark className="h-4 w-4 text-amber-500" />
                     Saved Searches
                   </CardTitle>
-                  {savedSearches.length > 0 && (
-                    <button className="text-xs text-blue-600 hover:text-blue-700">View all</button>
-                  )}
+                  {savedSearches.length > 0 && <span className="text-xs text-gray-500">View all</span>}
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2">
                 {savedSearches.length === 0 ? (
-                  <p className="text-sm text-gray-500">No saved searches</p>
+                  <p className="text-sm text-gray-500 text-center py-4">No saved searches</p>
                 ) : (
-                  savedSearches.map((search) => (
-                    <div key={search.id} className="group">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {search.search_name || search.keywords || "Untitled"}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
+                  savedSearches.slice(0, 5).map((search) => (
+                    <div
+                      key={search.id}
+                      className="p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-900 truncate">{search.keywords || "Saved Search"}</p>
+                      <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => fillSearch(search)}
-                          className="text-xs text-blue-600 hover:text-blue-700"
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                         >
                           Fill this search
-                        </button>
-                        <span className="text-gray-300">|</span>
-                        <button
-                          onClick={() => {
-                            fillSearch(search)
-                            handleSearch()
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-700"
-                        >
-                          Search profiles
                         </button>
                       </div>
                     </div>

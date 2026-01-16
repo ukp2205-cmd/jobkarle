@@ -17,6 +17,38 @@ interface PaymentInitiationData {
   employerPhone: string
 }
 
+// Production credentials are typically alphanumeric without hyphens
+function isSandboxMode(): boolean {
+  const clientId = process.env.CASHFREE_CLIENT_ID || ""
+
+  // Check explicit patterns first
+  if (clientId.startsWith("TEST") || clientId.toLowerCase().includes("sandbox")) {
+    return true
+  }
+
+  // Cashfree sandbox credentials are typically UUIDs (contain hyphens)
+  // Production credentials are alphanumeric strings without hyphens
+  // Example sandbox: dc911e8f-b... (UUID format)
+  // Example production: 123456abcdef... (no hyphens)
+  const isUUID = /^[a-f0-9]{8}-[a-f0-9]{4}-/i.test(clientId)
+
+  return isUUID
+}
+
+function getCashfreeApiUrl(): string {
+  // Allow explicit override via environment variable
+  const explicitMode = process.env.CASHFREE_MODE?.toLowerCase()
+  if (explicitMode === "sandbox" || explicitMode === "test") {
+    return "https://sandbox.cashfree.com/pg/orders"
+  }
+  if (explicitMode === "production" || explicitMode === "live") {
+    return "https://api.cashfree.com/pg/orders"
+  }
+
+  // Auto-detect based on credential format
+  return isSandboxMode() ? "https://sandbox.cashfree.com/pg/orders" : "https://api.cashfree.com/pg/orders"
+}
+
 /**
  * Generate Cashfree payment order signature
  */
@@ -82,6 +114,15 @@ export async function initiatePayment(data: PaymentInitiationData) {
       return { success: false, message: "Payment gateway not configured" }
     }
 
+    console.log("[v0] Client ID length:", clientId.length)
+    console.log("[v0] Client Secret length:", clientSecret.length)
+    console.log("[v0] Client ID first 12 chars:", clientId.substring(0, 12))
+
+    const sandboxMode = isSandboxMode()
+    const apiUrl = getCashfreeApiUrl()
+    console.log("[v0] Cashfree mode:", sandboxMode ? "SANDBOX" : "PRODUCTION")
+    console.log("[v0] Cashfree API URL:", apiUrl)
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jobkarle.com"
 
     // Prepare Cashfree order request
@@ -92,7 +133,7 @@ export async function initiatePayment(data: PaymentInitiationData) {
       customer_details: {
         customer_id: data.employerId,
         customer_email: data.employerEmail,
-        customer_phone: data.employerPhone,
+        customer_phone: data.employerPhone.replace(/^\+/, ""), // Remove + prefix from phone
         customer_name: data.employerName,
       },
       order_meta: {
@@ -103,23 +144,44 @@ export async function initiatePayment(data: PaymentInitiationData) {
     }
 
     console.log("[v0] Creating Cashfree order:", orderId, "for plan:", planDetails.name)
+    console.log("[v0] Order request:", JSON.stringify(orderRequest, null, 2))
 
-    // Call Cashfree API to create order
-    const cashfreeResponse = await fetch("https://api.cashfree.com/pg/orders", {
+    const cashfreeResponse = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "X-Client-Id": clientId,
-        "X-Client-Secret": clientSecret,
+        "x-client-id": clientId,
+        "x-client-secret": clientSecret,
         "Content-Type": "application/json",
-        "x-api-version": "2023-08-01",
+        "x-api-version": "2026-01-01", // Updated from 2023-08-01
+        "x-request-id": `${orderId}_${Date.now()}`, // Added unique request ID
       },
       body: JSON.stringify(orderRequest),
     })
 
-    const cashfreeData = await cashfreeResponse.json()
+    const responseText = await cashfreeResponse.text()
+    console.log("[v0] Cashfree raw response:", responseText)
+
+    let cashfreeData
+    try {
+      cashfreeData = JSON.parse(responseText)
+    } catch (e) {
+      console.error("[v0] Failed to parse Cashfree response:", responseText)
+      return { success: false, message: "Invalid response from payment gateway" }
+    }
 
     if (!cashfreeResponse.ok) {
       console.error("[v0] Cashfree API error:", cashfreeData)
+      console.error("[v0] Cashfree API status:", cashfreeResponse.status)
+      console.error("[v0] Using API URL:", apiUrl)
+
+      if (cashfreeResponse.status === 401) {
+        return {
+          success: false,
+          message:
+            "Payment gateway authentication failed. Please verify your Cashfree API credentials are correct and match the environment (sandbox/production).",
+        }
+      }
+
       return {
         success: false,
         message: cashfreeData.message || "Failed to create payment order",
@@ -139,13 +201,13 @@ export async function initiatePayment(data: PaymentInitiationData) {
 
     console.log("[v0] Payment session ID generated:", paymentSessionId)
 
-    // Return order details and payment_session_id for frontend SDK
     return {
       success: true,
       orderId: cashfreeData.order_id,
       paymentSessionId: paymentSessionId,
       transactionId: orderId,
       amount: amount,
+      sandboxMode: sandboxMode,
     }
   } catch (error: any) {
     console.error("[v0] Payment initiation error:", error)
@@ -212,6 +274,7 @@ export async function verifyPayment(paymentResponse: any) {
         return {
           success: false,
           message: "Payment successful but credit allocation failed. Please contact support.",
+          transactionId: orderId,
         }
       }
 

@@ -1098,8 +1098,8 @@ export async function saveSearch(params: { employerId: string; searchName: strin
       .from("employer_searches")
       .insert({
         employer_id: params.employerId,
-        search_name: params.searchName.slice(0, 100),
-        search_filters: params.filters,
+        keywords: params.searchName.slice(0, 255),
+        filters: params.filters,
         is_saved: true,
       })
       .select()

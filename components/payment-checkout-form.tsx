@@ -117,6 +117,8 @@ export function PaymentCheckoutForm({
       }
 
       console.log("[v0] Opening Cashfree checkout with session ID:", result.paymentSessionId)
+      console.log("[v0] Server indicated sandbox mode:", result.sandboxMode)
+      // </CHANGE>
 
       const cashfreeSDK = (window as any).Cashfree
       if (!cashfreeSDK) {
@@ -126,10 +128,13 @@ export function PaymentCheckoutForm({
         return
       }
 
-      // Initialize Cashfree SDK
+      const sdkMode = result.sandboxMode ? "sandbox" : "production"
+      console.log("[v0] Initializing Cashfree SDK in mode:", sdkMode)
+
       const cashfree = cashfreeSDK({
-        mode: process.env.NODE_ENV === "production" ? "production" : "sandbox",
+        mode: sdkMode,
       })
+      // </CHANGE>
 
       // Open Cashfree checkout
       const checkoutOptions = {
@@ -173,7 +178,6 @@ export function PaymentCheckoutForm({
           <span className="text-gray-900 font-semibold">Grand Total:</span>
           <span className="text-lg font-bold text-blue-600">₹{grandTotal.toLocaleString("en-IN")}</span>
         </div>
-        {/* </CHANGE> */}
       </div>
 
       {error && (
