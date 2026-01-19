@@ -18,6 +18,8 @@ export interface JobsByIndustry {
     created_at: string
     category: string // Added category field for displaying Premium/Urgent Hiring tag
     required_skills: string[] // Added required_skills to interface
+    company_logo_url?: string
+    employers?: { logo_url?: string }
   }>
 }
 
@@ -25,10 +27,10 @@ export async function getJobsByIndustry() {
   try {
     const supabase = createAdminClient()
 
-    // Fetch all published jobs
+    // Fetch all published jobs with employer logos
     const { data: jobs, error } = await supabase
       .from("job_postings")
-      .select("*")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .order("created_at", { ascending: false })
 

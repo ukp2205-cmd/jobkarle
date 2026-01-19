@@ -107,7 +107,7 @@ export function CompanyLogoMarquee() {
                 <img
                   src={company.logo || "/placeholder.svg"}
                   alt={`${company.name} logo`}
-                  className="h-10 sm:h-12 w-auto object-contain grayscale-0"
+                  className="h-16 sm:h-20 w-auto object-contain grayscale-0"
                 />
               </div>
             ))}

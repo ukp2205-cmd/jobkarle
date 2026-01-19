@@ -24,6 +24,8 @@ type Job = {
   category?: string
   urgent_hiring?: boolean
   company_logo_url?: string
+  employer_logo_url?: string
+  employers?: { logo_url?: string }
 }
 
 interface JobCardProps {
@@ -51,11 +53,20 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
   }
 
   const getCompanyLogo = () => {
+    // Priority 1: Job-specific company logo
     if (job.company_logo_url) {
       return job.company_logo_url
     }
-    // Default JobKarle logo
-    return "/briefcase-icon.png"
+    // Priority 2: Employer's logo from employers table
+    if (job.employer_logo_url) {
+      return job.employer_logo_url
+    }
+    // Priority 3: Employer logo from joined employers object
+    if (job.employers?.logo_url) {
+      return job.employers.logo_url
+    }
+    // Default: JobKarle logo as fallback
+    return "/jobkarle-logo.png"
   }
 
   const getCompanyInitials = (name: string) => {
@@ -70,8 +81,6 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
   const isPremium = job.category === "premium"
   const showUrgentHiring = isPremium && job.urgent_hiring
 
-  console.log("[v0] JobCard created_at:", job.job_title, "->", job.created_at)
-
   return (
     <Card
       className={`overflow-hidden hover:shadow-md transition-shadow bg-white border relative ${isPremium ? "border-blue-200" : "border-gray-200"}`}
@@ -79,8 +88,8 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
       {isPremium && (
         <div className="absolute left-0 top-0 z-[5]">
           <div className="relative">
-            {/* Corner triangle background */}
-            <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+            {/* Corner triangle background - much smaller on mobile */}
+            <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
               <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientCard)" />
               <defs>
                 <linearGradient id="cornerGradientCard" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -89,9 +98,9 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
                 </linearGradient>
               </defs>
             </svg>
-            {/* Larger gold diamond icon on corner */}
-            <div className="absolute left-1 top-1">
-              <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+            {/* Gold diamond icon on corner - much smaller on mobile */}
+            <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
                 <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradient)" />
                 <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
                 <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
@@ -129,7 +138,7 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
         </div>
       )}
 
-      <div className="p-4 sm:p-6">
+      <div className={`p-4 sm:p-6 ${isPremium ? "pl-8 sm:pl-6" : ""}`}>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
           <div className="flex gap-3 sm:gap-4 flex-1 min-w-0">
             <Avatar className="w-12 h-12 sm:w-14 sm:h-14 border-2 border-gray-200 flex-shrink-0">
@@ -140,10 +149,10 @@ export default function JobCard({ job, onSave, saved, onView }: JobCardProps) {
             </Avatar>
 
             <div className="flex-1 min-w-0">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1 sm:mb-2 line-clamp-2">
+              <h3 className="text-sm sm:text-lg font-semibold text-gray-900 mb-1.5 sm:mb-2 leading-tight sm:leading-normal break-words">
                 {job.job_title}
               </h3>
-              <p className="text-sm sm:text-base text-gray-600 mb-2">{job.company_name}</p>
+              <p className="text-xs sm:text-base text-gray-600 mb-2 truncate">{job.company_name}</p>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

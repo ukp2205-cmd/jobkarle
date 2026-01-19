@@ -1101,6 +1101,38 @@ export async function approveEmployer(employerId: string, approvedBy: string) {
 
     console.log("[v0] Employer approved successfully")
 
+    // Allocate 10 free credits as welcome credits for approved employers
+    try {
+      console.log("[v0] Allocating 10 welcome credits to approved employer:", employerId)
+      
+      // Insert free credits directly into employer_credits table
+      const { data: creditRecord, error: creditError } = await supabase
+        .from("employer_credits")
+        .insert({
+          employer_id: employerId,
+          plan_type: "free",
+          credits_allocated: 10,
+          credits_used: 0,
+          credits_remaining: 10,
+          allocated_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days expiry
+          is_expired: false,
+          billing_cycle: "monthly",
+        })
+        .select()
+        .single()
+
+      if (creditError) {
+        console.error("[v0] Error allocating welcome credits:", creditError)
+        // Don't fail the approval if credits fail, just log the error
+      } else {
+        console.log("[v0] Successfully allocated 10 welcome credits, credit ID:", creditRecord?.id)
+      }
+    } catch (creditAllocationError) {
+      console.error("[v0] Exception allocating welcome credits:", creditAllocationError)
+      // Continue with approval even if credit allocation fails
+    }
+
     // TODO: Send approval email to employer
 
     return { success: true, employer }

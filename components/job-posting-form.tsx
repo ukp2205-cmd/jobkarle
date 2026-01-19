@@ -61,9 +61,10 @@ const INDIAN_CITIES = [
 interface JobPostingFormProps {
   jobType?: string
   employerId: string // Added employerId to the interface
+  logoUrl?: string // Company logo URL
 }
 
-export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
+export function JobPostingForm({ employerId, jobType, logoUrl }: JobPostingFormProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(1)
   const [showPreview, setShowPreview] = useState(false)
@@ -1000,13 +1001,13 @@ export function JobPostingForm({ employerId, jobType }: JobPostingFormProps) {
                   </div>
                 )}
               </div>
-              <Link
-                href="/"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:opacity-90 transition-opacity flex-shrink-0"
-              >
-                <Briefcase className="h-4 w-4 text-white" />
-                <span className="text-base md:text-xl font-bold text-white">JobKarle</span>
-              </Link>
+                  <Link
+                    href="/employer/dashboard"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg hover:opacity-90 transition-opacity flex-shrink-0"
+                  >
+                    <Briefcase className="h-4 w-4 text-white" />
+                    <span className="text-base md:text-xl font-bold text-white">JobKarle</span>
+                  </Link>
             </div>
           </div>
 
@@ -2448,14 +2449,27 @@ Specify required role expertise, previous role experiences, or relevant call-out
 
             <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
               <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4 md:p-6">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-2 break-words">
-                  {formData.jobTitle}
-                </h1>
-                <p className="text-xs sm:text-sm text-gray-500 mb-4 sm:mb-6 break-words">
-                  {hiringForType === "own_company"
-                    ? formData.companyName || "Company Name"
-                    : `Hiring for: ${formData.hiringForCompanyName || formData.companyName || "Client Company"}`}
-                </p>
+                <div className="flex items-start justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="flex-1">
+                    <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-2 break-words">
+                      {formData.jobTitle}
+                    </h1>
+                    <p className="text-xs sm:text-sm text-gray-500 break-words">
+                      {hiringForType === "own_company"
+                        ? formData.companyName || "Company Name"
+                        : `Hiring for: ${formData.hiringForCompanyName || formData.companyName || "Client Company"}`}
+                    </p>
+                  </div>
+                  
+                  {/* Company Logo */}
+                  <div className="flex-shrink-0">
+                    <img
+                      src={logoUrl || "/jobkarle-logo.png"}
+                      alt="Company logo"
+                      className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-lg object-cover border-2 border-gray-200"
+                    />
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
@@ -2489,6 +2503,16 @@ Specify required role expertise, previous role experiences, or relevant call-out
                   <p className="text-xs sm:text-sm text-gray-500 mb-2">Job Category</p>
                   <p className="text-sm sm:text-base text-gray-700 break-words capitalize">
                     {formData.category.replace("-", " ")}
+                  </p>
+                </div>
+              )}
+
+              {/* Salary Range - Moved here to appear right after Job Category */}
+              {(formData.minSalary || formData.maxSalary) && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500 mb-2">Salary Range</p>
+                  <p className="text-sm sm:text-base text-gray-700">
+                    ₹{convertNumberToLacs(formData.minSalary)} - ₹{convertNumberToLacs(formData.maxSalary)}
                   </p>
                 </div>
               )}
@@ -2543,16 +2567,6 @@ Specify required role expertise, previous role experiences, or relevant call-out
                   <p className="text-xs sm:text-sm text-gray-500 mb-2">Diversity Hiring</p>
                   <p className="text-sm sm:text-base text-gray-700 break-words capitalize">
                     {formData.diversityHiring.replace("-", " ")}
-                  </p>
-                </div>
-              )}
-
-              {/* Salary */}
-              {(formData.minSalary || formData.maxSalary) && (
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-500 mb-2">Salary Range</p>
-                  <p className="text-sm sm:text-base text-gray-700">
-                    ₹{convertNumberToLacs(formData.minSalary)} - ₹{convertNumberToLacs(formData.maxSalary)}
                   </p>
                 </div>
               )}

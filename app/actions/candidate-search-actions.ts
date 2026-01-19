@@ -32,7 +32,7 @@ export async function searchJobs(query: string, filters: SearchFilters = {}, can
 
     const queryBuilder = supabase
       .from("job_postings")
-      .select("*, category, urgent_hiring, company_logo_url")
+      .select("*, category, urgent_hiring, company_logo_url, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .order("created_at", { ascending: false })
 

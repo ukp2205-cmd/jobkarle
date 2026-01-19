@@ -752,6 +752,7 @@ export default function EmployerRegistration() {
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
   const [industrySearch, setIndustrySearch] = useState("")
   const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false)
 
   const handleInputChange = (field: string, value: any) => {
     if (field === "state") {
@@ -779,6 +780,24 @@ export default function EmployerRegistration() {
       !formData.city
     ) {
       alert("Please fill all required fields")
+      return
+    }
+
+    // Validate password requirements
+    if (formData.password.length < 8) {
+      alert("Password must be at least 8 characters long")
+      return
+    }
+    if (!/[A-Z]/.test(formData.password)) {
+      alert("Password must contain at least one capital letter")
+      return
+    }
+    if (!/[0-9]/.test(formData.password)) {
+      alert("Password must contain at least one number")
+      return
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(formData.password)) {
+      alert("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
       return
     }
 
@@ -1151,9 +1170,33 @@ export default function EmployerRegistration() {
                         type="password"
                         value={formData.password}
                         onChange={(e) => handleInputChange("password", e.target.value)}
+                        onFocus={() => setShowPasswordRequirements(true)}
                         placeholder="Create a password"
                         className="h-9 sm:h-11 text-xs sm:text-sm"
                       />
+                      {showPasswordRequirements && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-gray-500">Password must contain:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
+                            <div className={`flex items-center gap-1.5 ${formData.password.length >= 8 ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${formData.password.length >= 8 ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>Minimum 8 characters{formData.password.length >= 8 ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[A-Z]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[A-Z]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One capital letter{/[A-Z]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[0-9]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[0-9]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One number{/[0-9]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One special character{/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>

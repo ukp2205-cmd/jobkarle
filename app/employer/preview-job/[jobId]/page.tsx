@@ -66,10 +66,23 @@ export default async function EmployerJobPreviewPage({
         </div>
 
         <Card className="p-6 md:p-8">
-          {/* Job Title and Company */}
+          {/* Job Title, Company and Logo */}
           <div className="border-b pb-6 mb-6">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{job.job_title}</h1>
-            <p className="text-lg text-gray-700">{job.company_name}</p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{job.job_title}</h1>
+                <p className="text-lg text-gray-700">{job.company_name}</p>
+              </div>
+              
+              {/* Company Logo */}
+              <div className="flex-shrink-0">
+                <img
+                  src={job.company_logo_url || job.employers?.logo_url || "/jobkarle-logo.png"}
+                  alt={`${job.company_name} logo`}
+                  className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover border-2 border-gray-200"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Job Details Grid */}
@@ -101,14 +114,14 @@ export default async function EmployerJobPreviewPage({
               </div>
             )}
             <div>
+              <p className="text-sm text-gray-500 mb-1">Job Category</p>
+              <p className="font-medium capitalize">{job.category?.replace("-", " ") || "Not specified"}</p>
+            </div>
+            <div>
               <p className="text-sm text-gray-500 mb-1">Salary Range</p>
               <p className="font-medium">
                 ₹{job.min_salary?.toLocaleString("en-IN")} - ₹{job.max_salary?.toLocaleString("en-IN")}
               </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Job Category</p>
-              <p className="font-medium capitalize">{job.category?.replace("-", " ") || "Not specified"}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500 mb-1">Status</p>

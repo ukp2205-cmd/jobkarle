@@ -651,7 +651,7 @@ export async function getSavedJobs(candidateId: string) {
 
   const { data, error } = await supabase
     .from("saved_jobs")
-    .select("job_id, job_postings(*)")
+    .select("job_id, job_postings(*, employers!job_postings_employer_id_fkey(logo_url))")
     .eq("candidate_id", candidateId)
 
   if (error) {
@@ -683,7 +683,7 @@ export async function getMyApplications(candidateId: string) {
 
   const { data, error } = await supabase
     .from("job_applications")
-    .select("*, job_postings(*)")
+    .select("*, job_postings(*, employers!job_postings_employer_id_fkey(logo_url))")
     .eq("candidate_id", candidateId)
     .order("applied_at", { ascending: false })
 

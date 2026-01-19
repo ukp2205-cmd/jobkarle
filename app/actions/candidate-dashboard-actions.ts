@@ -46,7 +46,7 @@ export async function getRecommendedJobs(candidateId: string) {
 
     const { data: jobs } = await supabase
       .from("job_postings")
-      .select("*")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .gte("expires_at", new Date().toISOString())
 
@@ -235,6 +235,7 @@ export async function getRecommendedJobs(candidateId: string) {
             ...job,
             matchScore,
             skillMatchPercentage,
+            employers: job.employers, // Explicitly preserve employers object for client
           }
         })
         .filter((job) => job !== null) || []
@@ -257,6 +258,13 @@ export async function getRecommendedJobs(candidateId: string) {
     console.log(
       `[v0] ✓ Returned ${sortedJobs.length} skill-matched jobs (60%+ match) out of ${jobs?.length || 0} total jobs`,
     )
+    
+    console.log("[v0] Sample recommended job logo data:", sortedJobs[0] ? {
+      company_name: sortedJobs[0].company_name,
+      company_logo_url: sortedJobs[0].company_logo_url,
+      employers: sortedJobs[0].employers,
+      employer_logo: sortedJobs[0].employers?.logo_url
+    } : "No jobs")
 
     return {
       success: true,
@@ -384,7 +392,7 @@ export async function getSavedJobs(candidateId: string) {
       .from("saved_jobs")
       .select(`
         *,
-        job_postings (*)
+        job_postings (*, employers!job_postings_employer_id_fkey(logo_url))
       `)
       .eq("candidate_id", candidateId)
       .order("saved_at", { ascending: false })
@@ -430,7 +438,7 @@ export async function getMyApplications(candidateId: string) {
       .select(
         `
         *,
-        job_postings (*)
+        job_postings (*, employers!job_postings_employer_id_fkey(logo_url))
       `,
       )
       .eq("candidate_id", candidateId)

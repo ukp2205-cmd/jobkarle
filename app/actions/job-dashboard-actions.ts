@@ -13,7 +13,11 @@ export async function getJobPostingById(jobId: string) {
 
     const supabase = await createServerClient()
 
-    const { data: job, error } = await supabase.from("job_postings").select("*").eq("id", jobId).single()
+    const { data: job, error } = await supabase
+      .from("job_postings")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
+      .eq("id", jobId)
+      .single()
 
     if (error) {
       console.error("[v0] Error fetching job posting:", error)
@@ -45,7 +49,7 @@ export async function getEmployerJobs(employerId: string, filters?: { status?: s
 
     let query = supabase
       .from("job_postings")
-      .select("*")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("employer_id", employerId)
       .order("created_at", { ascending: false })
 

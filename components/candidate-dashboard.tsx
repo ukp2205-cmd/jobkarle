@@ -8,6 +8,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { DashboardNavigationGuard } from "@/components/dashboard-navigation-guard"
 import {
   Plus,
   Trash2,
@@ -102,6 +103,7 @@ type Job = {
   category?: string // Added for premium jobs
   urgent_hiring?: boolean // Added for urgent hiring tag
   company_logo_url?: string // Added for company logo URL
+  employers?: { logo_url?: string } // Added for employer logo from join
 }
 
 // Added JobWithStatus to accommodate status like 'applied' or 'saved'
@@ -1679,7 +1681,7 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                   <div className="absolute -top-px -left-px z-20">
                     <div className="relative">
                       {/* Corner triangle background */}
-                      <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+                      <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
                         <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientCandidate)" />
                         <defs>
                           <linearGradient id="cornerGradientCandidate" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -1688,8 +1690,8 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                           </linearGradient>
                         </defs>
                       </svg>
-                      <div className="absolute left-0.5 top-0.5">
-                        <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                      <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+                        <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
                           <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientCandidate)" />
                           <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
                           <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
@@ -1742,7 +1744,10 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
 
                         <div className="flex items-center gap-2">
                           <Avatar className="w-10 h-10 md:w-12 md:h-12 border-2 border-gray-200 flex-shrink-0">
-                            <AvatarImage src={job.company_logo_url || "/briefcase-icon.png"} alt={job.company_name} />
+                            <AvatarImage 
+                              src={job.company_logo_url || job.employers?.logo_url || "/jobkarle-logo.png"} 
+                              alt={job.company_name} 
+                            />
                             <AvatarFallback className="bg-blue-600 text-white text-sm font-semibold">
                               {job.company_name.charAt(0).toUpperCase()}
                               {job.company_name.split(" ")[1]?.charAt(0).toUpperCase() || ""}

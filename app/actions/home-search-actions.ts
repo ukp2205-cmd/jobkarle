@@ -51,7 +51,7 @@ export async function getJobsByIndustry() {
 
     const { data: jobs, error } = await supabase
       .from("job_postings")
-      .select("candidate_industries")
+      .select("candidate_industries, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .not("candidate_industries", "is", null)
 

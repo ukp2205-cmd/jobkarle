@@ -507,8 +507,8 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                       <div className="absolute left-0 top-0 z-[5]">
                         <div className="relative">
                           {/* Corner triangle background */}
-                          <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
-                            <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientHome)" />
+                            <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
+                              <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientHome)" />
                             <defs>
                               <linearGradient id="cornerGradientHome" x1="0%" y1="0%" x2="100%" y2="100%">
                                 <stop offset="0%" stopColor="#93C5FD" />
@@ -516,8 +516,8 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                               </linearGradient>
                             </defs>
                           </svg>
-                          <div className="absolute left-1 top-1">
-                            <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                            <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
                               <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientHome)" />
                               <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
                               <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
@@ -552,29 +552,15 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-3 mb-3">
-                            {job.company_logo_url ? (
-                              <img
-                                src={job.company_logo_url || "/placeholder.svg"}
-                                alt={`${job.company_name} logo`}
-                                className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                              />
-                            ) : (
-                              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                                <svg
-                                  className="w-6 h-6 text-white"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                  />
-                                </svg>
-                              </div>
-                            )}
+                            <img
+                              src={
+                                job.company_logo_url ||
+                                job.employers?.logo_url ||
+                                "/jobkarle-logo.png"
+                               || "/placeholder.svg"}
+                              alt={`${job.company_name} logo`}
+                              className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
                               <Link href={`/candidate/jobs/${job.id}`} className="block group">
                                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words group-hover:text-[#0277bd] transition-colors cursor-pointer">

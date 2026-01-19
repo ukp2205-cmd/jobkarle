@@ -133,7 +133,7 @@ export default function JobsPage() {
                           <div className="absolute left-0 top-0 z-[5]">
                             <div className="relative">
                               {/* Corner triangle background */}
-                              <svg width="48" height="48" viewBox="0 0 48 48" className="drop-shadow-lg">
+                              <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
                                 <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientJobs)" />
                                 <defs>
                                   <linearGradient id="cornerGradientJobs" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -142,8 +142,8 @@ export default function JobsPage() {
                                   </linearGradient>
                                 </defs>
                               </svg>
-                              <div className="absolute left-1 top-1">
-                                <svg width="25" height="25" viewBox="0 0 20 20" fill="none">
+                              <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+                                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
                                   <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientJobs)" />
                                   <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
                                   <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />

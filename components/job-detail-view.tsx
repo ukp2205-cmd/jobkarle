@@ -49,6 +49,7 @@ type Job = {
   candidate_industries?: string[]
   role_description?: string
   employer_id?: string
+  company_logo_url?: string
   employers?: {
     logo_url?: string
     description?: string
@@ -176,10 +177,16 @@ export function JobDetailView({
   }
 
   const getCompanyLogo = () => {
+    // Priority 1: Job-specific company logo
+    if (job.company_logo_url) {
+      return job.company_logo_url
+    }
+    // Priority 2: Employer's logo from employers table
     if (job.employers?.logo_url) {
       return job.employers.logo_url
     }
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(job.company_name)}&background=4F46E5&color=fff&size=128`
+    // Default: JobKarle logo as fallback
+    return "/jobkarle-logo.png"
   }
 
   const getCompanyDescription = () => {
