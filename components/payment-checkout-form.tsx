@@ -75,8 +75,16 @@ export function PaymentCheckoutForm({
         return
       }
 
-      console.log("[v0] Initiating Razorpay payment")
-      console.log("[v0] Base amount:", baseAmount, "GST:", gstAmount, "Total with GST:", grandTotal)
+      // Calculate GST and grand total inside the function
+      const GST_RATE = 0.18
+      const baseAmount = amount // Base amount received from pricing page
+      const gstAmount = parseFloat((baseAmount * GST_RATE).toFixed(2))
+      const grandTotal = parseFloat((baseAmount + gstAmount).toFixed(2))
+
+      console.log("[v0] ========== PAYMENT INITIATION ==========")
+      console.log("[v0] Base amount:", baseAmount)
+      console.log("[v0] GST (18%):", gstAmount)
+      console.log("[v0] Grand Total with GST:", grandTotal)
 
       const response = await fetch("/api/payment/initiate", {
         method: "POST",
@@ -168,8 +176,10 @@ export function PaymentCheckoutForm({
             console.log("[v0] Verification result:", verifyResult)
             
             if (verifyResult.success) {
-              console.log("[v0] Payment verified successfully, redirecting to success page")
-              window.location.href = `/employer/payment/success?order_id=${result.orderId}&payment_id=${response.razorpay_payment_id}`
+              console.log("[v0] ✓ Payment verified successfully!")
+              console.log("[v0] Credits added:", verifyResult.credits_added)
+              console.log("[v0] Redirecting to employer dashboard...")
+              window.location.href = `/employer/dashboard?payment_success=true&credits_added=${verifyResult.credits_added}`
             } else {
               console.error("[v0] Payment verification failed:", verifyResult.message)
               setError(`Payment verification failed: ${verifyResult.message}. Please contact support with payment ID: ${response.razorpay_payment_id}`)

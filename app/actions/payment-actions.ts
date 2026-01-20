@@ -49,8 +49,13 @@ export async function initiatePayment(params: InitiatePaymentParams) {
       return { success: false, message: `Plan '${planType}' not found. Please contact support.` }
     }
 
-    const amount = plan.price
-    console.log("[v0] Plan details - Amount:", amount, "Credits:", plan.credits_allocated)
+    // Calculate amount with GST
+    const baseAmount = plan.price
+    const GST_RATE = 0.18 // 18% GST
+    const gstAmount = parseFloat((baseAmount * GST_RATE).toFixed(2))
+    const amount = parseFloat((baseAmount + gstAmount).toFixed(2))
+    
+    console.log("[v0] Plan details - Base:", baseAmount, "GST:", gstAmount, "Total:", amount, "Credits:", plan.credits_allocated)
 
     // Generate unique order ID
     const orderId = `ORDER_${Date.now()}_${employerId.substring(0, 8)}`
@@ -91,8 +96,15 @@ export async function initiatePayment(params: InitiatePaymentParams) {
     // Create Razorpay order
     const razorpayUrl = "https://api.razorpay.com/v1/orders"
     
+    const amountInPaise = Math.round(amount * 100) // Razorpay expects amount in paise (smallest currency unit)
+    
+    console.log("[v0] ========== RAZORPAY ORDER CREATION ==========")
+    console.log("[v0] Amount received from frontend (INR):", amount)
+    console.log("[v0] Amount in paise for Razorpay:", amountInPaise)
+    console.log("[v0] Expected: ₹5 base should be ₹5.90 with GST = 590 paise")
+    
     const orderPayload = {
-      amount: Math.round(amount * 100), // Razorpay expects amount in paise (smallest currency unit)
+      amount: amountInPaise,
       currency: "INR",
       receipt: orderId,
       notes: {
@@ -100,11 +112,11 @@ export async function initiatePayment(params: InitiatePaymentParams) {
         employer_name: employerName,
         employer_email: employerEmail,
         plan_type: planType,
-        credits: plan.credits_allocated, // Declaring credits variable
+        credits: plan.credits_allocated,
       },
     }
 
-    console.log("[v0] Creating Razorpay order:", orderPayload)
+    console.log("[v0] Creating Razorpay order with payload:", JSON.stringify(orderPayload, null, 2))
 
     const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString("base64")
 

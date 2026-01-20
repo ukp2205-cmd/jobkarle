@@ -40,13 +40,16 @@ export async function POST(request: NextRequest) {
     const { data: transaction, error: txError } = await supabase
       .from("payment_transactions")
       .select("*")
-      .eq("order_id", orderId)
+      .eq("transaction_id", orderId)
       .single()
 
     if (txError || !transaction) {
-      console.error("[v0] Transaction not found:", orderId)
+      console.error("[v0] Transaction not found for order ID:", orderId)
+      console.error("[v0] Database error:", txError)
       return NextResponse.json({ success: false, message: "Transaction not found" }, { status: 404 })
     }
+    
+    console.log("[v0] Transaction found:", transaction.id, "Plan:", transaction.plan_type, "Credits:", transaction.credits)
 
     // Update transaction status
     const { error: updateError } = await supabase
@@ -73,22 +76,28 @@ export async function POST(request: NextRequest) {
     const expiryDate = new Date()
     expiryDate.setDate(expiryDate.getDate() + 30) // Credits valid for 30 days
 
-    const { error: creditsError } = await supabase.from("employer_credits").insert({
+    console.log("[v0] Adding credits - Employer:", transaction.employer_id, "Credits:", transaction.credits, "Plan:", transaction.plan_type)
+
+    const { data: creditRecord, error: creditsError } = await supabase.from("employer_credits").insert({
       employer_id: transaction.employer_id,
-      credits_purchased: transaction.credits,
+      credits_allocated: transaction.credits,
+      credits_used: 0,
       credits_remaining: transaction.credits,
       plan_type: transaction.plan_type,
       billing_cycle: transaction.billing_cycle || "monthly",
-      amount_paid: transaction.amount,
+      allocated_at: new Date().toISOString(),
       payment_transaction_id: transaction.id,
       is_expired: false,
       expires_at: expiryDate.toISOString(),
-    })
+    }).select()
 
     if (creditsError) {
-      console.error("[v0] Error adding credits:", creditsError)
-      return NextResponse.json({ success: false, message: "Failed to add credits" }, { status: 500 })
+      console.error("[v0] ❌ Error adding credits:", creditsError.message)
+      console.error("[v0] Full error:", creditsError)
+      return NextResponse.json({ success: false, message: `Failed to add credits: ${creditsError.message}` }, { status: 500 })
     }
+    
+    console.log("[v0] ✓ Credits added successfully, record ID:", creditRecord?.[0]?.id)
 
     console.log("[v0] ✓ Payment verified and credits added successfully")
     console.log("[v0] ========== PAYMENT VERIFICATION COMPLETED ==========")

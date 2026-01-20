@@ -124,6 +124,30 @@ function JobsDashboard({
     console.log("[v0] EmployerId is valid:", employerId && employerId.length > 0)
   }, [employerId])
 
+  // Check for payment success and show notification
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search)
+      const paymentSuccess = urlParams.get("payment_success")
+      const creditsAdded = urlParams.get("credits_added")
+
+      if (paymentSuccess === "true" && creditsAdded) {
+        console.log("[v0] Payment successful! Credits added:", creditsAdded)
+        toast({
+          title: "Payment Successful!",
+          description: `${creditsAdded} credits have been added to your account.`,
+          duration: 5000,
+        })
+        
+        // Remove query parameters from URL without reload
+        window.history.replaceState({}, "", "/employer/dashboard")
+        
+        // Reload credits to show updated balance
+        loadCredits()
+      }
+    }
+  }, [])
+
   useEffect(() => {
     loadJobs()
     loadCounts()
