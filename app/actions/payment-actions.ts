@@ -95,8 +95,12 @@ export async function initiatePayment(params: InitiatePaymentParams) {
 
     console.log("[v0] Using Cashfree mode:", mode, "sandboxMode:", sandboxMode, "URL:", cashfreeUrl)
 
-    // Always use HTTPS for production API
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://your-production-domain.com"
+    // Get the actual deployment URL from Vercel environment variables
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                   "https://job-karle-mfewsz767-ukp2205-2966s-projects.vercel.app"
+    
+    console.log("[v0] Using base URL for payment:", baseUrl)
 
     // Create Cashfree order
     const orderPayload = {
