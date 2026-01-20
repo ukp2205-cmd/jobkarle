@@ -1161,12 +1161,106 @@ export async function approveEmployer(employerId: string, approvedBy: string) {
       // Continue with approval even if credit allocation fails
     }
 
-    // TODO: Send approval email to employer
-
     return { success: true, employer }
-  } catch (error) {
-    console.error("Error approving employer:", error)
-    return { success: false, error: "Failed to approve employer" }
+  } catch (error: any) {
+    console.error("[v0] Error approving employer:", error)
+    return { success: false, error: error.message || "Failed to approve employer" }
+  }
+}
+
+// Manual Credit Assignment - Admin function to add credits manually
+export async function assignCreditsManually(
+  employerId: string,
+  creditsToAdd: number,
+  reason: string,
+  assignedBy: string,
+) {
+  try {
+    console.log("[v0] ========== MANUAL CREDIT ASSIGNMENT ==========")
+    console.log("[v0] Employer ID:", employerId)
+    console.log("[v0] Credits to add:", creditsToAdd)
+    console.log("[v0] Reason:", reason)
+    console.log("[v0] Assigned by:", assignedBy)
+
+    const supabase = createAdminClient()
+
+    // Validate inputs
+    if (!employerId || creditsToAdd <= 0) {
+      return { success: false, error: "Invalid employer ID or credit amount" }
+    }
+
+    // Verify employer exists
+    const { data: employer, error: employerError } = await supabase
+      .from("employers")
+      .select("id, email, company_name")
+      .eq("id", employerId)
+      .single()
+
+    if (employerError || !employer) {
+      console.error("[v0] Employer not found:", employerId)
+      return { success: false, error: "Employer not found" }
+    }
+
+    console.log("[v0] Employer found:", employer.email, "-", employer.company_name)
+
+    // Add credits to employer_credits table
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30) // Manual credits valid for 30 days
+
+    const { data: creditRecord, error: creditError } = await supabase
+      .from("employer_credits")
+      .insert({
+        employer_id: employerId,
+        plan_type: "classic", // Manual credits use classic plan type
+        credits_allocated: creditsToAdd,
+        credits_used: 0,
+        credits_remaining: creditsToAdd,
+        allocated_at: new Date().toISOString(),
+        expires_at: expiryDate.toISOString(),
+        is_expired: false,
+        billing_cycle: "manual",
+        payment_transaction_id: null, // No payment for manual credits
+      })
+      .select()
+      .single()
+
+    if (creditError) {
+      console.error("[v0] ❌ Error adding manual credits:", creditError.message)
+      return { success: false, error: `Failed to add credits: ${creditError.message}` }
+    }
+
+    console.log("[v0] ✓ Credits added successfully, record ID:", creditRecord?.id)
+
+    // Log manual credit assignment for audit trail
+    const { error: logError } = await supabase.from("manual_credit_assignments").insert({
+      employer_id: employerId,
+      credits_assigned: creditsToAdd,
+      reason: reason,
+      assigned_by: assignedBy,
+      credit_record_id: creditRecord.id,
+      assigned_at: new Date().toISOString(),
+    })
+
+    if (logError) {
+      console.error("[v0] Warning: Failed to log manual credit assignment:", logError.message)
+      // Don't fail the whole operation if logging fails
+    }
+
+    console.log("[v0] ========== MANUAL CREDIT ASSIGNMENT COMPLETE ==========")
+
+    return {
+      success: true,
+      creditId: creditRecord.id,
+      creditsAdded: creditsToAdd,
+      expiresAt: creditRecord.expires_at,
+      employer: {
+        email: employer.email,
+        companyName: employer.company_name,
+      },
+    }
+  } catch (error: any) {
+    console.error("[v0] Error assigning credits manually:", error)
+    return { success: false, error: error.message || "Failed to assign credits" }
   }
 }
 

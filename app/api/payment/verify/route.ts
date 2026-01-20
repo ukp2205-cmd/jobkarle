@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Transaction not found" }, { status: 404 })
     }
     
-    console.log("[v0] Transaction found:", transaction.id, "Plan:", transaction.plan_type, "Credits:", transaction.credits)
+    // Get credits from response_data (stored during payment creation)
+    const creditsToAllocate = transaction.response_data?.credits || 0
+    console.log("[v0] Transaction found:", transaction.id, "Plan:", transaction.plan_type, "Credits:", creditsToAllocate)
 
     // Update transaction status
     const { error: updateError } = await supabase
@@ -76,13 +78,13 @@ export async function POST(request: NextRequest) {
     const expiryDate = new Date()
     expiryDate.setDate(expiryDate.getDate() + 30) // Credits valid for 30 days
 
-    console.log("[v0] Adding credits - Employer:", transaction.employer_id, "Credits:", transaction.credits, "Plan:", transaction.plan_type)
+    console.log("[v0] Adding credits - Employer:", transaction.employer_id, "Credits:", creditsToAllocate, "Plan:", transaction.plan_type)
 
     const { data: creditRecord, error: creditsError } = await supabase.from("employer_credits").insert({
       employer_id: transaction.employer_id,
-      credits_allocated: transaction.credits,
+      credits_allocated: creditsToAllocate,
       credits_used: 0,
-      credits_remaining: transaction.credits,
+      credits_remaining: creditsToAllocate,
       plan_type: transaction.plan_type,
       billing_cycle: transaction.billing_cycle || "monthly",
       allocated_at: new Date().toISOString(),
@@ -105,8 +107,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       message: "Payment verified successfully",
-      credits_added: transaction.credits,
-      transaction_id: transaction.id
+      credits_added: creditsToAllocate
     })
   } catch (error: any) {
     console.error("[v0] Error in payment verification:", error)

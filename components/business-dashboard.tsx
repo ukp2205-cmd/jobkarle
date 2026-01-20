@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link" // Added import
+import { createBrowserClient } from "@supabase/ssr"
 import {
   LayoutDashboard,
   Users,
@@ -25,6 +26,7 @@ import {
   Pencil,
   Plus,
   CheckCircle2,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,6 +69,7 @@ import {
   getPendingEmployers, // Imported for approvals
   approveEmployer, // Imported for approvals
   rejectEmployer, // Imported for approvals
+  assignCreditsManually, // Imported for manual credit assignment
 } from "@/app/actions/business-dashboard-actions"
 
 interface BusinessSession {
@@ -76,8 +79,8 @@ interface BusinessSession {
   role: string
 }
 
-// Added "approvals" to ActiveView
-type ActiveView = "dashboard" | "employers" | "candidates" | "jobs" | "team" | "approvals"
+// Added "approvals" and "credits" to ActiveView
+type ActiveView = "dashboard" | "employers" | "candidates" | "jobs" | "team" | "approvals" | "credits"
 
 interface DailyMetrics {
   userActivity: {
@@ -287,6 +290,20 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
   const [approvalAction, setApprovalAction] = useState<"approve" | "reject">("approve")
   const [rejectionReason, setRejectionReason] = useState("")
 
+  // Manual credit assignment states
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false)
+  const [creditFormLoading, setCreditFormLoading] = useState(false)
+  const [creditForm, setCreditForm] = useState({
+    employerId: "",
+    employerEmail: "",
+    credits: 1,
+    reason: "",
+  })
+  const [employerSearchResults, setEmployerSearchResults] = useState<Record<string, unknown>[]>([])
+  const [employerSearchLoading, setEmployerSearchLoading] = useState(false)
+  const [manualAssignments, setManualAssignments] = useState<Record<string, unknown>[]>([])
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+
   // Fetch metrics on load
   useEffect(() => {
     fetchMetrics()
@@ -475,6 +492,115 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
     setApprovalAction(action)
     setRejectionReason("") // Reset reason on open
     setApprovalDialogOpen(true)
+  }
+
+  // Fetch manual credit assignments
+  const fetchManualAssignments = async () => {
+    setAssignmentsLoading(true)
+    try {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      )
+
+      const { data, error } = await supabase
+        .from("manual_credit_assignments")
+        .select(`
+          *,
+          employers:employer_id (
+            company_name,
+            email
+          )
+        `)
+        .order("assigned_at", { ascending: false })
+        .limit(50)
+
+      if (error) {
+        console.error("[v0] Error fetching manual assignments:", error)
+      } else {
+        setManualAssignments(data || [])
+      }
+    } catch (error) {
+      console.error("[v0] Exception fetching manual assignments:", error)
+    }
+    setAssignmentsLoading(false)
+  }
+
+  // Manual Credit Assignment Handlers
+  const handleOpenCreditDialog = () => {
+    setCreditForm({
+      employerId: "",
+      employerEmail: "",
+      credits: 1,
+      reason: "",
+    })
+    setEmployerSearchResults([])
+    setCreditDialogOpen(true)
+  }
+
+  const handleEmployerSearch = async (searchQuery: string) => {
+    if (!searchQuery || searchQuery.length < 3) {
+      setEmployerSearchResults([])
+      return
+    }
+
+    setEmployerSearchLoading(true)
+    const result = await getAllEmployers(1, 10, searchQuery)
+    if (result.success && result.employers) {
+      setEmployerSearchResults(result.employers)
+    }
+    setEmployerSearchLoading(false)
+  }
+
+  const handleSelectEmployer = (employer: Record<string, unknown>) => {
+    setCreditForm({
+      ...creditForm,
+      employerId: employer.id as string,
+      employerEmail: employer.email as string,
+    })
+    setEmployerSearchResults([])
+  }
+
+  const handleAssignCredits = async () => {
+    if (!creditForm.employerId || creditForm.credits <= 0 || !creditForm.reason.trim()) {
+      alert("Please select an employer, enter credits amount, and provide a reason")
+      return
+    }
+
+    setCreditFormLoading(true)
+    try {
+      const result = await assignCreditsManually(
+        creditForm.employerId,
+        creditForm.credits,
+        creditForm.reason,
+        session.userId,
+      )
+
+      if (result.success) {
+        alert(
+          `Successfully assigned ${result.creditsAdded} credits to ${result.employer?.companyName} (${result.employer?.email})`,
+        )
+        setCreditDialogOpen(false)
+        setCreditForm({
+          employerId: "",
+          employerEmail: "",
+          credits: 1,
+          reason: "",
+        })
+        // Refresh manual assignments list
+        await fetchManualAssignments()
+        // Refresh employers list if on employers view
+        if (activeView === "employers") {
+          await fetchEmployers()
+        }
+      } else {
+        alert(result.error || "Failed to assign credits")
+      }
+    } catch (error) {
+      console.error("Error assigning credits:", error)
+      alert("An error occurred while assigning credits")
+    }
+    setCreditFormLoading(false)
   }
 
   const handleAddEmployer = () => {
@@ -786,24 +912,36 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
               {activeView === item.id && <ChevronRight className="w-4 h-4 ml-auto" />}
             </button>
           ))}
-          <button
-            onClick={() => setActiveView("approvals")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeView === "approvals"
-                ? "bg-primary text-white" // Consistent with other active items
-                : "text-slate-400 hover:bg-slate-800 hover:text-white"
-            }`}
-          >
-            <AlertTriangle className="w-5 h-5" />
-            <span>Pending Approvals</span>
-            {pendingPagination.total > 0 && (
-              <Badge variant="destructive" className="ml-auto">
-                {pendingPagination.total}
-              </Badge>
-            )}
-            {activeView === "approvals" && <ChevronRight className="w-4 h-4 ml-auto" />}
-          </button>
-        </nav>
+              <button
+                onClick={() => setActiveView("approvals")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                  activeView === "approvals"
+                    ? "bg-primary text-white" // Consistent with other active items
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5" />
+                <span>Pending Approvals</span>
+                {pendingPagination.total > 0 && (
+                  <Badge variant="destructive" className="ml-auto">
+                    {pendingPagination.total}
+                  </Badge>
+                )}
+                {activeView === "approvals" && <ChevronRight className="w-4 h-4 ml-auto" />}
+              </button>
+              <button
+                onClick={() => setActiveView("credits")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                  activeView === "credits"
+                    ? "bg-primary text-white"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                <Coins className="w-5 h-5" />
+                <span>Manual Credits</span>
+                {activeView === "credits" && <ChevronRight className="w-4 h-4 ml-auto" />}
+              </button>
+            </nav>
 
         <div className="p-4 border-t border-slate-800">
           <div className="flex items-center gap-3 mb-4">
@@ -1267,12 +1405,107 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
                     )}
                   </Card>
                 )}
-              </div>
-            </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {activeView === "team" && (
-            <TeamView
+      {activeView === "credits" && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Manual Credit Assignment</h2>
+                <p className="text-gray-600 mt-1">Manually assign credits to employers when needed</p>
+              </div>
+              <Button
+                onClick={handleOpenCreditDialog}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Assign Credits
+              </Button>
+            </div>
+
+            <Card className="bg-white shadow-sm border border-slate-200">
+              <CardContent className="p-0">
+                {assignmentsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                    <span className="ml-2 text-gray-600">Loading assignments...</span>
+                  </div>
+                ) : manualAssignments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Coins className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600">No manual credit assignments yet</p>
+                    <p className="text-sm text-gray-500 mt-1">Click "Assign Credits" to add credits to an employer</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Date & Time
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Employer
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Credits
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Reason
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Assigned By
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-200">
+                        {manualAssignments.map((assignment) => (
+                          <tr key={assignment.id as string} className="hover:bg-slate-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(assignment.assigned_at as string).toLocaleString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              <div className="font-medium text-gray-900">
+                                {(assignment.employers as any)?.company_name || "N/A"}
+                              </div>
+                              <div className="text-gray-500 text-xs">{(assignment.employers as any)?.email || "N/A"}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {assignment.credits_assigned as number} credits
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                              <div className="truncate" title={assignment.reason as string}>
+                                {assignment.reason as string}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              Admin
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {activeView === "team" && (
+        <TeamView
               team={team}
               pagination={teamPagination}
               page={teamPage}
@@ -2240,6 +2473,112 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Manual Credit Assignment Dialog */}
+      <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Manual Credit Assignment</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Assign credits to an employer account. All assignments are logged for audit purposes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Employer Search */}
+            <div className="space-y-2">
+              <Label className="text-slate-300">Search Employer *</Label>
+              <Input
+                placeholder="Type company name or email (min 3 characters)..."
+                onChange={(e) => handleEmployerSearch(e.target.value)}
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={creditFormLoading}
+              />
+              {employerSearchLoading && (
+                <p className="text-sm text-slate-400">Searching...</p>
+              )}
+              {employerSearchResults.length > 0 && (
+                <div className="mt-2 max-h-40 overflow-y-auto border border-slate-700 rounded-lg bg-slate-800">
+                  {employerSearchResults.map((employer) => (
+                    <button
+                      key={employer.id as string}
+                      onClick={() => handleSelectEmployer(employer)}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-700 transition-colors border-b border-slate-700 last:border-0"
+                    >
+                      <div className="font-medium text-white">{employer.company_name as string}</div>
+                      <div className="text-sm text-slate-400">{employer.email as string}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Employer Display */}
+            {creditForm.employerEmail && (
+              <div className="p-3 bg-green-900/20 border border-green-700 rounded-lg">
+                <p className="text-sm text-green-300">
+                  <strong>Selected:</strong> {creditForm.employerEmail}
+                </p>
+              </div>
+            )}
+
+            {/* Credits Input */}
+            <div className="space-y-2">
+              <Label className="text-slate-300">Number of Credits *</Label>
+              <Input
+                type="number"
+                min="1"
+                value={creditForm.credits}
+                onChange={(e) => setCreditForm({ ...creditForm, credits: parseInt(e.target.value) || 1 })}
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={creditFormLoading}
+              />
+              <p className="text-xs text-slate-400">Credits will expire in 30 days</p>
+            </div>
+
+            {/* Reason Input */}
+            <div className="space-y-2">
+              <Label className="text-slate-300">Reason for Assignment *</Label>
+              <Input
+                placeholder="e.g., Compensation for payment issue, Promotional credits..."
+                value={creditForm.reason}
+                onChange={(e) => setCreditForm({ ...creditForm, reason: e.target.value })}
+                className="bg-slate-800 border-slate-700 text-white"
+                disabled={creditFormLoading}
+              />
+              <p className="text-xs text-slate-400">This will be recorded in the audit log</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreditDialogOpen(false)}
+              className="border-slate-700 bg-transparent"
+              disabled={creditFormLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignCredits}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              disabled={creditFormLoading || !creditForm.employerId || !creditForm.reason.trim()}
+            >
+              {creditFormLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <Coins className="w-4 h-4 mr-2" />
+                  Assign Credits
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2795,6 +3134,8 @@ function JobsView({
   onEdit,
   onDelete,
   onAdd,
+  onSearch,
+  onStatusChange,
 }: {
   jobs: Record<string, unknown>[]
   pagination: { total: number; totalPages: number }
@@ -2807,18 +3148,9 @@ function JobsView({
   onEdit: (job: Record<string, unknown>) => void
   onDelete: (id: string, name: string) => void
   onAdd: () => void
+  onSearch: () => void
+  onStatusChange: (jobId: string, status: string) => void
 }) {
-  // Define onSearch here, as it's used in the JSX and was causing an undeclared variable error.
-  const onSearch = () => {
-    setJobPage(1) // Reset to the first page when searching
-    fetchJobs()
-  }
-
-  // Define onStatusChange here, as it's used in the JSX and was causing an undeclared variable error.
-  const onStatusChange = (jobId: string, status: string) => {
-    handleJobStatusChange(jobId, status)
-  }
-
   return (
     <div className="flex-1 overflow-auto">
       <div className="space-y-6">
@@ -2892,14 +3224,14 @@ function JobsView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredJobs.length === 0 ? (
+              {jobs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-8 text-slate-500">
-                    {jobs.length === 0 ? "No jobs found" : "No jobs match the selected filters"}
+                    No jobs found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredJobs.map((job) => (
+                jobs.map((job) => (
                   <TableRow key={job.id as string} className="border-slate-800">
                     <TableCell className="text-white font-medium">{job.job_title as string}</TableCell>
                     <TableCell className="text-slate-300">{(job.company_name as string) || "N/A"}</TableCell>
@@ -2980,7 +3312,6 @@ function JobsView({
                   </TableRow>
                 ))
               )}
-              {/* </CHANGE> */}
             </TableBody>
           </Table>
         </Card>

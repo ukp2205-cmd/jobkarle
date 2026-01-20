@@ -122,6 +122,28 @@ function JobsDashboard({
     console.log("[v0] EmployerId prop:", employerId)
     console.log("[v0] EmployerId type:", typeof employerId)
     console.log("[v0] EmployerId is valid:", employerId && employerId.length > 0)
+    
+    // Check and renew monthly free credits on dashboard load
+    if (employerId && employerId.length > 0) {
+      import("@/app/actions/credit-renewal-actions").then(({ checkAndRenewMonthlyCredits }) => {
+        checkAndRenewMonthlyCredits(employerId).then((result) => {
+          if (result.success && result.creditsAdded > 0) {
+            console.log("[v0] Monthly credits renewed:", result.creditsAdded)
+            if (result.isRenewal) {
+              toast({
+                title: "Monthly Credits Renewed!",
+                description: `${result.creditsAdded} free credits have been added to your account.`,
+                duration: 5000,
+              })
+            }
+            // Reload credits to show updated balance
+            loadCredits()
+          }
+        }).catch((error) => {
+          console.error("[v0] Error checking credit renewal:", error)
+        })
+      })
+    }
   }, [employerId])
 
   // Check for payment success and show notification

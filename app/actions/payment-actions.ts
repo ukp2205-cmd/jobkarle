@@ -54,8 +54,9 @@ export async function initiatePayment(params: InitiatePaymentParams) {
     const GST_RATE = 0.18 // 18% GST
     const gstAmount = parseFloat((baseAmount * GST_RATE).toFixed(2))
     const amount = parseFloat((baseAmount + gstAmount).toFixed(2))
-    
-    console.log("[v0] Plan details - Base:", baseAmount, "GST:", gstAmount, "Total:", amount, "Credits:", plan.credits_allocated)
+    const amountInPaise = Math.round(amount * 100) // Convert to paise for database storage
+
+    console.log("[v0] Plan details - Base:", baseAmount, "GST:", gstAmount, "Total:", amount, "Paise:", amountInPaise, "Credits:", plan.credits_allocated)
 
     // Generate unique order ID
     const orderId = `ORDER_${Date.now()}_${employerId.substring(0, 8)}`
@@ -66,11 +67,11 @@ export async function initiatePayment(params: InitiatePaymentParams) {
       .insert({
         employer_id: employerId,
         merchant_transaction_id: orderId,
-        amount: amount,
+        amount: amountInPaise, // Store amount in paise (integer)
         plan_type: planType,
         billing_cycle: billingCycle,
         status: "pending",
-        payment_gateway: "cashfree",
+        payment_gateway: "razorpay",
       })
       .select()
       .single()
@@ -95,8 +96,6 @@ export async function initiatePayment(params: InitiatePaymentParams) {
 
     // Create Razorpay order
     const razorpayUrl = "https://api.razorpay.com/v1/orders"
-    
-    const amountInPaise = Math.round(amount * 100) // Razorpay expects amount in paise (smallest currency unit)
     
     console.log("[v0] ========== RAZORPAY ORDER CREATION ==========")
     console.log("[v0] Amount received from frontend (INR):", amount)
@@ -138,12 +137,15 @@ export async function initiatePayment(params: InitiatePaymentParams) {
     const razorpayOrder = await response.json()
     console.log("[v0] Razorpay order created:", razorpayOrder.id)
 
-    // Update transaction with Razorpay order ID
+    // Update transaction with Razorpay order ID and credits info
     await supabase
       .from("payment_transactions")
       .update({
         transaction_id: razorpayOrder.id,
-        response_data: razorpayOrder,
+        response_data: {
+          ...razorpayOrder,
+          credits: plan.credits_allocated, // Store credits in response_data
+        },
       })
       .eq("id", transaction.id)
 
