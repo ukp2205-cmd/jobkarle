@@ -80,25 +80,23 @@ export async function initiatePayment(params: InitiatePaymentParams) {
     // Get Cashfree credentials from environment
     const clientId = process.env.CASHFREE_CLIENT_ID
     const clientSecret = process.env.CASHFREE_CLIENT_SECRET
-    const mode = process.env.CASHFREE_MODE || "sandbox"
+    const mode = process.env.CASHFREE_MODE || "production"
 
     if (!clientId || !clientSecret) {
       console.error("[v0] Cashfree credentials not configured")
       return { success: false, message: "Payment gateway not configured" }
     }
 
+    // Use the environment mode (production credentials with production API)
     const sandboxMode = mode === "sandbox"
     const cashfreeUrl = sandboxMode
       ? "https://sandbox.cashfree.com/pg/orders"
       : "https://api.cashfree.com/pg/orders"
 
-    console.log("[v0] Using Cashfree mode:", mode, "URL:", cashfreeUrl)
+    console.log("[v0] Using Cashfree mode:", mode, "sandboxMode:", sandboxMode, "URL:", cashfreeUrl)
 
-    // For sandbox mode, we can use HTTP URLs for local testing
-    // For production, use HTTPS URLs
-    const baseUrl = sandboxMode && !process.env.NEXT_PUBLIC_APP_URL
-      ? "https://localhost:3000"  // Use https for sandbox even in local
-      : (process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000")
+    // Always use HTTPS for production API
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://your-production-domain.com"
 
     // Create Cashfree order
     const orderPayload = {
