@@ -49,7 +49,25 @@ export default function EmployerLogin() {
       const result = await loginEmployer(formData.email, formData.password)
 
       if (result.success) {
-        console.log("[v0] Login successful, checking for redirect parameters")
+        console.log("[v0] Login successful, allocating free credits if needed")
+        
+        // Auto-allocate 10 free monthly credits on first login or if expired
+        try {
+          const { allocateMonthlyFreeCredits, hasActiveFreeCredits } = await import("@/app/actions/free-credits-actions")
+          const employerId = result.session?.employerId || ""
+          const hasCredits = await hasActiveFreeCredits(employerId)
+          
+          if (!hasCredits && employerId) {
+            console.log("[v0] No active free credits found, allocating 10 monthly free credits")
+            await allocateMonthlyFreeCredits(employerId)
+          } else {
+            console.log("[v0] Employer already has active free credits")
+          }
+        } catch (error) {
+          console.error("[v0] Error checking/allocating free credits:", error)
+        }
+        
+        console.log("[v0] Checking for redirect parameters")
         
         // Check URL params for redirect and plan selection
         const urlParams = new URLSearchParams(window.location.search)

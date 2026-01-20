@@ -95,12 +95,14 @@ export async function initiatePayment(params: InitiatePaymentParams) {
 
     console.log("[v0] Using Cashfree mode:", mode, "sandboxMode:", sandboxMode, "URL:", cashfreeUrl)
 
-    // Get the actual deployment URL from Vercel environment variables
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-                   "https://job-karle-mfewsz767-ukp2205-2966s-projects.vercel.app"
+    // IMPORTANT: Use a fixed stable domain that is whitelisted in Cashfree
+    // For production, set NEXT_PUBLIC_APP_URL environment variable
+    // For testing, we use a stable domain that needs to be whitelisted in Cashfree merchant dashboard
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://job-karle.vercel.app"
     
-    console.log("[v0] Using base URL for payment:", baseUrl)
+    console.log("[v0] Using STABLE base URL for payment:", baseUrl)
+    console.log("[v0] ⚠️ IMPORTANT: This URL must be whitelisted in Cashfree Merchant Dashboard")
+    console.log("[v0] ⚠️ Go to: merchant.cashfree.com > Developers > Whitelisting")
 
     // Create Cashfree order
     const orderPayload = {

@@ -14,6 +14,7 @@ import { PaymentCheckoutModal } from "@/components/payment-checkout-modal"
 import { getEmployerSession } from "@/app/actions/employer-auth-actions"
 import { getActivePlans } from "@/app/actions/plans-actions"
 import type { Plan } from "@/app/actions/plans-actions"
+import { allocateMonthlyFreeCredits, hasActiveFreeCredits } from "@/app/actions/free-credits-actions"
 
 export default function EmployerPricingPage() {
   const router = useRouter()
@@ -29,6 +30,7 @@ export default function EmployerPricingPage() {
   const [showLoginDialog, setShowLoginDialog] = useState(false)
   const [pendingPlan, setPendingPlan] = useState<Plan | null>(null)
   const hasProcessedSelectedPlan = useRef(false)
+  const employerSession = useRef<any>(null)
 
   useEffect(() => {
     checkEmployerSession()
@@ -46,20 +48,34 @@ export default function EmployerPricingPage() {
       // Check if user came back from login with a selected plan (only once)
       const selectedPlanSlug = searchParams.get("selectedPlan")
       if (selectedPlanSlug && isAuthenticated && !hasProcessedSelectedPlan.current) {
-        console.log("[v0] Auto-opening payment modal for plan:", selectedPlanSlug)
         hasProcessedSelectedPlan.current = true // Mark as processed immediately
         
         const selectedPlan = plans.find((p) => p.slug === selectedPlanSlug)
         if (selectedPlan) {
-          const quantity = initialQuantities[selectedPlan.id] || 1
-          const totalAmount = calculateTotalPrice(selectedPlan.price, quantity)
-          setSelectedPlan({ planType: selectedPlan.slug, amount: totalAmount })
-          setShowPaymentModal(true)
-          
-          // Clean up URL by removing selectedPlan param
-          const newUrl = new URL(window.location.href)
-          newUrl.searchParams.delete("selectedPlan")
-          window.history.replaceState({}, "", newUrl.toString())
+          // Check if it's the FREE plan - skip payment and allocate credits directly
+          if (selectedPlan.slug === "free") {
+            console.log("[v0] Free plan selected, allocating credits and redirecting to post job")
+            
+            // Clean up URL first
+            const newUrl = new URL(window.location.href)
+            newUrl.searchParams.delete("selectedPlan")
+            window.history.replaceState({}, "", newUrl.toString())
+            
+            // Allocate free credits and redirect
+            handleFreePlanSelection()
+          } else {
+            // For paid plans, open payment modal
+            console.log("[v0] Auto-opening payment modal for plan:", selectedPlanSlug)
+            const quantity = initialQuantities[selectedPlan.id] || 1
+            const totalAmount = calculateTotalPrice(selectedPlan.price, quantity)
+            setSelectedPlan({ planType: selectedPlan.slug, amount: totalAmount })
+            setShowPaymentModal(true)
+            
+            // Clean up URL by removing selectedPlan param
+            const newUrl = new URL(window.location.href)
+            newUrl.searchParams.delete("selectedPlan")
+            window.history.replaceState({}, "", newUrl.toString())
+          }
         }
       }
     }
@@ -83,6 +99,7 @@ export default function EmployerPricingPage() {
       const { success, session } = await getEmployerSession()
       if (success && session) {
         setIsAuthenticated(true)
+        employerSession.current = session
         const fromJobPosting = searchParams.get("from") === "job-posting"
         if (fromJobPosting && plans.length > 0) {
           const premiumPlan = plans.find((p) => p.slug === "premium")
@@ -116,7 +133,38 @@ export default function EmployerPricingPage() {
 
   const handleLoginRedirect = () => {
     if (pendingPlan) {
-      router.push(`/employer/login?redirect=/employer/pricing&plan=${pendingPlan.slug}`)
+      if (pendingPlan.slug === "free") {
+        router.push(`/employer/login?redirect=/employer/pricing&plan=free`)
+      } else {
+        router.push(`/employer/login?redirect=/employer/pricing&plan=${pendingPlan.slug}`)
+      }
+    }
+  }
+
+  const handleFreePlanSelection = async () => {
+    console.log("[v0] Allocating free credits and redirecting to post job")
+    try {
+      // Check if already has free credits
+      const hasCredits = await hasActiveFreeCredits(employerSession.current?.employerId || "")
+      
+      let showNotification = false
+      if (!hasCredits) {
+        console.log("[v0] Allocating 10 free monthly credits")
+        await allocateMonthlyFreeCredits(employerSession.current?.employerId || "")
+        showNotification = true
+      } else {
+        console.log("[v0] Employer already has active free credits")
+      }
+      
+      // Redirect to post job page with notification parameter if credits were allocated
+      if (showNotification) {
+        router.push("/employer/post-job?freeCreditsAllocated=true")
+      } else {
+        router.push("/employer/post-job")
+      }
+    } catch (error) {
+      console.error("[v0] Error allocating free credits:", error)
+      router.push("/employer/post-job")
     }
   }
 
@@ -333,12 +381,15 @@ export default function EmployerPricingPage() {
                     <Button
                       onClick={() => {
                         if (!isAuthenticated) {
-                          router.push("/employer/login?redirect=/employer/post-job")
+                          console.log("[v0] User not authenticated for free plan, showing login dialog")
+                          setPendingPlan(plan)
+                          setShowLoginDialog(true)
                         } else {
-                          router.push("/employer/post-job")
+                          // Allocate free credits if not already done
+                          handleFreePlanSelection()
                         }
                       }}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                      className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold shadow-md hover:shadow-lg transition-all"
                       size="lg"
                     >
                       Post a free job

@@ -14,8 +14,9 @@ export async function getEducationNamesByLevel(educationLevel: string) {
   try {
     const supabase = await createClient()
 
+    // Use educations_with_level table which has the education_level column
     const { data, error } = await supabase
-      .from("educations")
+      .from("educations_with_level")
       .select("education_name")
       .eq("education_level", educationLevel)
       .order("education_name", { ascending: true })
