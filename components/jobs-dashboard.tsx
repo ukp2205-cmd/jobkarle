@@ -57,6 +57,9 @@ interface Job {
   new_responses: number
   shortlisted: number
   expires_at?: string // Added for expiry
+  company_name?: string // Added for share
+  min_experience?: number // Added for share
+  max_experience?: number // Added for share
 }
 
 interface Filters {
@@ -291,7 +294,14 @@ function JobsDashboard({
 
     const jobUrl = `${window.location.origin}/jobs/${shareModalJob.id}`
     const jobTitle = shareModalJob.job_title
-    const shareText = `Check out this job opportunity: ${jobTitle}`
+    const location = shareModalJob.location
+    const company = shareModalJob.company_name || companyName
+    const experience = shareModalJob.min_experience !== undefined && shareModalJob.max_experience !== undefined
+      ? `${shareModalJob.min_experience} to ${shareModalJob.max_experience} years of experience`
+      : ""
+    
+    // Format: Job Title - Location - Company Name - Experience
+    const shareText = `${jobTitle} - ${location} - ${company}${experience ? ` - ${experience}` : ""}`
 
     let shareUrl = ""
 

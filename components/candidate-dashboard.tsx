@@ -488,10 +488,25 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
 
       const result = await getRecommendedJobs(candidateId)
       if (result.success) {
+        console.log("[v0] CLIENT: First job received:", result.jobs[0] ? {
+          company_name: result.jobs[0].company_name,
+          company_logo_url: result.jobs[0].company_logo_url,
+          employers: result.jobs[0].employers,
+          employer_logo: result.jobs[0].employers?.logo_url
+        } : "No jobs")
+        
         const jobsWithStatus = result.jobs.map((job: Job) => ({
           ...job,
           status: appliedIds.has(job.id) ? "applied" : undefined,
         }))
+        
+        console.log("[v0] CLIENT: First job after mapping:", jobsWithStatus[0] ? {
+          company_name: jobsWithStatus[0].company_name,
+          company_logo_url: jobsWithStatus[0].company_logo_url,
+          employers: jobsWithStatus[0].employers,
+          employer_logo: jobsWithStatus[0].employers?.logo_url
+        } : "No jobs")
+        
         setJobs(jobsWithStatus)
         if (activeTab === "recommended") {
           setFilteredJobs(jobsWithStatus)
@@ -1745,7 +1760,15 @@ function CandidateDashboard({ candidateId, candidateName }: CandidateDashboardPr
                         <div className="flex items-center gap-2">
                           <Avatar className="w-10 h-10 md:w-12 md:h-12 border-2 border-gray-200 flex-shrink-0">
                             <AvatarImage 
-                              src={job.company_logo_url || job.employers?.logo_url || "/jobkarle-logo.png"} 
+                              src={(() => {
+                                const logoSrc = job.company_logo_url || job.employers?.logo_url || "/jobkarle-logo.png"
+                                console.log("[v0] Avatar rendering for:", job.company_name, "Logo:", logoSrc, {
+                                  company_logo_url: job.company_logo_url,
+                                  employers: job.employers,
+                                  employer_logo: job.employers?.logo_url
+                                })
+                                return logoSrc
+                              })()} 
                               alt={job.company_name} 
                             />
                             <AvatarFallback className="bg-blue-600 text-white text-sm font-semibold">

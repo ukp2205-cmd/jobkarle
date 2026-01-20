@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Transaction found with status:", transaction.status)
 
-    if (transaction.status === "success") {
-      return NextResponse.json({ success: true, status: "success", message: "Payment successful" })
+    if (transaction.status === "completed" || transaction.status === "success") {
+      return NextResponse.json({ success: true, status: "completed", message: "Payment successful" })
     } else if (transaction.status === "pending") {
       const createdAt = new Date(transaction.created_at).getTime()
       const now = Date.now()

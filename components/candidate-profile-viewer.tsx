@@ -110,7 +110,34 @@ type CandidateProfileViewerProps = {
   candidateId: string
 }
 
-export default function CandidateProfileViewer({ candidateId }: CandidateProfileViewerProps) {
+// Helper components for displaying info items
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-gray-600">{label}</p>
+      <p className="text-sm text-gray-900 mt-1">{value}</p>
+    </div>
+  )
+}
+
+function InfoItemHighlight({ 
+  label, 
+  value, 
+  highlightFn 
+}: { 
+  label: string
+  value: string
+  highlightFn: (text: string) => string 
+}) {
+  return (
+    <div>
+      <p className="text-sm font-medium text-gray-600">{label}</p>
+      <p className="text-sm text-gray-900 mt-1" dangerouslySetInnerHTML={{ __html: highlightFn(value) }} />
+    </div>
+  )
+}
+
+function CandidateProfileViewer({ candidateId }: CandidateProfileViewerProps) {
   const [candidate, setCandidate] = useState<CandidateData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -123,6 +150,9 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   const jobId = searchParams.get("jobId")
   const jobTitle = searchParams.get("jobTitle")
   const applicationId = searchParams.get("applicationId")
+  const searchKeywords = searchParams.get("keywords")?.split(",").filter(Boolean) || []
+  const searchSkills = searchParams.get("skills")?.split(",").filter(Boolean) || []
+  const allSearchTerms = [...searchKeywords, ...searchSkills]
 
   useEffect(() => {
     loadCandidateProfile()
@@ -130,6 +160,19 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
       loadJobRequiredSkills()
     }
   }, [candidateId, jobId])
+
+  const highlightSearchTerms = (text: string | null | undefined): string => {
+    if (!text || allSearchTerms.length === 0) return text || ""
+    
+    let highlighted = text
+    allSearchTerms.forEach((term) => {
+      if (term.trim()) {
+        const regex = new RegExp(`(${term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi")
+        highlighted = highlighted.replace(regex, '<mark class="bg-yellow-200 font-semibold px-1 rounded">$1</mark>')
+      }
+    })
+    return highlighted
+  }
 
   const loadJobRequiredSkills = async () => {
     if (!jobId) return
@@ -445,10 +488,10 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                   </Avatar>
 
                   <div className="flex-1">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-2">{candidate.full_name}</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2" dangerouslySetInnerHTML={{ __html: highlightSearchTerms(candidate.full_name) }} />
 
                     {candidate.resume_headline && (
-                      <p className="text-base text-gray-700 mb-3 leading-relaxed">{candidate.resume_headline}</p>
+                      <p className="text-base text-gray-700 mb-3 leading-relaxed" dangerouslySetInnerHTML={{ __html: highlightSearchTerms(candidate.resume_headline) }} />
                     )}
 
                     <div className="flex flex-wrap gap-2 text-sm text-gray-600">
@@ -535,26 +578,27 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     <h2 className="text-lg font-semibold text-gray-900">Professional Summary</h2>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <InfoItem label="Experience" value={getExperienceText()} />
-                    <InfoItem label="Current Role" value={candidate.current_job_title || "Not specified"} />
-                    <InfoItem label="Company" value={candidate.company_name || "Not specified"} />
-                    <InfoItem
+                    <InfoItemHighlight label="Experience" value={getExperienceText()} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Current Role" value={candidate.current_job_title || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Company" value={candidate.company_name || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight
                       label="Employment Status"
                       value={candidate.currently_employed === "yes" ? "Employed" : "Not Employed"}
+                      highlightFn={highlightSearchTerms}
                     />
                     {candidate.work_status !== "fresher" && (
                       <>
-                        <InfoItem label="Current Salary" value={candidate.annual_salary || "Not disclosed"} />
-                        <InfoItem label="Notice Period" value={candidate.notice_period || "Not specified"} />
+                        <InfoItemHighlight label="Current Salary" value={candidate.annual_salary || "Not disclosed"} highlightFn={highlightSearchTerms} />
+                        <InfoItemHighlight label="Notice Period" value={candidate.notice_period || "Not specified"} highlightFn={highlightSearchTerms} />
                       </>
                     )}
                     {candidate.work_status === "fresher" && candidate.availability_to_join && (
-                      <InfoItem label="Availability" value={candidate.availability_to_join} />
+                      <InfoItemHighlight label="Availability" value={candidate.availability_to_join} highlightFn={highlightSearchTerms} />
                     )}
-                    <InfoItem label="Industry" value={candidate.industry || "Not specified"} />
-                    <InfoItem label="Department" value={candidate.department || "Not specified"} />
-                    <InfoItem label="Role Category" value={candidate.role_category || "Not specified"} />
-                    <InfoItem label="Job Role" value={candidate.job_role || "Not specified"} />
+                    <InfoItemHighlight label="Industry" value={candidate.industry || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Department" value={candidate.department || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Role Category" value={candidate.role_category || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Job Role" value={candidate.job_role || "Not specified"} highlightFn={highlightSearchTerms} />
                   </div>
                 </CardContent>
               </Card>
@@ -571,12 +615,12 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                         <div key={index} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                           <div className="flex justify-between items-start mb-1">
                             <div>
-                              <h3 className="font-semibold text-gray-900">
-                                {job.job_title || job.currentJobTitle || "Job Title Not Specified"}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {job.company_name || job.companyName || "Company Not Specified"}
-                              </p>
+                              <h3 className="font-semibold text-gray-900" dangerouslySetInnerHTML={{ 
+                                __html: highlightSearchTerms(job.job_title || job.currentJobTitle || "Job Title Not Specified") 
+                              }} />
+                              <p className="text-sm text-gray-600" dangerouslySetInnerHTML={{ 
+                                __html: highlightSearchTerms(job.company_name || job.companyName || "Company Not Specified") 
+                              }} />
                             </div>
                             {(job.is_current || job.currently_working) && (
                               <Badge variant="secondary" className="bg-green-100 text-green-700">
@@ -624,16 +668,17 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                   {candidate.highest_qualification || candidate.course ? (
                     <div className="space-y-3">
                       {candidate.highest_qualification && (
-                        <InfoItem label="Highest Qualification" value={candidate.highest_qualification} />
+                        <InfoItemHighlight label="Highest Qualification" value={candidate.highest_qualification} highlightFn={highlightSearchTerms} />
                       )}
-                      {candidate.course && <InfoItem label="Course" value={candidate.course} />}
-                      {candidate.course_type && <InfoItem label="Course Type" value={candidate.course_type} />}
-                      {candidate.specialization && <InfoItem label="Specialization" value={candidate.specialization} />}
-                      {candidate.university && <InfoItem label="University" value={candidate.university} />}
+                      {candidate.course && <InfoItemHighlight label="Course" value={candidate.course} highlightFn={highlightSearchTerms} />}
+                      {candidate.course_type && <InfoItemHighlight label="Course Type" value={candidate.course_type} highlightFn={highlightSearchTerms} />}
+                      {candidate.specialization && <InfoItemHighlight label="Specialization" value={candidate.specialization} highlightFn={highlightSearchTerms} />}
+                      {candidate.university && <InfoItemHighlight label="University" value={candidate.university} highlightFn={highlightSearchTerms} />}
                       {(candidate.starting_year || candidate.passing_year) && (
-                        <InfoItem
+                        <InfoItemHighlight
                           label="Year"
                           value={`${candidate.starting_year || "N/A"} - ${candidate.passing_year || "N/A"}`}
+                          highlightFn={highlightSearchTerms}
                         />
                       )}
                     </div>
@@ -737,11 +782,18 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                         <div>
                           <p className="text-sm font-medium text-gray-700 mb-2">Skills for Role</p>
                           <div className="flex flex-wrap gap-2">
-                            {candidate.skills_for_role.map((skill, index) => (
-                              <Badge key={index} variant="secondary" className="text-xs">
-                                {skill}
-                              </Badge>
-                            ))}
+                            {candidate.skills_for_role.map((skill, index) => {
+                              const isMatched = allSearchTerms.some(term => skill.toLowerCase().includes(term.toLowerCase()))
+                              return (
+                                <Badge 
+                                  key={index} 
+                                  variant="secondary" 
+                                  className={isMatched ? "text-xs bg-yellow-200 text-yellow-900 font-semibold" : "text-xs"}
+                                >
+                                  {skill}
+                                </Badge>
+                              )
+                            })}
                           </div>
                         </div>
                       )}
@@ -749,11 +801,18 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                         <div>
                           <p className="text-sm font-medium text-gray-600 mb-2">All Skills</p>
                           <div className="flex flex-wrap gap-2">
-                            {candidate.skills_you_know.map((skill, index) => (
-                              <Badge key={index} variant="outline" className="text-xs">
-                                {skill}
-                              </Badge>
-                            ))}
+                            {candidate.skills_you_know.map((skill, index) => {
+                              const isMatched = allSearchTerms.some(term => skill.toLowerCase().includes(term.toLowerCase()))
+                              return (
+                                <Badge 
+                                  key={index} 
+                                  variant="outline" 
+                                  className={isMatched ? "text-xs bg-yellow-200 text-yellow-900 font-semibold border-yellow-400" : "text-xs"}
+                                >
+                                  {skill}
+                                </Badge>
+                              )
+                            })}
                           </div>
                         </div>
                       )}
@@ -795,11 +854,12 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     <h2 className="text-lg font-semibold text-gray-900">Job Preferences</h2>
                   </div>
                   <div className="space-y-3">
-                    <InfoItem
+                    <InfoItemHighlight
                       label="Preferred Salary"
                       value={
                         candidate.preferred_salary ? formatSalaryToLPA(candidate.preferred_salary) : "Not specified"
                       }
+                      highlightFn={highlightSearchTerms}
                     />
                     <div>
                       <p className="text-sm font-medium text-gray-600 mb-2">Preferred Locations</p>
@@ -826,18 +886,19 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
                     <h2 className="text-lg font-semibold text-gray-900">Personal Information</h2>
                   </div>
                   <div className="space-y-3">
-                    <InfoItem label="Current City" value={candidate.current_city || "Not specified"} />
-                    <InfoItem label="Current State" value={candidate.current_state || "Not specified"} />
-                    <InfoItem label="Work Status" value={candidate.work_status || "Not specified"} />
-                    <InfoItem label="Gender" value={candidate.gender || "Not specified"} />
-                    <InfoItem label="Date of Birth" value={formatDate(candidate.date_of_birth)} />
-                    <InfoItem
+                    <InfoItemHighlight label="Current City" value={candidate.current_city || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Current State" value={candidate.current_state || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Work Status" value={candidate.work_status || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Gender" value={candidate.gender || "Not specified"} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight label="Date of Birth" value={formatDate(candidate.date_of_birth)} highlightFn={highlightSearchTerms} />
+                    <InfoItemHighlight
                       label="Marital Status"
                       value={
                         candidate.marital_status
                           ? candidate.marital_status.charAt(0).toUpperCase() + candidate.marital_status.slice(1)
                           : "Not specified"
                       }
+                      highlightFn={highlightSearchTerms}
                     />
                   </div>
                 </CardContent>
@@ -850,13 +911,5 @@ export default function CandidateProfileViewer({ candidateId }: CandidateProfile
   )
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-gray-600">{label}</p>
-      <p className="text-sm text-gray-900 mt-1">{value}</p>
-    </div>
-  )
-}
-
 export { CandidateProfileViewer }
+export default CandidateProfileViewer

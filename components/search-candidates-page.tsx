@@ -77,7 +77,8 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
 
   // Search Filters State
   const [filters, setFilters] = useState({
-    keywords: "",
+    keywords: [] as string[], // Changed to array for multiple keywords
+    keywordInput: "", // Added input field for keywords
     skills: [] as string[],
     skillInput: "",
     excludeKeywords: "",
@@ -172,13 +173,17 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
 
   const loadRecentSearches = async () => {
     try {
+      console.log("[v0] Loading recent searches for employer:", employerId)
       const result = await getRecentSearches(employerId)
+      console.log("[v0] Recent searches result:", result)
       if (result.success) {
+        console.log("[v0] Recent searches count:", result.recentSearches?.length || 0)
+        console.log("[v0] Saved searches count:", result.savedSearches?.length || 0)
         setRecentSearches(result.recentSearches || [])
         setSavedSearches(result.savedSearches || [])
       }
     } catch (error) {
-      console.error("Error loading recent searches:", error)
+      console.error("[v0] Error loading recent searches:", error)
     }
   }
 
@@ -222,7 +227,7 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
       // Build search params
       const searchParams = new URLSearchParams()
 
-      if (filters.keywords) searchParams.set("keywords", filters.keywords)
+      if (filters.keywords.length > 0) searchParams.set("keywords", filters.keywords.join(","))
       if (filters.skills.length > 0) searchParams.set("skills", filters.skills.join(","))
       if (filters.excludeKeywords) searchParams.set("excludeKeywords", filters.excludeKeywords)
       if (filters.location.length > 0) searchParams.set("locations", filters.location.join(","))
@@ -243,8 +248,26 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
       if (filters.employmentType.length > 0) searchParams.set("employmentType", filters.employmentType.join(","))
       if (filters.showOnly.length > 0) searchParams.set("showOnly", filters.showOnly.join(","))
 
-      // Navigate to search results page
-      router.push(`/employer/search-candidates/results?${searchParams.toString()}`)
+      // Auto-save to recent searches
+      const searchName = filters.keywords.length > 0 
+        ? filters.keywords.join(", ") 
+        : filters.skills.length > 0 
+        ? filters.skills.join(", ") 
+        : "Search"
+      
+      console.log("[v0] Saving search with name:", searchName, "filters:", filters)
+      const saveResult = await saveSearch({
+        employerId,
+        searchName,
+        filters,
+      })
+      console.log("[v0] Save search result:", saveResult)
+      
+      // Reload recent searches
+      await loadRecentSearches()
+
+      // Navigate to candidates page with search filters
+      router.push(`/employer/candidates?${searchParams.toString()}`)
     } catch (error) {
       console.error("Search error:", error)
       toast({
@@ -260,7 +283,7 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
     try {
       const result = await saveSearch({
         employerId,
-        searchName: filters.keywords || filters.skills.join(", ") || "Untitled Search",
+        searchName: filters.keywords.join(", ") || filters.skills.join(", ") || "Untitled Search",
         filters,
       })
       if (result.success) {
@@ -284,8 +307,27 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
       setFilters(search.filters)
     }
     if (search.keywords) {
-      setFilters((prev) => ({ ...prev, keywords: search.keywords }))
+      // Handle both string and array formats for backward compatibility
+      const keywordsArray = Array.isArray(search.keywords) ? search.keywords : [search.keywords]
+      setFilters((prev) => ({ ...prev, keywords: keywordsArray }))
     }
+  }
+
+  const addKeyword = (keyword: string) => {
+    if (keyword.trim() && !filters.keywords.includes(keyword.trim())) {
+      setFilters((prev) => ({
+        ...prev,
+        keywords: [...prev.keywords, keyword.trim()],
+        keywordInput: "",
+      }))
+    }
+  }
+
+  const removeKeyword = (keyword: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      keywords: prev.keywords.filter((k) => k !== keyword),
+    }))
   }
 
   const addSkill = (skill: string) => {
@@ -420,17 +462,40 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <FileText className="h-4 w-4 text-blue-500" />
-                    Keywords
+                    Keywords (Press Enter to add)
                   </Label>
                   <div className="relative">
                     <Input
-                      placeholder="Enter job title, designation, company name..."
-                      value={filters.keywords}
-                      onChange={(e) => setFilters((prev) => ({ ...prev, keywords: e.target.value }))}
+                      placeholder="Enter keyword and press Enter (e.g. java, developer, engineer)..."
+                      value={filters.keywordInput}
+                      onChange={(e) => setFilters((prev) => ({ ...prev, keywordInput: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addKeyword(filters.keywordInput)
+                        }
+                      }}
                       className="h-12 pl-4 pr-12 text-base border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-xl"
                     />
                     <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                   </div>
+                  
+                  {/* Selected Keywords */}
+                  {filters.keywords.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {filters.keywords.map((keyword) => (
+                        <Badge
+                          key={keyword}
+                          variant="secondary"
+                          className="px-3 py-1.5 bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer"
+                          onClick={() => removeKeyword(keyword)}
+                        >
+                          {keyword}
+                          <X className="h-3 w-3 ml-1" />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Skills Input with Autocomplete */}
                   <div className="space-y-2">
@@ -1063,20 +1128,22 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                 {recentSearches.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-4">No recent searches</p>
                 ) : (
-                  recentSearches.slice(0, 5).map((search) => (
+                  recentSearches.slice(0, 3).map((search) => (
                     <div
                       key={search.id}
-                      className="p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+                      className="p-3 rounded-lg border border-gray-100 hover:bg-blue-50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        fillSearch(search)
+                        // Auto-execute search after filling
+                        setTimeout(() => {
+                          handleSearch()
+                        }, 100)
+                      }}
                     >
-                      <p className="text-sm font-medium text-gray-900 truncate">{search.keywords || "Search"}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={() => fillSearch(search)}
-                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          Fill this search
-                        </button>
-                      </div>
+                      <p className="text-sm font-medium text-gray-900 truncate">{search.search_name || search.keywords || "Search"}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(search.created_at).toLocaleDateString()}
+                      </p>
                     </div>
                   ))
                 )}

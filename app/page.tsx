@@ -18,6 +18,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { FloatingInquiryButton } from "@/components/floating-inquiry-button"
 
 export default function HomePage() {
   const [showResults, setShowResults] = useState(false)
@@ -707,6 +708,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Floating Inquiry Button */}
+      <FloatingInquiryButton />
     </div>
   )
 }

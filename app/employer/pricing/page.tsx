@@ -1,15 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
+
+import { useEffect, useState, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Check, X, ArrowLeft, Sparkles, ChevronDown, Loader2 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Check, X, ArrowLeft, Sparkles, ChevronDown, Loader2, LogIn } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { PaymentCheckoutModal } from "@/components/payment-checkout-modal"
 import { getEmployerSession } from "@/app/actions/employer-auth-actions"
 import { getActivePlans } from "@/app/actions/plans-actions"
-import { useRouter, useSearchParams } from "next/navigation"
 import type { Plan } from "@/app/actions/plans-actions"
 
 export default function EmployerPricingPage() {
@@ -23,6 +26,9 @@ export default function EmployerPricingPage() {
   const [plansLoading, setPlansLoading] = useState(true)
   const [plans, setPlans] = useState<Plan[]>([])
   const [planQuantities, setPlanQuantities] = useState<Record<string, number>>({})
+  const [showLoginDialog, setShowLoginDialog] = useState(false)
+  const [pendingPlan, setPendingPlan] = useState<Plan | null>(null)
+  const hasProcessedSelectedPlan = useRef(false)
 
   useEffect(() => {
     checkEmployerSession()
@@ -36,8 +42,28 @@ export default function EmployerPricingPage() {
         initialQuantities[plan.id] = 1
       })
       setPlanQuantities(initialQuantities)
+      
+      // Check if user came back from login with a selected plan (only once)
+      const selectedPlanSlug = searchParams.get("selectedPlan")
+      if (selectedPlanSlug && isAuthenticated && !hasProcessedSelectedPlan.current) {
+        console.log("[v0] Auto-opening payment modal for plan:", selectedPlanSlug)
+        hasProcessedSelectedPlan.current = true // Mark as processed immediately
+        
+        const selectedPlan = plans.find((p) => p.slug === selectedPlanSlug)
+        if (selectedPlan) {
+          const quantity = initialQuantities[selectedPlan.id] || 1
+          const totalAmount = calculateTotalPrice(selectedPlan.price, quantity)
+          setSelectedPlan({ planType: selectedPlan.slug, amount: totalAmount })
+          setShowPaymentModal(true)
+          
+          // Clean up URL by removing selectedPlan param
+          const newUrl = new URL(window.location.href)
+          newUrl.searchParams.delete("selectedPlan")
+          window.history.replaceState({}, "", newUrl.toString())
+        }
+      }
     }
-  }, [plans])
+  }, [plans, isAuthenticated])
 
   async function loadPlans() {
     setPlansLoading(true)
@@ -74,10 +100,24 @@ export default function EmployerPricingPage() {
   }
 
   const handlePlanSelection = (plan: Plan) => {
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      console.log("[v0] User not authenticated, showing login dialog")
+      setPendingPlan(plan)
+      setShowLoginDialog(true)
+      return
+    }
+    
     const quantity = planQuantities[plan.id] || 1
     const totalAmount = calculateTotalPrice(plan.price, quantity)
     setSelectedPlan({ planType: plan.slug, amount: totalAmount })
     setShowPaymentModal(true)
+  }
+
+  const handleLoginRedirect = () => {
+    if (pendingPlan) {
+      router.push(`/employer/login?redirect=/employer/pricing&plan=${pendingPlan.slug}`)
+    }
   }
 
   const calculateTotalPrice = (basePrice: number, quantity: number) => {
@@ -151,6 +191,16 @@ export default function EmployerPricingPage() {
       {/* Hero Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="text-center mb-12">
+          {searchParams.get("reason") === "no_credits" && (
+            <div className="mb-6 mx-auto max-w-2xl bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-blue-800 font-semibold">
+                Welcome! To start posting jobs, please purchase a plan below.
+              </p>
+              <p className="text-blue-600 text-sm mt-1">
+                You need at least 2 credits to post a job. Choose a plan that fits your hiring needs.
+              </p>
+            </div>
+          )}
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Choose the Right Plan for{" "}
             <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -281,7 +331,13 @@ export default function EmployerPricingPage() {
                   )}
                   {plan.slug === "free" && (
                     <Button
-                      onClick={() => router.push("/employer/register")}
+                      onClick={() => {
+                        if (!isAuthenticated) {
+                          router.push("/employer/login?redirect=/employer/post-job")
+                        } else {
+                          router.push("/employer/post-job")
+                        }
+                      }}
                       className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-md hover:shadow-lg transition-all"
                       size="lg"
                     >
@@ -298,7 +354,7 @@ export default function EmployerPricingPage() {
           <p className="text-gray-600 mb-4">
             Need a custom plan for your enterprise? Contact our sales team for tailored solutions.
           </p>
-          <Link href="/employer/register">
+          <Link href="/employer/login">
             <Button variant="outline" size="lg">
               Contact Sales
             </Button>
@@ -349,24 +405,53 @@ export default function EmployerPricingPage() {
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Ready to Find Your Perfect Hire?</h2>
           <p className="text-xl text-blue-100 mb-8">Join thousands of employers hiring on JobKarle today</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/employer/register">
-              <Button size="lg" variant="secondary" className="min-w-[200px]">
-                Start Free Trial
-              </Button>
-            </Link>
             <Link href="/employer/login">
               <Button size="lg" variant="secondary" className="min-w-[200px]">
                 Sign In
+              </Button>
+            </Link>
+            <Link href="/employer/login?redirect=/employer/register">
+              <Button size="lg" variant="outline" className="min-w-[200px] bg-white hover:bg-gray-50">
+                New? Register Here
               </Button>
             </Link>
           </div>
         </div>
       </section>
 
+      {/* Login Dialog */}
+      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LogIn className="w-5 h-5 text-blue-600" />
+              Login Required
+            </DialogTitle>
+            <DialogDescription>
+              You need to be logged in to purchase a plan and post jobs.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">
+              Please login to your employer account to continue with your purchase of the{" "}
+              <span className="font-semibold text-gray-900">{pendingPlan ? getPlanDisplayName(pendingPlan) : ""}</span> plan.
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowLoginDialog(false)} className="bg-transparent">
+              Cancel
+            </Button>
+            <Button onClick={handleLoginRedirect} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+              <LogIn className="w-4 h-4 mr-2" />
+              Login
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {showPaymentModal && selectedPlan && (
         <PaymentCheckoutModal
           planType={selectedPlan.planType}
-          billingCycle="monthly"
           amount={selectedPlan.amount}
           onClose={() => {
             setShowPaymentModal(false)

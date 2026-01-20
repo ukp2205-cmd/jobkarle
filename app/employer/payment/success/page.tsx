@@ -54,7 +54,7 @@ function SuccessContent() {
 
         console.log("[v0] Payment status response:", data)
 
-        if (data.success && data.status === "success") {
+        if (data.success && (data.status === "completed" || data.status === "success")) {
           console.log("[v0] Payment verified successfully from database")
           setPaymentState("success")
         } else if (data.status === "processing" && retryCount < 10) {
