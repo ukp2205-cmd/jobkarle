@@ -1103,33 +1103,61 @@ export async function approveEmployer(employerId: string, approvedBy: string) {
 
     // Allocate 10 free credits as welcome credits for approved employers
     try {
-      console.log("[v0] Allocating 10 welcome credits to approved employer:", employerId)
+      console.log("[v0] ========== ALLOCATING WELCOME CREDITS ==========")
+      console.log("[v0] Employer ID:", employerId)
+      console.log("[v0] Employer Email:", employer?.email)
+      console.log("[v0] Company Name:", employer?.company_name)
       
-      // Insert free credits directly into employer_credits table
-      const { data: creditRecord, error: creditError } = await supabase
+      // Check if employer already has active free credits
+      const { data: existingCredits, error: checkError } = await supabase
         .from("employer_credits")
-        .insert({
-          employer_id: employerId,
-          plan_type: "free",
-          credits_allocated: 10,
-          credits_used: 0,
-          credits_remaining: 10,
-          allocated_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days expiry
-          is_expired: false,
-          billing_cycle: "monthly",
-        })
-        .select()
-        .single()
-
-      if (creditError) {
-        console.error("[v0] Error allocating welcome credits:", creditError)
-        // Don't fail the approval if credits fail, just log the error
-      } else {
-        console.log("[v0] Successfully allocated 10 welcome credits, credit ID:", creditRecord?.id)
+        .select("id, credits_remaining, expires_at")
+        .eq("employer_id", employerId)
+        .eq("plan_type", "free")
+        .eq("is_expired", false)
+        .gt("credits_remaining", 0)
+      
+      if (checkError) {
+        console.error("[v0] Error checking existing credits:", checkError)
       }
+      
+      if (existingCredits && existingCredits.length > 0) {
+        console.log("[v0] Employer already has", existingCredits.length, "active free credit record(s)")
+        console.log("[v0] Skipping credit allocation to avoid duplicates")
+      } else {
+        console.log("[v0] No active free credits found, allocating 10 welcome credits")
+        
+        // Insert free credits directly into employer_credits table
+        const { data: creditRecord, error: creditError } = await supabase
+          .from("employer_credits")
+          .insert({
+            employer_id: employerId,
+            plan_type: "free",
+            credits_allocated: 10,
+            credits_used: 0,
+            credits_remaining: 10,
+            allocated_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days expiry (monthly)
+            is_expired: false,
+            billing_cycle: "monthly",
+          })
+          .select()
+          .single()
+
+        if (creditError) {
+          console.error("[v0] ❌ Error allocating welcome credits:", creditError.message, creditError.code)
+          console.error("[v0] Full error:", creditError)
+          // Don't fail the approval if credits fail, just log the error
+        } else {
+          console.log("[v0] ✓ Successfully allocated 10 welcome credits!")
+          console.log("[v0] Credit Record ID:", creditRecord?.id)
+          console.log("[v0] Expires At:", creditRecord?.expires_at)
+        }
+      }
+      
+      console.log("[v0] ========== WELCOME CREDITS ALLOCATION COMPLETE ==========")
     } catch (creditAllocationError) {
-      console.error("[v0] Exception allocating welcome credits:", creditAllocationError)
+      console.error("[v0] ❌ Exception allocating welcome credits:", creditAllocationError)
       // Continue with approval even if credit allocation fails
     }
 

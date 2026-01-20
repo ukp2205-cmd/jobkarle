@@ -7,7 +7,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = body
 
-    console.log("[v0] Verifying Razorpay payment:", { razorpay_order_id, razorpay_payment_id, orderId })
+    console.log("[v0] ========== PAYMENT VERIFICATION STARTED ==========")
+    console.log("[v0] Razorpay Order ID:", razorpay_order_id)
+    console.log("[v0] Razorpay Payment ID:", razorpay_payment_id)
+    console.log("[v0] Our Order ID:", orderId)
 
     // Verify signature
     const keySecret = process.env.RAZORPAY_KEY_SECRET
@@ -21,12 +24,15 @@ export async function POST(request: NextRequest) {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex")
 
+    console.log("[v0] Signature comparison - Received:", razorpay_signature.substring(0, 10) + "...")
+    console.log("[v0] Signature comparison - Generated:", generatedSignature.substring(0, 10) + "...")
+
     if (generatedSignature !== razorpay_signature) {
-      console.error("[v0] Signature verification failed")
-      return NextResponse.json({ success: false, message: "Payment verification failed" }, { status: 400 })
+      console.error("[v0] ❌ Signature verification FAILED")
+      return NextResponse.json({ success: false, message: "Payment signature verification failed" }, { status: 400 })
     }
 
-    console.log("[v0] Signature verified successfully")
+    console.log("[v0] ✓ Signature verified successfully")
 
     // Update transaction status in database
     const supabase = createAdminClient()
@@ -84,9 +90,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Failed to add credits" }, { status: 500 })
     }
 
-    console.log("[v0] Payment verified and credits added successfully")
+    console.log("[v0] ✓ Payment verified and credits added successfully")
+    console.log("[v0] ========== PAYMENT VERIFICATION COMPLETED ==========")
 
-    return NextResponse.json({ success: true, message: "Payment verified successfully" })
+    return NextResponse.json({ 
+      success: true, 
+      message: "Payment verified successfully",
+      credits_added: transaction.credits,
+      transaction_id: transaction.id
+    })
   } catch (error: any) {
     console.error("[v0] Error in payment verification:", error)
     return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 })

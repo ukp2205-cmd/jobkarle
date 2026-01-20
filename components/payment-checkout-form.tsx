@@ -75,7 +75,7 @@ export function PaymentCheckoutForm({
         return
       }
 
-      console.log("[v0] Initiating Razorpay payment")
+      console.log("[v0] Initiating Razorpay payment for amount:", amount, "(already includes 18% GST)")
 
       const response = await fetch("/api/payment/initiate", {
         method: "POST",
@@ -87,7 +87,7 @@ export function PaymentCheckoutForm({
           employerName,
           employerEmail,
           employerPhone,
-          amount,
+          amount, // Amount already includes GST from pricing page
         }),
       })
 
@@ -143,24 +143,40 @@ export function PaymentCheckoutForm({
           color: "#3b82f6",
         },
         handler: async function (response: any) {
-          console.log("[v0] Payment successful:", response)
-          // Verify payment on server
-          const verifyResponse = await fetch("/api/payment/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-              orderId: result.orderId,
-            }),
-          })
+          console.log("[v0] Payment captured successfully:", response)
           
-          const verifyResult = await verifyResponse.json()
-          if (verifyResult.success) {
-            window.location.href = `/employer/payment/success?order_id=${result.orderId}`
-          } else {
-            setError("Payment verification failed. Please contact support.")
+          try {
+            // Verify payment on server
+            const verifyResponse = await fetch("/api/payment/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                orderId: result.orderId,
+              }),
+            })
+            
+            if (!verifyResponse.ok) {
+              console.error("[v0] Verification API returned error:", verifyResponse.status)
+              throw new Error("Verification request failed")
+            }
+            
+            const verifyResult = await verifyResponse.json()
+            console.log("[v0] Verification result:", verifyResult)
+            
+            if (verifyResult.success) {
+              console.log("[v0] Payment verified successfully, redirecting to success page")
+              window.location.href = `/employer/payment/success?order_id=${result.orderId}&payment_id=${response.razorpay_payment_id}`
+            } else {
+              console.error("[v0] Payment verification failed:", verifyResult.message)
+              setError(`Payment verification failed: ${verifyResult.message}. Please contact support with payment ID: ${response.razorpay_payment_id}`)
+              setLoading(false)
+            }
+          } catch (error: any) {
+            console.error("[v0] Error during verification:", error)
+            setError(`Verification error: ${error.message}. Your payment ID: ${response.razorpay_payment_id}. Please contact support.`)
             setLoading(false)
           }
         },

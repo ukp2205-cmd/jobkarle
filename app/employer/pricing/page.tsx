@@ -169,7 +169,10 @@ export default function EmployerPricingPage() {
   }
 
   const calculateTotalPrice = (basePrice: number, quantity: number) => {
-    return basePrice * quantity
+    const subtotal = basePrice * quantity
+    const GST_RATE = 0.18 // 18% GST
+    const gstAmount = Math.round(subtotal * GST_RATE)
+    return subtotal + gstAmount // Return total including GST
   }
 
   const getPlanDisplayName = (plan: Plan) => {
