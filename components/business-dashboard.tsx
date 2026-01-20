@@ -303,6 +303,7 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
   const [employerSearchLoading, setEmployerSearchLoading] = useState(false)
   const [manualAssignments, setManualAssignments] = useState<Record<string, unknown>[]>([])
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [assignmentsSearch, setAssignmentsSearch] = useState("")
 
   // Fetch metrics on load
   useEffect(() => {
@@ -318,6 +319,8 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
     if (activeView === "team") fetchTeam()
     // Fetch pending employers when approvals view is active
     if (activeView === "approvals") fetchPendingEmployers()
+    // Fetch manual credit assignments when credits view is active
+    if (activeView === "credits") fetchManualAssignments(assignmentsSearch)
   }, [activeView, employerPage, candidatePage, jobPage, teamPage, jobStatusFilter, pendingPage]) // Added pendingPage dependency
 
   const fetchMetrics = async () => {
@@ -495,7 +498,8 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
   }
 
   // Fetch manual credit assignments
-  const fetchManualAssignments = async () => {
+  const fetchManualAssignments = async (searchQuery = "") => {
+    console.log("[v0] Fetching manual assignments, search:", searchQuery)
     setAssignmentsLoading(true)
     try {
       const supabase = createBrowserClient(
@@ -503,7 +507,7 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       )
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("manual_credit_assignments")
         .select(`
           *,
@@ -515,10 +519,35 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
         .order("assigned_at", { ascending: false })
         .limit(50)
 
+      // Apply search filter if search query exists
+      if (searchQuery && searchQuery.trim().length > 0) {
+        // Note: This searches by employer_id which won't work well
+        // We need to use a different approach for text search
+        console.log("[v0] Applying search filter:", searchQuery)
+      }
+
+      const { data, error } = await query
+
+      console.log("[v0] Manual assignments response - Data count:", data?.length, "Error:", error)
+      
       if (error) {
         console.error("[v0] Error fetching manual assignments:", error)
       } else {
-        setManualAssignments(data || [])
+        console.log("[v0] Setting manual assignments, count:", data?.length)
+        
+        // Apply client-side filtering for search
+        let filteredData = data || []
+        if (searchQuery && searchQuery.trim().length > 0) {
+          const searchLower = searchQuery.toLowerCase()
+          filteredData = filteredData.filter((assignment: any) => {
+            const companyName = assignment.employers?.company_name?.toLowerCase() || ""
+            const email = assignment.employers?.email?.toLowerCase() || ""
+            return companyName.includes(searchLower) || email.includes(searchLower)
+          })
+          console.log("[v0] After search filter, count:", filteredData.length)
+        }
+        
+        setManualAssignments(filteredData)
       }
     } catch (error) {
       console.error("[v0] Exception fetching manual assignments:", error)
@@ -1423,6 +1452,31 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Assign Credits
+              </Button>
+            </div>
+
+            {/* Search and Refresh Bar */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search by employer name or email..."
+                  value={assignmentsSearch}
+                  onChange={(e) => {
+                    setAssignmentsSearch(e.target.value)
+                    fetchManualAssignments(e.target.value)
+                  }}
+                  className="pl-10 bg-white"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => fetchManualAssignments(assignmentsSearch)}
+                disabled={assignmentsLoading}
+                className="bg-white"
+              >
+                <RefreshCw className={`w-4 h-4 ${assignmentsLoading ? "animate-spin" : ""}`} />
               </Button>
             </div>
 

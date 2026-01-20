@@ -152,55 +152,108 @@ export function PaymentCheckoutForm({
           color: "#3b82f6",
         },
         handler: async function (response: any) {
-          console.log("[v0] Payment captured successfully:", response)
+          console.log("[v0] ========== PAYMENT HANDLER CALLED ==========")
+          console.log("[v0] Razorpay response:", JSON.stringify(response, null, 2))
+          console.log("[v0] Order ID:", response.razorpay_order_id)
+          console.log("[v0] Payment ID:", response.razorpay_payment_id)
+          console.log("[v0] Signature:", response.razorpay_signature)
+          
+          // Prevent modal from closing during verification
+          setLoading(true)
           
           try {
+            console.log("[v0] Sending verification request to /api/payment/verify...")
+            
             // Verify payment on server
+            const verifyPayload = {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              orderId: response.razorpay_order_id, // Use Razorpay order ID for lookup
+            }
+            
+            console.log("[v0] Verification payload:", JSON.stringify(verifyPayload, null, 2))
+            
             const verifyResponse = await fetch("/api/payment/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                orderId: result.orderId,
-              }),
+              body: JSON.stringify(verifyPayload),
             })
             
+            console.log("[v0] Verification API response status:", verifyResponse.status)
+            
             if (!verifyResponse.ok) {
-              console.error("[v0] Verification API returned error:", verifyResponse.status)
-              throw new Error("Verification request failed")
+              const errorText = await verifyResponse.text()
+              console.error("[v0] Verification API error:", errorText)
+              throw new Error(`Verification failed with status ${verifyResponse.status}`)
             }
             
             const verifyResult = await verifyResponse.json()
-            console.log("[v0] Verification result:", verifyResult)
+            console.log("[v0] Verification result:", JSON.stringify(verifyResult, null, 2))
             
             if (verifyResult.success) {
-              console.log("[v0] ✓ Payment verified successfully!")
-              console.log("[v0] Credits added:", verifyResult.credits_added)
-              console.log("[v0] Redirecting to employer dashboard...")
-              window.location.href = `/employer/dashboard?payment_success=true&credits_added=${verifyResult.credits_added}`
+              console.log("[v0] ✓✓✓ PAYMENT VERIFIED SUCCESSFULLY ✓✓✓")
+              console.log("[v0] Credits added to account:", verifyResult.credits_added)
+              console.log("[v0] Redirecting to dashboard in 1 second...")
+              
+              // Show success message before redirect
+              alert(`Payment successful! ${verifyResult.credits_added} credit(s) added to your account.`)
+              
+              // Redirect to dashboard
+              setTimeout(() => {
+                window.location.href = `/employer/dashboard?payment_success=true&credits_added=${verifyResult.credits_added}`
+              }, 1000)
             } else {
-              console.error("[v0] Payment verification failed:", verifyResult.message)
-              setError(`Payment verification failed: ${verifyResult.message}. Please contact support with payment ID: ${response.razorpay_payment_id}`)
+              console.error("[v0] ❌ Payment verification failed:", verifyResult.message)
+              alert(`Payment verification failed: ${verifyResult.message}\nPayment ID: ${response.razorpay_payment_id}\nPlease contact support.`)
+              setError(`Payment verification failed. Payment ID: ${response.razorpay_payment_id}`)
               setLoading(false)
             }
           } catch (error: any) {
-            console.error("[v0] Error during verification:", error)
-            setError(`Verification error: ${error.message}. Your payment ID: ${response.razorpay_payment_id}. Please contact support.`)
+            console.error("[v0] ❌ Exception during verification:", error)
+            console.error("[v0] Error stack:", error.stack)
+            alert(`Verification error: ${error.message}\nPayment ID: ${response.razorpay_payment_id}\nPlease contact support.`)
+            setError(`Verification error. Payment ID: ${response.razorpay_payment_id}. Contact support.`)
             setLoading(false)
           }
         },
         modal: {
           ondismiss: function () {
-            console.log("[v0] Payment cancelled by user")
+            console.log("[v0] ========== PAYMENT MODAL DISMISSED ==========")
+            console.log("[v0] Payment cancelled or closed by user")
             setError("Payment was cancelled")
             setLoading(false)
           },
+          escape: false, // Prevent closing with escape key during payment
+          backdropclose: false, // Prevent closing by clicking outside
         },
       }
 
+      console.log("[v0] Creating Razorpay instance...")
+      console.log("[v0] Razorpay Key ID:", razorpayOptions.key)
+      console.log("[v0] Razorpay Order ID:", razorpayOptions.order_id)
+      console.log("[v0] Amount in paise:", razorpayOptions.amount)
+      console.log("[v0] Handler function defined:", typeof razorpayOptions.handler === 'function')
+      
       const rzp = new RazorpaySDK(razorpayOptions)
+      
+      console.log("[v0] Razorpay instance created successfully")
+      
+      // Add error event listener
+      rzp.on('payment.failed', function (response: any) {
+        console.log("[v0] ========== PAYMENT FAILED ==========")
+        console.log("[v0] Error:", response.error)
+        console.log("[v0] Error code:", response.error.code)
+        console.log("[v0] Error description:", response.error.description)
+        console.log("[v0] Error source:", response.error.source)
+        console.log("[v0] Error step:", response.error.step)
+        console.log("[v0] Error reason:", response.error.reason)
+        
+        setError(`Payment failed: ${response.error.description || response.error.reason}`)
+        setLoading(false)
+      })
+      
+      console.log("[v0] Opening Razorpay checkout modal...")
       rzp.open()
     } catch (err: any) {
       console.error("[v0] Payment error:", err)
