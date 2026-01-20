@@ -75,7 +75,8 @@ export function PaymentCheckoutForm({
         return
       }
 
-      console.log("[v0] Initiating Razorpay payment for amount:", amount, "(already includes 18% GST)")
+      console.log("[v0] Initiating Razorpay payment")
+      console.log("[v0] Base amount:", baseAmount, "GST:", gstAmount, "Total with GST:", grandTotal)
 
       const response = await fetch("/api/payment/initiate", {
         method: "POST",
@@ -87,7 +88,7 @@ export function PaymentCheckoutForm({
           employerName,
           employerEmail,
           employerPhone,
-          amount, // Amount already includes GST from pricing page
+          amount: grandTotal, // Send total including GST to Razorpay
         }),
       })
 
@@ -198,9 +199,13 @@ export function PaymentCheckoutForm({
     }
   }
 
+  // Amount is BASE price from pricing page, we need to ADD GST
   const GST_RATE = 0.18
-  const gstAmount = Math.round(amount * GST_RATE)
-  const grandTotal = amount + gstAmount
+  const baseAmount = amount // This is the base amount
+  const gstAmount = parseFloat((baseAmount * GST_RATE).toFixed(2))
+  const grandTotal = parseFloat((baseAmount + gstAmount).toFixed(2))
+
+  console.log("[v0] Payment Summary - Base amount:", baseAmount, "GST (18%):", gstAmount, "Grand Total:", grandTotal)
 
   return (
     <Card className="p-6">
@@ -215,16 +220,16 @@ export function PaymentCheckoutForm({
         </div>
         <div className="flex justify-between">
           <span className="text-gray-600">Amount:</span>
-          <span className="font-medium">₹{amount.toLocaleString("en-IN")}</span>
+          <span className="font-medium">₹{baseAmount.toFixed(2)}</span>
         </div>
 
         <div className="flex justify-between">
           <span className="text-gray-600">GST (18%):</span>
-          <span className="font-medium">₹{gstAmount.toLocaleString("en-IN")}</span>
+          <span className="font-medium">₹{gstAmount.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between pt-3 border-t border-gray-200">
-          <span className="text-gray-900 font-semibold">Grand Total:</span>
-          <span className="text-lg font-bold text-blue-600">₹{grandTotal.toLocaleString("en-IN")}</span>
+        <div className="flex justify-between text-lg font-semibold border-t pt-3">
+          <span>Grand Total:</span>
+          <span className="text-blue-600">₹{grandTotal.toFixed(2)}</span>
         </div>
       </div>
 

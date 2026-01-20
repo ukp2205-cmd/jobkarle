@@ -67,8 +67,9 @@ export default function EmployerPricingPage() {
             // For paid plans, open payment modal
             console.log("[v0] Auto-opening payment modal for plan:", selectedPlanSlug)
             const quantity = initialQuantities[selectedPlan.id] || 1
-            const totalAmount = calculateTotalPrice(selectedPlan.price, quantity)
-            setSelectedPlan({ planType: selectedPlan.slug, amount: totalAmount })
+            const baseAmount = selectedPlan.price * quantity
+            console.log("[v0] Base amount (without GST):", baseAmount)
+            setSelectedPlan({ planType: selectedPlan.slug, amount: baseAmount })
             setShowPaymentModal(true)
             
             // Clean up URL by removing selectedPlan param
@@ -171,8 +172,10 @@ export default function EmployerPricingPage() {
   const calculateTotalPrice = (basePrice: number, quantity: number) => {
     const subtotal = basePrice * quantity
     const GST_RATE = 0.18 // 18% GST
-    const gstAmount = Math.round(subtotal * GST_RATE)
-    return subtotal + gstAmount // Return total including GST
+    const gstAmount = parseFloat((subtotal * GST_RATE).toFixed(2)) // Keep 2 decimal places
+    const total = parseFloat((subtotal + gstAmount).toFixed(2))
+    console.log("[v0] Price calculation - Base:", subtotal, "GST:", gstAmount, "Total:", total)
+    return total // Return total including GST
   }
 
   const getPlanDisplayName = (plan: Plan) => {
@@ -303,7 +306,7 @@ export default function EmployerPricingPage() {
                             : "text-gray-900"
                       }`}
                     >
-                      {plan.slug === "free" ? "Free" : Math.round(totalPrice).toLocaleString("en-IN")}
+                      {plan.slug === "free" ? "Free" : (basePrice * quantity).toLocaleString("en-IN")}
                     </span>
                   </div>
                   {plan.slug !== "free" && <p className="text-xs text-gray-500 mt-1">*GST as applicable</p>}
@@ -383,13 +386,13 @@ export default function EmployerPricingPage() {
                   {plan.slug === "free" && (
                     <Button
                       onClick={() => {
-                        if (!isAuthenticated) {
-                          console.log("[v0] User not authenticated for free plan, showing login dialog")
-                          setPendingPlan(plan)
-                          setShowLoginDialog(true)
-                        } else {
-                          // Allocate free credits if not already done
+                        if (plan.slug === "free") {
                           handleFreePlanSelection()
+                        } else {
+                          const baseAmount = basePrice * quantity
+                          console.log("[v0] Opening payment modal - Base amount:", baseAmount)
+                          setSelectedPlan({ planType: plan.slug, amount: baseAmount })
+                          setShowPaymentModal(true)
                         }
                       }}
                       className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold shadow-md hover:shadow-lg transition-all"
