@@ -22,7 +22,7 @@ interface InitiatePaymentParams {
 }
 
 /**
- * Initiate payment with Cashfree
+ * Initiate payment with Razorpay
  */
 export async function initiatePayment(params: InitiatePaymentParams) {
   const supabase = createAdminClient()
@@ -77,86 +77,71 @@ export async function initiatePayment(params: InitiatePaymentParams) {
 
     console.log("[v0] Created transaction:", transaction.id)
 
-    // Get Cashfree credentials from environment
-    const clientId = process.env.CASHFREE_CLIENT_ID
-    const clientSecret = process.env.CASHFREE_CLIENT_SECRET
-    const mode = process.env.CASHFREE_MODE || "production"
+    // Get Razorpay credentials from environment
+    const keyId = process.env.RAZORPAY_KEY_ID
+    const keySecret = process.env.RAZORPAY_KEY_SECRET
 
-    if (!clientId || !clientSecret) {
-      console.error("[v0] Cashfree credentials not configured")
+    if (!keyId || !keySecret) {
+      console.error("[v0] Razorpay credentials not configured")
       return { success: false, message: "Payment gateway not configured" }
     }
 
-    // Use the environment mode (production credentials with production API)
-    const sandboxMode = mode === "sandbox"
-    const cashfreeUrl = sandboxMode
-      ? "https://sandbox.cashfree.com/pg/orders"
-      : "https://api.cashfree.com/pg/orders"
+    console.log("[v0] Using Razorpay for payment processing")
 
-    console.log("[v0] Using Cashfree mode:", mode, "sandboxMode:", sandboxMode, "URL:", cashfreeUrl)
-
-    // IMPORTANT: Use a fixed stable domain that is whitelisted in Cashfree
-    // For production, set NEXT_PUBLIC_APP_URL environment variable
-    // For testing, we use a stable domain that needs to be whitelisted in Cashfree merchant dashboard
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://job-karle.vercel.app"
+    // Create Razorpay order
+    const razorpayUrl = "https://api.razorpay.com/v1/orders"
     
-    console.log("[v0] Using STABLE base URL for payment:", baseUrl)
-    console.log("[v0] ⚠️ IMPORTANT: This URL must be whitelisted in Cashfree Merchant Dashboard")
-    console.log("[v0] ⚠️ Go to: merchant.cashfree.com > Developers > Whitelisting")
-
-    // Create Cashfree order
     const orderPayload = {
-      order_id: orderId,
-      order_amount: amount,
-      order_currency: "INR",
-      customer_details: {
-        customer_id: employerId,
-        customer_name: employerName,
-        customer_email: employerEmail,
-        customer_phone: employerPhone,
-      },
-      order_meta: {
-        return_url: `${baseUrl}/employer/payment/success?order_id=${orderId}`,
-        notify_url: `${baseUrl}/api/payment/webhook`,
+      amount: Math.round(amount * 100), // Razorpay expects amount in paise (smallest currency unit)
+      currency: "INR",
+      receipt: orderId,
+      notes: {
+        employer_id: employerId,
+        employer_name: employerName,
+        employer_email: employerEmail,
+        plan_type: planType,
+        credits: plan.credits_allocated, // Declaring credits variable
       },
     }
 
-    console.log("[v0] Creating Cashfree order with return_url:", orderPayload.order_meta.return_url)
+    console.log("[v0] Creating Razorpay order:", orderPayload)
 
-    const response = await fetch(cashfreeUrl, {
+    const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString("base64")
+
+    const response = await fetch(razorpayUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-client-id": clientId,
-        "x-client-secret": clientSecret,
-        "x-api-version": "2023-08-01",
+        Authorization: `Basic ${authHeader}`,
       },
       body: JSON.stringify(orderPayload),
     })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("[v0] Cashfree API error:", response.status, errorText)
+      console.error("[v0] Razorpay API error:", response.status, errorText)
       return { success: false, message: "Failed to create payment order" }
     }
 
-    const cashfreeOrder = await response.json()
-    console.log("[v0] Cashfree order created:", cashfreeOrder.order_id)
+    const razorpayOrder = await response.json()
+    console.log("[v0] Razorpay order created:", razorpayOrder.id)
 
-    // Update transaction with payment session ID
+    // Update transaction with Razorpay order ID
     await supabase
       .from("payment_transactions")
       .update({
-        transaction_id: cashfreeOrder.cf_order_id,
-        response_data: cashfreeOrder,
+        transaction_id: razorpayOrder.id,
+        response_data: razorpayOrder,
       })
       .eq("id", transaction.id)
 
     return {
       success: true,
-      paymentSessionId: cashfreeOrder.payment_session_id,
+      razorpayOrderId: razorpayOrder.id,
       orderId: orderId,
-      sandboxMode,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      keyId: keyId, // Send key ID for client-side initialization
     }
   } catch (error: any) {
     console.error("[v0] Payment initiation error:", error)

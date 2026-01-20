@@ -26,11 +26,12 @@ export function DashboardNavigationGuard({ dashboardType, children }: DashboardN
   const [showExitDialog, setShowExitDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
 
-  const dashboardPrefix = dashboardType === "employer" ? "/employer/dashboard" : "/candidate/dashboard"
-  const isDashboardPage = pathname.startsWith(dashboardPrefix)
+  // Check if we're in the employer/candidate area (not just dashboard page)
+  const areaPrefix = dashboardType === "employer" ? "/employer" : "/candidate"
+  const isDashboardArea = pathname.startsWith(areaPrefix)
 
   useEffect(() => {
-    if (!isDashboardPage) return
+    if (!isDashboardArea) return
 
     // Intercept all link clicks on the page
     const handleLinkClick = (e: MouseEvent) => {
@@ -42,12 +43,19 @@ export function DashboardNavigationGuard({ dashboardType, children }: DashboardN
       const href = link.getAttribute("href")
       if (!href) return
 
-      // Check if navigation is going outside the dashboard
-      const isExternalNavigation = !href.startsWith(dashboardPrefix) && 
-                                   !href.startsWith("#") && 
-                                   href !== pathname
+      // Only show exit dialog for links that go OUTSIDE the employer/candidate area
+      // This includes: logout links, footer links, home page, candidate/employer switching
+      const isInternalNavigation = href.startsWith(areaPrefix) || 
+                                   href.startsWith("#") || 
+                                   href === pathname
 
-      if (isExternalNavigation) {
+      // Check for specific logout/exit actions
+      const isLogoutLink = href.includes("logout") || 
+                          href === "/" || 
+                          href.startsWith("/candidate") && dashboardType === "employer" ||
+                          href.startsWith("/employer") && dashboardType === "candidate"
+
+      if (!isInternalNavigation || isLogoutLink) {
         e.preventDefault()
         setPendingNavigation(href)
         setShowExitDialog(true)
@@ -59,7 +67,7 @@ export function DashboardNavigationGuard({ dashboardType, children }: DashboardN
     return () => {
       document.removeEventListener("click", handleLinkClick, true)
     }
-  }, [isDashboardPage, dashboardPrefix, pathname])
+  }, [isDashboardArea, areaPrefix, pathname, dashboardType])
 
   const handleConfirmExit = () => {
     if (pendingNavigation) {

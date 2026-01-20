@@ -8,6 +8,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
  */
 export async function allocateMonthlyFreeCredits(employerId: string) {
   try {
+    // Validate employerId
+    if (!employerId || employerId.trim() === "") {
+      console.error("[v0] allocateMonthlyFreeCredits called with empty employerId")
+      return { success: false, message: "Invalid employer ID" }
+    }
+
     const supabase = createAdminClient()
 
     console.log("[v0] Allocating monthly free credits (10) to employer:", employerId)
@@ -47,6 +53,12 @@ export async function allocateMonthlyFreeCredits(employerId: string) {
  */
 export async function hasActiveFreeCredits(employerId: string): Promise<boolean> {
   try {
+    // Validate employerId before making database query
+    if (!employerId || employerId.trim() === "") {
+      console.warn("[v0] hasActiveFreeCredits called with empty employerId")
+      return false
+    }
+
     const supabase = createAdminClient()
 
     const { data, error } = await supabase

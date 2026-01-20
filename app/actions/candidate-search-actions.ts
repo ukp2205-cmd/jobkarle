@@ -915,25 +915,50 @@ export async function searchCandidates(params: CandidateSearchParams): Promise<{
     if (params.skills && params.skills.length > 0) {
       const searchSkills = params.skills.map((s) => s.toLowerCase().trim())
       console.log("[v0] Filtering by skills:", searchSkills)
+      console.log("[v0] Candidates before skill filter:", filteredCandidates.length)
 
       filteredCandidates = filteredCandidates.filter((candidate) => {
-        const candidateSkills = [...(candidate.skills_for_role || []), ...(candidate.skills_you_know || [])].map(
-          (s: string) => s.toLowerCase().trim(),
-        )
+        // Debug: Log raw skill data
+        console.log("[v0] RAW skills_for_role:", candidate.skills_for_role, "Type:", typeof candidate.skills_for_role)
+        console.log("[v0] RAW skills_you_know:", candidate.skills_you_know, "Type:", typeof candidate.skills_you_know)
+        
+        // Get all candidate skills from both fields
+        const skillsForRole = Array.isArray(candidate.skills_for_role) ? candidate.skills_for_role : []
+        const skillsYouKnow = Array.isArray(candidate.skills_you_know) ? candidate.skills_you_know : []
+        
+        // Combine and normalize skills
+        const candidateSkills = [...skillsForRole, ...skillsYouKnow]
+          .filter(Boolean)
+          .map((s: any) => (typeof s === 'string' ? s.toLowerCase().trim() : ''))
+          .filter(Boolean)
 
-        // Check if candidate has at least one of the required skills
-        const hasMatchingSkill = searchSkills.some((skill) =>
-          candidateSkills.some((cs) => cs.includes(skill) || skill.includes(cs)),
-        )
+        console.log("[v0] Checking candidate:", candidate.full_name, "Normalized Skills:", candidateSkills)
+
+        // Check if candidate has at least one of the required skills (flexible matching)
+        const hasMatchingSkill = searchSkills.some((searchSkill) => {
+          return candidateSkills.some((candidateSkill) => {
+            // Try exact match first
+            if (candidateSkill === searchSkill) return true
+            // Try partial match (contains)
+            if (candidateSkill.includes(searchSkill)) return true
+            if (searchSkill.includes(candidateSkill)) return true
+            // Try word boundary match for multi-word skills
+            const searchWords = searchSkill.split(/\s+/)
+            const candidateWords = candidateSkill.split(/\s+/)
+            return searchWords.some(sw => candidateWords.some(cw => cw === sw))
+          })
+        })
 
         if (hasMatchingSkill) {
-          console.log("[v0] Candidate matches skills:", candidate.full_name, candidateSkills)
+          console.log("[v0] ✓ Candidate MATCHES skills:", candidate.full_name)
+        } else {
+          console.log("[v0] ✗ Candidate does NOT match skills:", candidate.full_name)
         }
 
         return hasMatchingSkill
       })
 
-      console.log("[v0] After skills filter:", filteredCandidates.length)
+      console.log("[v0] After skills filter:", filteredCandidates.length, "candidates")
     }
 
     // Location filter - check if candidate is in any of the specified locations
@@ -1090,17 +1115,17 @@ export async function getRecentSearches(employerId: string) {
   }
 }
 
-export async function saveSearch(params: { employerId: string; searchName: string; filters: any }) {
+export async function saveSearch(params: { employerId: string; searchName: string; filters: any; isSaved?: boolean }) {
   try {
     const supabase = await createServerClient()
-
+    
     const { data, error } = await supabase
       .from("employer_searches")
       .insert({
         employer_id: params.employerId,
         keywords: params.searchName.slice(0, 255),
         filters: params.filters,
-        is_saved: true,
+        is_saved: params.isSaved ?? false, // Default to false (recent search), only true if explicitly saved
       })
       .select()
       .single()
@@ -1114,6 +1139,30 @@ export async function saveSearch(params: { employerId: string; searchName: strin
   } catch (error) {
     console.error("[v0] Error in saveSearch:", error)
     return { success: false, error: "Failed to save search" }
+  }
+}
+
+// Mark a recent search as saved permanently
+export async function markSearchAsSaved(searchId: string) {
+  try {
+    const supabase = await createServerClient()
+    
+    const { data, error } = await supabase
+      .from("employer_searches")
+      .update({ is_saved: true })
+      .eq("id", searchId)
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("[v0] Error marking search as saved:", error)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, search: data }
+  } catch (error) {
+    console.error("[v0] Error in markSearchAsSaved:", error)
+    return { success: false, error: "Failed to mark search as saved" }
   }
 }
 

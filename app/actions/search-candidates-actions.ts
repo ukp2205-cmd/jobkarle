@@ -119,16 +119,36 @@ export async function getAllCandidatesForEmployer(employerId: string, filters: {
 
       // Check skills
       if (skillsArray.length > 0) {
-        const candidateSkills = [
-          ...(candidate.skills_for_role || []),
-          ...(candidate.skills_you_know || []),
-        ].map(s => s.toLowerCase())
-
-        const skillMatch = skillsArray.some(skill => 
-          candidateSkills.some(cs => cs.includes(skill.toLowerCase()))
-        )
+        // Safely extract skills with proper null/undefined handling
+        const skillsForRole = Array.isArray(candidate.skills_for_role) ? candidate.skills_for_role : []
+        const skillsYouKnow = Array.isArray(candidate.skills_you_know) ? candidate.skills_you_know : []
         
-        if (skillMatch) return true
+        const candidateSkills = [...skillsForRole, ...skillsYouKnow]
+          .filter(Boolean) // Remove null/undefined
+          .map(s => typeof s === 'string' ? s.toLowerCase().trim() : '')
+          .filter(Boolean) // Remove empty strings
+
+        console.log("[v0] Candidate:", candidate.full_name, "Skills:", candidateSkills, "Searching for:", skillsArray)
+
+        const skillMatch = skillsArray.some(skill => {
+          const searchSkill = skill.toLowerCase().trim()
+          return candidateSkills.some(cs => {
+            // Exact match or partial match (contains)
+            return cs === searchSkill || 
+                   cs.includes(searchSkill) || 
+                   searchSkill.includes(cs) ||
+                   // Word boundary match for multi-word skills like "Big Data"
+                   cs.split(/\s+/).some(word => word === searchSkill) ||
+                   searchSkill.split(/\s+/).some(word => cs.includes(word))
+          })
+        })
+        
+        if (skillMatch) {
+          console.log("[v0] ✓ MATCH found for:", candidate.full_name)
+          return true
+        } else {
+          console.log("[v0] ✗ NO match for:", candidate.full_name)
+        }
       }
 
       // Check locations

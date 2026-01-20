@@ -34,6 +34,7 @@ import {
   getSearchFilterOptions,
   getSkillsFromDB,
   getLocationsFromDB,
+  searchCandidates, // Declare the searchCandidates variable
 } from "@/app/actions/candidate-search-actions"
 import { toast } from "@/hooks/use-toast"
 
@@ -248,12 +249,30 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
       if (filters.employmentType.length > 0) searchParams.set("employmentType", filters.employmentType.join(","))
       if (filters.showOnly.length > 0) searchParams.set("showOnly", filters.showOnly.join(","))
 
-      // Auto-save to recent searches
-      const searchName = filters.keywords.length > 0 
-        ? filters.keywords.join(", ") 
-        : filters.skills.length > 0 
-        ? filters.skills.join(", ") 
-        : "Search"
+      // Auto-save to recent searches with comprehensive name
+      let searchName = "Search"
+      const nameParts: string[] = []
+      
+      if (filters.keywords.length > 0) {
+        nameParts.push(filters.keywords.join(", "))
+      }
+      if (filters.skills.length > 0) {
+        nameParts.push(`Skills: ${filters.skills.slice(0, 2).join(", ")}${filters.skills.length > 2 ? "..." : ""}`)
+      }
+      if (filters.location.length > 0) {
+        nameParts.push(`Location: ${filters.location.slice(0, 2).join(", ")}${filters.location.length > 2 ? "..." : ""}`)
+      }
+      if (filters.experience.min > 0 || filters.experience.max < 30) {
+        nameParts.push(`Exp: ${filters.experience.min}-${filters.experience.max}y`)
+      }
+      if (filters.salary.min > 0 || filters.salary.max < 100) {
+        nameParts.push(`Salary: ${filters.salary.min}-${filters.salary.max}L`)
+      }
+      if (filters.education.length > 0) {
+        nameParts.push(`Edu: ${filters.education.join(", ")}`)
+      }
+      
+      searchName = nameParts.length > 0 ? nameParts.join(" | ") : "All Candidates"
       
       console.log("[v0] Saving search with name:", searchName, "filters:", filters)
       const saveResult = await saveSearch({
@@ -263,7 +282,7 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
       })
       console.log("[v0] Save search result:", saveResult)
       
-      // Reload recent searches
+      // Reload recent searches to show the latest
       await loadRecentSearches()
 
       // Navigate to candidates page with search filters
@@ -1131,19 +1150,72 @@ export function SearchCandidatesPage({ employerId, jobId }: SearchCandidatesPage
                   recentSearches.slice(0, 3).map((search) => (
                     <div
                       key={search.id}
-                      className="p-3 rounded-lg border border-gray-100 hover:bg-blue-50 transition-colors cursor-pointer"
-                      onClick={() => {
+                      className="p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50/50 transition-all cursor-pointer group"
+                      onClick={async () => {
+                        console.log("[v0] Executing recent search with saved filters:", search.filters)
+                        // Fill the form first for visual feedback
                         fillSearch(search)
-                        // Auto-execute search after filling
-                        setTimeout(() => {
-                          handleSearch()
-                        }, 100)
+                        
+                        // Execute search immediately with the saved filters (not the state)
+                        setLoading(true)
+                        try {
+                          const result = await searchCandidates({
+                            employerId,
+                            ...search.filters,
+                          })
+                          
+                          console.log("[v0] Search completed. Results:", result.candidates?.length)
+                          
+                          if (result.success && result.candidates) {
+                            router.push(`/employer/search-candidates/results?candidateIds=${result.candidates.map((c: any) => c.id).join(",")}`)
+                          } else {
+                            toast({
+                              title: "No Results",
+                              description: "No candidates found matching your criteria",
+                            })
+                          }
+                        } catch (error) {
+                          console.error("[v0] Search error:", error)
+                          toast({
+                            title: "Search Failed",
+                            description: "An error occurred while searching",
+                            variant: "destructive",
+                          })
+                        } finally {
+                          setLoading(false)
+                        }
                       }}
                     >
-                      <p className="text-sm font-medium text-gray-900 truncate">{search.search_name || search.keywords || "Search"}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(search.created_at).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                            {search.search_name || search.keywords || "Search"}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(search.created_at).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric"
+                            })}
+                          </p>
+                        </div>
+                        <Search className="h-4 w-4 text-gray-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+                      </div>
+                      {search.filters && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {search.filters.skills?.slice(0, 2).map((skill: string) => (
+                            <Badge key={skill} variant="secondary" className="text-xs px-1.5 py-0 bg-blue-100 text-blue-600">
+                              {skill}
+                            </Badge>
+                          ))}
+                          {search.filters.location?.slice(0, 1).map((loc: string) => (
+                            <Badge key={loc} variant="secondary" className="text-xs px-1.5 py-0 bg-green-100 text-green-600">
+                              <MapPin className="h-2.5 w-2.5 mr-0.5" />
+                              {loc}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

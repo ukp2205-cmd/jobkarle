@@ -53,15 +53,21 @@ export default function EmployerLogin() {
         
         // Auto-allocate 10 free monthly credits on first login or if expired
         try {
-          const { allocateMonthlyFreeCredits, hasActiveFreeCredits } = await import("@/app/actions/free-credits-actions")
-          const employerId = result.session?.employerId || ""
-          const hasCredits = await hasActiveFreeCredits(employerId)
+          const employerId = result.session?.employerId
           
-          if (!hasCredits && employerId) {
-            console.log("[v0] No active free credits found, allocating 10 monthly free credits")
-            await allocateMonthlyFreeCredits(employerId)
+          // Only check/allocate credits if we have a valid employerId
+          if (employerId) {
+            const { allocateMonthlyFreeCredits, hasActiveFreeCredits } = await import("@/app/actions/free-credits-actions")
+            const hasCredits = await hasActiveFreeCredits(employerId)
+            
+            if (!hasCredits) {
+              console.log("[v0] No active free credits found, allocating 10 monthly free credits")
+              await allocateMonthlyFreeCredits(employerId)
+            } else {
+              console.log("[v0] Employer already has active free credits")
+            }
           } else {
-            console.log("[v0] Employer already has active free credits")
+            console.warn("[v0] No employerId in session, skipping free credits check")
           }
         } catch (error) {
           console.error("[v0] Error checking/allocating free credits:", error)

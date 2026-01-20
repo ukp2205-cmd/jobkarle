@@ -29,33 +29,33 @@ export function PaymentCheckoutForm({
   const [sdkLoaded, setSdkLoaded] = useState(false)
 
   useEffect(() => {
-    const loadCashfreeSDK = () => {
+    const loadRazorpaySDK = () => {
       // Check if SDK already loaded globally
-      if ((window as any).Cashfree) {
-        console.log("[v0] Cashfree SDK already available globally")
+      if ((window as any).Razorpay) {
+        console.log("[v0] Razorpay SDK already available globally")
         setSdkLoaded(true)
         return
       }
 
       const script = document.createElement("script")
-      script.src = "https://sdk.cashfree.com/js/v3/cashfree.js"
+      script.src = "https://checkout.razorpay.com/v1/checkout.js"
       script.async = true
       script.onload = () => {
-        console.log("[v0] Cashfree SDK loaded successfully")
+        console.log("[v0] Razorpay SDK loaded successfully")
         setSdkLoaded(true)
       }
       script.onerror = () => {
-        console.error("[v0] Failed to load Cashfree SDK from official URL")
+        console.error("[v0] Failed to load Razorpay SDK")
         setError("Payment system temporarily unavailable. Please try again in a moment.")
       }
       document.body.appendChild(script)
     }
 
-    loadCashfreeSDK()
+    loadRazorpaySDK()
 
     return () => {
       // Cleanup scripts on unmount
-      const scripts = document.querySelectorAll('script[src*="cashfree"]')
+      const scripts = document.querySelectorAll('script[src*="razorpay"]')
       scripts.forEach((script) => {
         if (document.body.contains(script)) {
           document.body.removeChild(script)
@@ -75,7 +75,7 @@ export function PaymentCheckoutForm({
         return
       }
 
-      console.log("[v0] Initiating Cashfree payment")
+      console.log("[v0] Initiating Razorpay payment")
 
       const response = await fetch("/api/payment/initiate", {
         method: "POST",
@@ -109,40 +109,72 @@ export function PaymentCheckoutForm({
         return
       }
 
-      if (!result.paymentSessionId) {
-        console.error("[v0] No payment session ID received from server")
-        setError("Payment session not created. Please try again.")
+      if (!result.razorpayOrderId) {
+        console.error("[v0] No Razorpay order ID received from server")
+        setError("Payment order not created. Please try again.")
         setLoading(false)
         return
       }
 
-      console.log("[v0] Opening Cashfree checkout with session ID:", result.paymentSessionId)
-      console.log("[v0] Server indicated sandbox mode:", result.sandboxMode)
-      // </CHANGE>
+      console.log("[v0] Opening Razorpay checkout with order ID:", result.razorpayOrderId)
 
-      const cashfreeSDK = (window as any).Cashfree
-      if (!cashfreeSDK) {
-        console.error("[v0] Cashfree SDK not available on window object")
+      const RazorpaySDK = (window as any).Razorpay
+      if (!RazorpaySDK) {
+        console.error("[v0] Razorpay SDK not available on window object")
         setError("Payment SDK not initialized. Please refresh and try again.")
         setLoading(false)
         return
       }
 
-      const sdkMode = result.sandboxMode ? "sandbox" : "production"
-      console.log("[v0] Initializing Cashfree SDK in mode:", sdkMode)
-
-      const cashfree = cashfreeSDK({
-        mode: sdkMode,
-      })
-      // </CHANGE>
-
-      // Open Cashfree checkout
-      const checkoutOptions = {
-        paymentSessionId: result.paymentSessionId,
-        redirectTarget: "_self", // Redirect to return_url after payment
+      // Razorpay checkout options
+      const razorpayOptions = {
+        key: result.keyId, // Key ID comes from server response
+        amount: result.amount, // Amount in paise
+        currency: result.currency,
+        name: "JobKarle",
+        description: `${planType.charAt(0).toUpperCase() + planType.slice(1)} Plan - ${billingCycle}`,
+        order_id: result.razorpayOrderId,
+        prefill: {
+          name: employerName,
+          email: employerEmail,
+          contact: employerPhone,
+        },
+        theme: {
+          color: "#3b82f6",
+        },
+        handler: async function (response: any) {
+          console.log("[v0] Payment successful:", response)
+          // Verify payment on server
+          const verifyResponse = await fetch("/api/payment/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              orderId: result.orderId,
+            }),
+          })
+          
+          const verifyResult = await verifyResponse.json()
+          if (verifyResult.success) {
+            window.location.href = `/employer/payment/success?order_id=${result.orderId}`
+          } else {
+            setError("Payment verification failed. Please contact support.")
+            setLoading(false)
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            console.log("[v0] Payment cancelled by user")
+            setError("Payment was cancelled")
+            setLoading(false)
+          },
+        },
       }
 
-      await cashfree.checkout(checkoutOptions)
+      const rzp = new RazorpaySDK(razorpayOptions)
+      rzp.open()
     } catch (err: any) {
       console.error("[v0] Payment error:", err)
       setError(err.message || "Failed to initiate payment. Please try again.")
@@ -201,7 +233,7 @@ export function PaymentCheckoutForm({
       </Button>
 
       <p className="text-xs text-gray-500 text-center mt-4">
-        Secure payment powered by Cashfree. Your payment information is encrypted and secure.
+        Secure payment powered by Razorpay. Your payment information is encrypted and secure.
       </p>
     </Card>
   )

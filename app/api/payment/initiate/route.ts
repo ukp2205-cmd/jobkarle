@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Missing required fields" }, { status: 400 })
     }
 
-    console.log("[v0] Initiating Cashfree payment for employer:", employerId)
+    console.log("[v0] Initiating Razorpay payment for employer:", employerId)
 
     const result = await initiatePayment({
       employerId,

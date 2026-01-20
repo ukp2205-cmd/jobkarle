@@ -13,7 +13,7 @@ function SuccessContent() {
 
   const orderId = searchParams.get("order_id") || searchParams.get("txnid")
   const transactionId = searchParams.get("transaction_id")
-  const paymentStatus = searchParams.get("payment_status") // Cashfree sends this on redirect
+  const paymentStatus = searchParams.get("payment_status")
 
   const [paymentState, setPaymentState] = useState<"success" | "checking" | "failed">("checking")
   const [retryCount, setRetryCount] = useState(0)
@@ -22,17 +22,17 @@ function SuccessContent() {
   console.log("[v0] Payment success page loaded")
   console.log("[v0] order_id:", orderId)
   console.log("[v0] transaction_id:", transactionId)
-  console.log("[v0] payment_status from Cashfree:", paymentStatus)
+  console.log("[v0] payment_status:", paymentStatus)
   console.log("[v0] All URL params:", Object.fromEntries(searchParams.entries()))
 
   useEffect(() => {
     if (paymentStatus && (paymentStatus.toUpperCase() === "SUCCESS" || paymentStatus.toUpperCase() === "PAID")) {
       console.log("[v0] Payment status SUCCESS detected in redirect URL - showing success immediately")
       setPaymentState("success")
-      return // Don't do further checks
+      return
     }
 
-    // Cashfree only redirects to success URL if payment succeeded
+    // Razorpay redirects to success URL after successful payment
     if (orderId && !paymentStatus) {
       console.log("[v0] Order ID present in success URL redirect - assuming payment successful")
       setPaymentState("success")
