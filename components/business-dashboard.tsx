@@ -8,25 +8,40 @@ import Link from "next/link" // Added import
 import { createBrowserClient } from "@supabase/ssr"
 import {
   LayoutDashboard,
-  Users,
   Building2,
+  Users,
   Briefcase,
   UserCog,
   LogOut,
+  Plus,
+  Search,
+  ChevronRight,
+  ChevronLeft,
+  ChevronDown,
+  Edit,
+  Trash2,
+  MapPin,
+  Calendar,
+  DollarSign,
+  Clock,
+  Mail,
+  Phone,
+  Globe,
+  FileText,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Filter,
+  UserPlus,
+  Eye,
+  RefreshCw,
+  Coins,
+  MoreHorizontal,
+  Pencil,
+  CheckCircle2,
+  Activity,
   TrendingUp,
   TrendingDown,
-  Activity,
-  FileText,
-  AlertTriangle,
-  ChevronRight,
-  Search,
-  Trash2,
-  MoreHorizontal,
-  RefreshCw,
-  Pencil,
-  Plus,
-  CheckCircle2,
-  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -172,9 +187,10 @@ interface JobFormData {
   status: string
 }
 
-export function BusinessDashboard({ session }: { session: BusinessSession }) {
+  export function BusinessDashboard({ session }: { session: BusinessSession }) {
   const router = useRouter()
   const [activeView, setActiveView] = useState<ActiveView>("dashboard")
+  const [employersMenuOpen, setEmployersMenuOpen] = useState(true)
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics | null>(null)
   const [weeklyMetrics, setWeeklyMetrics] = useState<WeeklyMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -928,49 +944,121 @@ export function BusinessDashboard({ session }: { session: BusinessSession }) {
         </Link>
 
         <nav className="flex-1 p-4 space-y-1">
-          {sidebarItems.map((item) => (
+          {/* Dashboard */}
+          <button
+            onClick={() => setActiveView("dashboard")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeView === "dashboard" ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span>Dashboard</span>
+            {activeView === "dashboard" && <ChevronRight className="w-4 h-4 ml-auto" />}
+          </button>
+
+          {/* Employers - Collapsible Menu */}
+          <div className="space-y-1">
             <button
-              key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => setEmployersMenuOpen(!employersMenuOpen)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                activeView === item.id ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                activeView === "employers" || activeView === "approvals" || activeView === "credits"
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
               }`}
             >
-              <item.icon className="w-5 h-5" />
-              <span>{item.label}</span>
-              {activeView === item.id && <ChevronRight className="w-4 h-4 ml-auto" />}
+              <Building2 className="w-5 h-5" />
+              <span>Employers</span>
+              <ChevronDown
+                className={`w-4 h-4 ml-auto transition-transform ${employersMenuOpen ? "rotate-180" : ""}`}
+              />
             </button>
-          ))}
-              <button
-                onClick={() => setActiveView("approvals")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                  activeView === "approvals"
-                    ? "bg-primary text-white" // Consistent with other active items
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                <AlertTriangle className="w-5 h-5" />
-                <span>Pending Approvals</span>
-                {pendingPagination.total > 0 && (
-                  <Badge variant="destructive" className="ml-auto">
-                    {pendingPagination.total}
-                  </Badge>
-                )}
-                {activeView === "approvals" && <ChevronRight className="w-4 h-4 ml-auto" />}
-              </button>
-              <button
-                onClick={() => setActiveView("credits")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                  activeView === "credits"
-                    ? "bg-primary text-white"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
-              >
-                <Coins className="w-5 h-5" />
-                <span>Manual Credits</span>
-                {activeView === "credits" && <ChevronRight className="w-4 h-4 ml-auto" />}
-              </button>
-            </nav>
+
+            {/* Employers Submenu */}
+            {employersMenuOpen && (
+              <div className="ml-4 space-y-1 border-l-2 border-slate-700 pl-2">
+                <button
+                  onClick={() => setActiveView("employers")}
+                  className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-left transition-colors text-sm ${
+                    activeView === "employers"
+                      ? "bg-primary text-white"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Employers List</span>
+                  {activeView === "employers" && <ChevronRight className="w-3 h-3 ml-auto" />}
+                </button>
+
+                <button
+                  onClick={() => setActiveView("approvals")}
+                  className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-left transition-colors text-sm ${
+                    activeView === "approvals"
+                      ? "bg-primary text-white"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Pending Approvals</span>
+                  {pendingPagination.total > 0 && (
+                    <Badge variant="destructive" className="ml-auto text-xs px-1.5 py-0">
+                      {pendingPagination.total}
+                    </Badge>
+                  )}
+                  {activeView === "approvals" && <ChevronRight className="w-3 h-3 ml-auto" />}
+                </button>
+
+                <button
+                  onClick={() => setActiveView("credits")}
+                  className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-left transition-colors text-sm ${
+                    activeView === "credits"
+                      ? "bg-primary text-white"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  }`}
+                >
+                  <Coins className="w-4 h-4" />
+                  <span>Manual Credits</span>
+                  {activeView === "credits" && <ChevronRight className="w-3 h-3 ml-auto" />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Candidates */}
+          <button
+            onClick={() => setActiveView("candidates")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeView === "candidates" ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <Users className="w-5 h-5" />
+            <span>Candidates</span>
+            {activeView === "candidates" && <ChevronRight className="w-4 h-4 ml-auto" />}
+          </button>
+
+          {/* Jobs */}
+          <button
+            onClick={() => setActiveView("jobs")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeView === "jobs" ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <Briefcase className="w-5 h-5" />
+            <span>Jobs</span>
+            {activeView === "jobs" && <ChevronRight className="w-4 h-4 ml-auto" />}
+          </button>
+
+          {/* Team */}
+          <button
+            onClick={() => setActiveView("team")}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+              activeView === "team" ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
+            }`}
+          >
+            <UserCog className="w-5 h-5" />
+            <span>Team</span>
+            {activeView === "team" && <ChevronRight className="w-4 h-4 ml-auto" />}
+          </button>
+        </nav>
 
         <div className="p-4 border-t border-slate-800">
           <div className="flex items-center gap-3 mb-4">
