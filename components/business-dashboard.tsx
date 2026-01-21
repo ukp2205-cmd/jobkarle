@@ -1072,18 +1072,6 @@ interface JobFormData {
             <span>Team</span>
             {activeView === "team" && <ChevronRight className="w-4 h-4 ml-auto" />}
           </button>
-
-          {/* Analytics */}
-          <button
-            onClick={() => setActiveView("analytics")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-              activeView === "analytics" ? "bg-primary text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"
-            }`}
-          >
-            <TrendingUp className="w-5 h-5" />
-            <span>Analytics</span>
-            {activeView === "analytics" && <ChevronRight className="w-4 h-4 ml-auto" />}
-          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800">
@@ -1672,12 +1660,9 @@ interface JobFormData {
             </Card>
           </div>
         </div>
-      )}
+          )}
 
-      {/* Analytics View */}
-      {activeView === "analytics" && <AnalyticsView />}
-
-      {activeView === "team" && (
+          {activeView === "team" && (
         <TeamView
               team={team}
               pagination={teamPagination}
@@ -3595,29 +3580,7 @@ function TeamView({
   )
 }
 
-// Analytics View Component
-function AnalyticsView() {
-  return (
-    <div className="flex-1 overflow-auto">
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Analytics</h1>
-            <p className="text-slate-400 mt-1">Platform insights and trends</p>
-          </div>
-        </div>
 
-        <Card className="bg-slate-900 border-slate-800">
-          <CardContent className="p-12 text-center">
-            <Activity className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Analytics Coming Soon</h3>
-            <p className="text-slate-400">Detailed analytics and insights will be available here.</p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
 
 // Pagination Component
 function Pagination({
