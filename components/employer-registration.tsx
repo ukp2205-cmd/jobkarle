@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Briefcase, Building2, Users, CheckCircle2, Upload } from "lucide-react"
+import { Briefcase, Building2, Users, CheckCircle2, Upload, FileText } from "lucide-react"
 import { createInitialEmployer, uploadEmployerLogo, completeEmployerRegistration } from "@/app/actions/employer-actions"
 import { useRouter } from "next/navigation"
 import { AutocompleteInput } from "@/components/ui/autocomplete-input"
 import Link from "next/link"
+import DocumentVerificationStep from "@/components/document-verification-step"
 
 interface FormData {
   // Step 1
@@ -708,6 +709,7 @@ export default function EmployerRegistration() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [employerId, setEmployerId] = useState<string>("")
   const [formData, setFormData] = useState<FormData>({
     username: "",
     email: "",
@@ -927,9 +929,12 @@ export default function EmployerRegistration() {
       })
 
       if (result.success) {
-        alert("Employer registration completed successfully! Please login to continue.")
-        // Redirect to employer login page
-        window.location.href = "/employer/login"
+        // Save employer ID for document upload
+        if (result.employer?.id) {
+          setEmployerId(result.employer.id)
+        }
+        // Proceed to Step 4 - Document Verification
+        setStep(4)
       } else {
         alert(result.message || "Registration failed. Please try again.")
       }
@@ -1091,16 +1096,42 @@ export default function EmployerRegistration() {
                         className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all ${
                           step === 3
                             ? "bg-green-600 text-white ring-2 sm:ring-4 ring-green-100"
-                            : "bg-gray-200 text-gray-500"
+                            : step > 3
+                              ? "bg-green-600 text-white"
+                              : "bg-gray-200 text-gray-500"
                         }`}
                       >
                         3
                       </div>
 
                       <p
-                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 3 ? "text-green-600" : "text-gray-400"}`}
+                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 3 ? "text-green-600" : step > 3 ? "text-green-600" : "text-gray-400"}`}
                       >
                         Company Details
+                      </p>
+                    </div>
+
+                    {/* Progress Line */}
+                    <div
+                      className={`h-0.5 flex-1 mx-1 sm:mx-2 transition-all ${step > 3 ? "bg-green-600" : "bg-gray-200"}`}
+                    />
+
+                    {/* Step 4 - Document Verification */}
+                    <div className="flex flex-col items-center">
+                      <div
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all ${
+                          step === 4
+                            ? "bg-green-600 text-white ring-2 sm:ring-4 ring-green-100"
+                            : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
+                        4
+                      </div>
+
+                      <p
+                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 4 ? "text-green-600" : "text-gray-400"}`}
+                      >
+                        Verification
                       </p>
                     </div>
                   </div>
@@ -1112,14 +1143,18 @@ export default function EmployerRegistration() {
                       ? "Let's get you started!"
                       : step === 2
                         ? "Verify mobile number"
-                        : "Complete your profile"}
+                        : step === 3
+                          ? "Complete your profile"
+                          : "Verify your company"}
                   </h2>
                   <p className="text-xs sm:text-sm text-gray-600">
                     {step === 1
                       ? "Create your employer account"
                       : step === 2
                         ? `We sent a code to ${formData.mobileNumber}`
-                        : "Add your company details"}
+                        : step === 3
+                          ? "Add your company details"
+                          : "Upload documents or use company email"}
                   </p>
                 </div>
 
@@ -1356,7 +1391,7 @@ export default function EmployerRegistration() {
                     isLoading={isLoading}
                     setIsLoading={setIsLoading}
                   />
-                ) : (
+                ) : step === 3 ? (
                   <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                     <div>
                       <Label className="mb-2 block font-medium text-gray-700 text-sm">Skills</Label>
@@ -1917,7 +1952,16 @@ export default function EmployerRegistration() {
                       </Button>
                     </div>
                   </form>
-                )}
+                ) : step === 4 ? (
+                  <DocumentVerificationStep
+                    employerId={employerId}
+                    onComplete={() => {
+                      alert("Registration completed successfully! Your documents will be verified by our team. You can now login to access your account.")
+                      window.location.href = "/employer/login"
+                    }}
+                    onBack={() => setStep(3)}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
