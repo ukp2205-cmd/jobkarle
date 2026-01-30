@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Pencil, SlidersHorizontal, ChevronUp } from "lucide-react"
+import { Pencil, SlidersHorizontal, ChevronUp, Check, AlertCircle, Clock, MapPin, Phone } from "lucide-react"
 import {
   X,
   ChevronDown,
@@ -31,8 +31,7 @@ import {
 } from "lucide-react"
 import { getJobApplications, updateApplicationStatus } from "@/app/actions/job-responses-actions"
 import { saveColumnPreferences, getColumnPreferences } from "@/app/actions/column-preferences-actions"
-import { toast } from "@/components/ui/use-toast" // Import toast
-import { calculateCVScoresForJob } from "@/app/actions/cv-scoring-actions" // Import for CV scoring
+import { toast } from "@/hooks/use-toast" // Changed import path for toast
 
 interface Application {
   id: string
@@ -68,11 +67,15 @@ interface Application {
     industry?: string
     department?: string
     total_experience?: number
-    key_skill_score?: number
-    designation_score?: number
-    call_status?: string
     gender?: string
     diversity?: string
+    resume_headline?: string // Added for resume headline
+    previous_employment?: string // Added for previous employment
+    employment_history?: any // Changed to any to handle object or string
+    current_salary?: string // Added for current salary
+    expected_salary?: string // Added for expected salary
+    languages_known?: string[] // Added for languages known
+    recommended?: boolean // Added for recommended status
   }
 }
 
@@ -81,6 +84,7 @@ interface JobDetails {
   title: string
   employer_id: string
   status: string
+  required_skills?: string[] // Added for skill match calculation
 }
 
 // Define a type for JobApplication to match the expected type from backend
@@ -97,11 +101,95 @@ const getNoticePeriodOrAvailability = (candidate: Application["candidate"]): str
   return "Not specified"
 }
 
+const getCurrentEmployment = (candidate: Application["candidate"]): string | null => {
+  if (candidate.current_job_title && candidate.company_name) {
+    return `${candidate.current_job_title} at ${candidate.company_name}`
+  }
+  if (candidate.current_job_title) {
+    return candidate.current_job_title
+  }
+  return null
+}
+
+// Function to format salary to LPA
+const formatSalary = (salary: string | null): string => {
+  if (!salary) return "Not specified"
+  const num = Number.parseFloat(salary.replace(/[^0-9.]/g, ""))
+  if (isNaN(num)) return "Invalid format"
+  if (num >= 100) {
+    return `₹${num.toFixed(2)} LPA`
+  }
+  return `₹${num.toFixed(2)} LPA`
+}
+
+const getColumnValue = (app: Application, columnKey: string): string => {
+  switch (columnKey) {
+    case "candidateName":
+      return app.candidate.full_name
+    case "designation":
+      return getDesignation(app.candidate)
+    case "company":
+      return app.candidate.company_name || "Not specified"
+    case "skills":
+      return (app.candidate.skills_you_know || app.candidate.skills_for_role || []).join(", ")
+    case "phone":
+      return app.candidate.mobile_number || "-"
+    case "location":
+      return app.candidate.current_city && app.candidate.current_state
+        ? `${app.candidate.current_city}, ${app.candidate.current_state}`
+        : app.candidate.current_city || app.candidate.current_state || "-"
+    case "noticePeriod":
+      return getNoticePeriodOrAvailability(app.candidate)
+    case "salary":
+      return formatSalary(app.candidate.preferred_salary)
+    case "experience":
+      return app.candidate.total_experience_years !== undefined
+        ? `${app.candidate.total_experience_years} yrs ${app.candidate.total_experience_months || 0} months`
+        : "Not specified"
+    case "preferredLocation":
+      return app.candidate.preferred_locations?.join(", ") || "Not specified"
+    case "industry":
+      return app.candidate.industry || "Not specified"
+    case "email":
+      return app.candidate.email || "Not specified"
+    case "applyDate":
+      return app.applied_at ? new Date(app.applied_at).toLocaleDateString() : "N/A"
+    case "cvScore":
+      return app.cv_score !== null && app.cv_score !== undefined ? `${Math.round(app.cv_score)}%` : "-"
+    case "status":
+      return app.status.charAt(0).toUpperCase() + app.status.slice(1)
+    case "resumeHeadline":
+      return app.candidate.resume_headline || "-"
+    case "previousEmployment":
+      // This case might need adjustment based on how employment_history is stored and displayed
+      // For now, returning as is, assuming it might be a string or an object that needs stringification.
+      if (typeof app.candidate.previous_employment === "object" && app.candidate.previous_employment !== null) {
+        return JSON.stringify(app.candidate.previous_employment)
+      }
+      return app.candidate.previous_employment || "-"
+    case "currentSalary":
+      return app.candidate.current_salary || "-"
+    case "expectedSalary":
+      return app.candidate.expected_salary || "-"
+    case "languages":
+      return app.candidate.languages_known?.join(", ") || "-"
+    default:
+      return "-"
+  }
+}
+
+interface ColumnConfig {
+  key: string
+  label: string
+  selected: boolean
+  order?: number // Added order for reordering
+}
+
 // Function signature updated to accept jobId and employerId
 export function JobResponsesManager({ jobId, employerId }: { jobId: string; employerId: string }) {
   const [applications, setApplications] = useState<JobApplication[]>([])
   const [loading, setLoading] = useState(true)
-  const [jobDetails, setJobDetails] = useState<any>(null)
+  const [jobDetails, setJobDetails] = useState<JobDetails | null>(null) // Explicitly type jobDetails
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("all") // State for active tab filter
   const [selectedApplications, setSelectedApplications] = useState<string[]>([])
@@ -112,22 +200,12 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
   const [showCustomizeColumns, setShowCustomizeColumns] = useState(false)
   const [sortBy, setSortBy] = useState("relevance")
   const [visibleContacts, setVisibleContacts] = useState<Set<string>>(new Set())
-  const [calculatingScores, setCalculatingScores] = useState(false) // State for calculating CV scores
-  const [showCVScores, setShowCVScores] = useState(false)
-
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [showCommentInput, setShowCommentInput] = useState<string | null>(null) // State for comment input
 
-  const [visibleColumns, setVisibleColumns] = useState({
-    candidateName: true,
-    designation: true,
-    company: true,
-    skills: true,
-    phone: true,
-    location: true,
-    noticePeriod: true,
-    salary: true,
-    status: true,
-  })
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({}) // Use a record for boolean visibility
+
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table")
 
   const [filters, setFilters] = useState({
     keywords: "",
@@ -156,28 +234,159 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(40)
 
-  const [availableColumns, setAvailableColumns] = useState([
+  const getSelectedColumns = () => {
+    // Get selected columns and assign order based on their position in availableColumns array
+    const selected = availableColumns.filter((col) => col.selected)
+    // Sort by order property if available, otherwise maintain current order from availableColumns
+    return selected.sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
+  }
+
+  const renderCellContent = (app: Application, columnKey: string) => {
+    switch (columnKey) {
+      case "candidateName":
+        return (
+          <Link
+            href={`/employer/candidate-profile/${app.candidate_id}?jobId=${jobId}&jobTitle=${encodeURIComponent(jobDetails?.title || "")}&applicationId=${app.id}`}
+            className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors break-words"
+          >
+            {app.candidate.full_name}
+          </Link>
+        )
+      case "designation":
+        return <div className="text-sm text-gray-900 break-words">{getDesignation(app.candidate)}</div>
+      case "company":
+        return <div className="text-sm text-gray-900 break-words">{app.candidate.company_name || "Not mentioned"}</div>
+      case "skills":
+        return (
+          <div className="text-sm text-gray-600 break-words">
+            {(app.candidate.skills_you_know?.length > 0 ? app.candidate.skills_you_know : app.candidate.skills_for_role)
+              ?.slice(0, 3)
+              .join(", ") || "Not mentioned"}
+          </div>
+        )
+      case "phone":
+        return visibleContacts.has(app.candidate_id) ? (
+          <span className="text-sm text-gray-900 font-mono">{app.candidate.mobile_number}</span>
+        ) : (
+          <button
+            onClick={() => toggleContactVisibility(app.candidate_id)}
+            className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
+          >
+            Show contact
+          </button>
+        )
+      case "location":
+        return (
+          <div className="text-sm text-gray-900 break-words">
+            {app.candidate.current_city && app.candidate.current_state
+              ? `${app.candidate.current_city}, ${app.candidate.current_state}`
+              : app.candidate.current_city || app.candidate.current_state || "Not mentioned"}
+          </div>
+        )
+      case "noticePeriod":
+        return <div className="text-sm text-gray-900 break-words">{getNoticePeriodOrAvailability(app.candidate)}</div>
+      case "salary":
+        return <div className="text-sm text-gray-900 break-words">{formatSalary(app.candidate.preferred_salary)}</div>
+      case "experience":
+        return (
+          <div className="text-sm text-gray-900 break-words">
+            {app.candidate.total_experience_years !== undefined
+              ? `${app.candidate.total_experience_years} yrs ${app.candidate.total_experience_months || 0} months`
+              : "Not mentioned"}
+          </div>
+        )
+      case "preferredLocation":
+        return (
+          <div className="text-sm text-gray-900 break-words">
+            {app.candidate.preferred_locations?.join(", ") || "Not mentioned"}
+          </div>
+        )
+      case "industry":
+        return <div className="text-sm text-gray-900 break-words">{app.candidate.industry || "Not mentioned"}</div>
+      case "email":
+        return <div className="text-sm text-gray-900 break-words">{app.candidate.email || "Not mentioned"}</div>
+      case "applyDate":
+        return (
+          <div className="text-sm text-gray-900 break-words">
+            {app.applied_at ? new Date(app.applied_at).toLocaleDateString() : "N/A"}
+          </div>
+        )
+      // </CHANGE> Removed keySkillScore case
+      case "cvScore":
+        return getCVScoreBadge(app.cv_score)
+      case "status":
+        return (
+          <Select value={app.status || "applied"} onValueChange={(value) => handleStatusUpdate(app.id, value)}>
+            <SelectTrigger
+              className={`w-auto min-w-[120px] h-8 text-xs border ${
+                app.status === "shortlisted"
+                  ? "bg-green-100 text-green-700 border-green-200"
+                  : app.status === "rejected"
+                    ? "bg-red-100 text-red-700 border-red-200"
+                    : app.status === "maybe"
+                      ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                      : "bg-blue-100 text-blue-700 border-blue-200"
+              }`}
+            >
+              <SelectValue>
+                {app.status === "applied" ? "Select" : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="applied" className="text-blue-700">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  Select
+                </span>
+              </SelectItem>
+              <SelectItem value="shortlisted" className="text-green-700">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  Shortlisted
+                </span>
+              </SelectItem>
+              <SelectItem value="maybe" className="text-yellow-700">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                  Maybe
+                </span>
+              </SelectItem>
+              <SelectItem value="rejected" className="text-red-700">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                  Rejected
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        )
+      default:
+        return <div className="text-sm text-gray-500">-</div>
+    }
+  }
+
+  const [availableColumns, setAvailableColumns] = useState<ColumnConfig[]>([
     { key: "candidateName", label: "Candidate Name", selected: true },
     { key: "designation", label: "Designation", selected: true },
     { key: "company", label: "Company Name", selected: true },
-    { key: "salary", label: "Salary", selected: true },
-    { key: "location", label: "Location", selected: true },
-    { key: "exp", label: "Exp", selected: false },
-    { key: "noticePeriod", label: "Notice period/ Availability to join", selected: true },
     { key: "skills", label: "Key Skills", selected: true },
-    { key: "education", label: "Education", selected: false },
+    { key: "phone", label: "Phone Number", selected: false },
+    { key: "location", label: "Location", selected: true },
+    { key: "noticePeriod", label: "Notice period/ Availability", selected: true },
+    { key: "salary", label: "Salary", selected: true },
+    { key: "experience", label: "Experience", selected: false },
     { key: "preferredLocation", label: "Preferred location", selected: false },
     { key: "industry", label: "Industry", selected: false },
-    { key: "department", label: "Department", selected: false },
     { key: "email", label: "Email id", selected: false },
     { key: "applyDate", label: "Apply date", selected: false },
-    { key: "phone", label: "Phone Number", selected: true },
-    { key: "keySkillScore", label: "Key skill score", selected: false },
-    { key: "designationScore", label: "Designation score", selected: false },
-    { key: "callStatus", label: "Call Status", selected: false },
+    // </CHANGE> Removed keySkillScore from available columns
+    { key: "cvScore", label: "CV Score", selected: true },
     { key: "status", label: "Status", selected: true },
-    // Add CV Score column configuration
-    { key: "cvScore", label: "CV Score", selected: false },
+    { key: "resumeHeadline", label: "Resume Headline", selected: false }, // Added Resume Headline
+    { key: "previousEmployment", label: "Previous Employment", selected: false }, // Added Previous Employment
+    { key: "currentSalary", label: "Current Salary", selected: false }, // Added Current Salary
+    { key: "expectedSalary", label: "Expected Salary", selected: false }, // Added Expected Salary
+    { key: "languages", label: "Languages", selected: false }, // Added Languages
   ])
   const [columnSearch, setColumnSearch] = useState("")
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
@@ -215,7 +424,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     "Sikkim",
     "Tamil Nadu",
     "Telangana",
-    " Tripura",
+    "Tripura",
     "Uttar Pradesh",
     "Uttarakhand",
     "West Bengal",
@@ -298,21 +507,12 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     setSelectedApplications((prev) => (prev.includes(id) ? prev.filter((appId) => appId !== id) : [...prev, id]))
   }
 
-  const toggleAllApplications = () => {
-    if (selectedApplications.length === filteredApplications.length) {
-      setSelectedApplications([])
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedApplications(paginatedApplications.map((app) => app.id))
     } else {
-      setSelectedApplications(filteredApplications.map((app) => app.id))
+      setSelectedApplications([])
     }
-  }
-
-  const formatSalary = (salary: string | null) => {
-    if (!salary) return "Not specified"
-    const num = Number.parseFloat(salary)
-    if (num >= 100) {
-      return `₹${(num / 100000).toFixed(2)} LPA`
-    }
-    return `₹${num} LPA`
   }
 
   const stats = useMemo(() => {
@@ -382,6 +582,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     })
   }
 
+  // Updated loadColumnPreferences to filter out old/invalid columns and build columns in the order they were saved
   const loadColumnPreferences = async () => {
     try {
       console.log("[v0] Loading column preferences for employer:", employerId, "job:", jobId)
@@ -390,25 +591,87 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
       if (storedPreferences && storedPreferences.length > 0) {
         console.log("[v0] Found stored preferences:", storedPreferences)
 
-        // Map stored preferences to column objects, preserving their order
-        const newAvailableColumns = storedPreferences
-          .map((pref: any) => ({
-            key: pref.columnKey,
-            label: pref.label,
-            selected: pref.isSelected,
-            order: pref.order,
-          }))
-          .sort((a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
+        const validColumnKeys = [
+          "candidateName",
+          "designation",
+          "company",
+          "skills",
+          "phone",
+          "location",
+          "noticePeriod",
+          "salary",
+          "experience",
+          "preferredLocation",
+          "industry",
+          "email",
+          "applyDate",
+          "cvScore",
+          "status",
+          "resumeHeadline", // Added valid keys
+          "previousEmployment",
+          "currentSalary",
+          "expectedSalary",
+          "languages",
+        ]
 
-        setAvailableColumns(newAvailableColumns)
+        const filteredPreferences = storedPreferences.filter((pref: any) => validColumnKeys.includes(pref.columnKey))
 
-        const newVisibleColumns: any = {}
-        newAvailableColumns.forEach((col) => {
+        // Build columns in the order they were saved
+        const orderedColumns: ColumnConfig[] = []
+
+        // First add columns that are in preferences, in their saved order
+        filteredPreferences
+          .sort((a: any, b: any) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY))
+          .forEach((pref: any) => {
+            orderedColumns.push({
+              key: pref.columnKey,
+              label: pref.label,
+              selected: pref.isSelected,
+            })
+          })
+
+        // Add any new columns that weren't in stored preferences
+        const defaultColumnsConfig = [
+          { key: "candidateName", label: "Candidate Name", selected: true },
+          { key: "designation", label: "Designation", selected: true },
+          { key: "company", label: "Company Name", selected: true },
+          { key: "skills", label: "Key Skills", selected: true },
+          { key: "phone", label: "Phone Number", selected: false },
+          { key: "location", label: "Location", selected: true },
+          { key: "noticePeriod", label: "Notice period/ Availability", selected: true },
+          { key: "salary", label: "Salary", selected: true },
+          { key: "experience", label: "Experience", selected: false },
+          { key: "preferredLocation", label: "Preferred location", selected: false },
+          { key: "industry", label: "Industry", selected: false },
+          { key: "email", label: "Email id", selected: false },
+          { key: "applyDate", label: "Apply date", selected: false },
+          { key: "cvScore", label: "CV Score", selected: true },
+          { key: "status", label: "Status", selected: true },
+          { key: "resumeHeadline", label: "Resume Headline", selected: false },
+          { key: "previousEmployment", label: "Previous Employment", selected: false },
+          { key: "currentSalary", label: "Current Salary", selected: false },
+          { key: "expectedSalary", label: "Expected Salary", selected: false },
+          { key: "languages", label: "Languages", selected: false },
+        ]
+
+        validColumnKeys.forEach((key) => {
+          if (!orderedColumns.find((col) => col.key === key)) {
+            const defaultCol = defaultColumnsConfig.find((c) => c.key === key)
+            if (defaultCol) {
+              orderedColumns.push(defaultCol)
+            }
+          }
+        })
+
+        setAvailableColumns(orderedColumns)
+
+        const newVisibleColumns: Record<string, boolean> = {}
+        orderedColumns.forEach((col) => {
           newVisibleColumns[col.key] = col.selected
         })
         setVisibleColumns(newVisibleColumns)
 
-        console.log("[v0] Applied column preferences with order - columns:", newAvailableColumns)
+        console.log("[v0] Applied column preferences - columns:", orderedColumns)
         setPreferencesLoaded(true)
       } else {
         console.log("[v0] No preferences found, using defaults")
@@ -422,12 +685,21 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
 
   const saveColumnPreferencesToDB = async () => {
     try {
-      const preferencesToSave = availableColumns.map((col, index) => ({
-        columnKey: col.key,
-        label: col.label,
-        isSelected: col.selected,
-        order: col.selected ? index : null, // Only store order for selected columns
-      }))
+      // Get selected columns in their current order
+      const selectedColumns = availableColumns.filter((col) => col.selected)
+
+      const preferencesToSave = availableColumns.map((col) => {
+        // Find the index of this column in selectedColumns (for selected ones)
+        const selectedIndex = selectedColumns.findIndex((sc) => sc.key === col.key)
+        return {
+          columnKey: col.key,
+          label: col.label,
+          isSelected: col.selected,
+          order: col.selected ? selectedIndex : null, // Order is the position in selected columns
+        }
+      })
+
+      console.log("[v0] Saving column preferences:", preferencesToSave)
       await saveColumnPreferences(employerId, jobId, preferencesToSave)
       toast({
         title: "Success",
@@ -443,49 +715,55 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     }
   }
 
-  // Handler for calculating CV scores
-  const handleCalculateCVScores = async () => {
-    try {
-      setCalculatingScores(true)
-      const result = await calculateCVScoresForJob(jobId)
-
-      if (result.success) {
-        toast({
-          title: "Success",
-          description: `CV scores calculated for ${result.count} candidates`,
-        })
-        setShowCVScores(true)
-        await loadApplications() // Reload to show scores
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Failed to calculate scores",
-          variant: "destructive",
-        })
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to calculate scores",
-        variant: "destructive",
-      })
-    } finally {
-      setCalculatingScores(false)
-    }
-  }
-
   const getCVScoreBadge = (score: number | null) => {
     if (score === null || score === undefined) return null
 
     let colorClass = ""
-    if (score >= 8.0) colorClass = "bg-green-100 text-green-700 border-green-300"
-    else if (score >= 6.0) colorClass = "bg-yellow-100 text-yellow-700 border-yellow-300"
-    else if (score >= 4.0) colorClass = "bg-orange-100 text-orange-700 border-orange-300"
+    if (score >= 80) colorClass = "bg-green-100 text-green-700 border-green-300"
+    else if (score >= 60) colorClass = "bg-yellow-100 text-yellow-700 border-yellow-300"
+    else if (score >= 40) colorClass = "bg-orange-100 text-orange-700 border-orange-300"
     else colorClass = "bg-red-100 text-red-700 border-red-300"
 
     return (
       <Badge className={`${colorClass} font-semibold text-sm`} variant="outline">
-        {score.toFixed(1)}/10
+        {Math.round(score)}%
+      </Badge>
+    )
+  }
+
+  const getKeySkillScoreBadge = (app: Application, job: JobDetails | null) => {
+    // Check if jobDetails is available and has required_skills
+    if (!job?.required_skills || job.required_skills.length === 0 || !app.candidate) {
+      return <span className="text-gray-400">-</span>
+    }
+
+    const jobSkills = (job.required_skills || []).map((s: string) => s.toLowerCase().trim())
+    const candidateSkills = [...(app.candidate.skills_you_know || []), ...(app.candidate.skills_for_role || [])].map(
+      (s: string) => s.toLowerCase().trim(),
+    )
+
+    if (jobSkills.length === 0) return <span className="text-gray-400">-</span>
+
+    const matchedSkills = jobSkills.filter((skill: string) =>
+      candidateSkills.some((cs: string) => cs.includes(skill) || skill.includes(cs)),
+    )
+
+    const matchPercentage = (matchedSkills.length / jobSkills.length) * 100
+
+    let level = "Low"
+    let colorClass = "bg-red-100 text-red-700 border-red-300"
+
+    if (matchPercentage >= 70) {
+      level = "High"
+      colorClass = "bg-green-100 text-green-700 border-green-300"
+    } else if (matchPercentage >= 40) {
+      level = "Medium"
+      colorClass = "bg-yellow-100 text-yellow-700 border-yellow-300"
+    }
+
+    return (
+      <Badge className={`${colorClass} font-semibold text-xs`} variant="outline">
+        {level}
       </Badge>
     )
   }
@@ -494,8 +772,8 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     let result = [...applications]
 
     if (applications.length > 0) {
-      console.log("[v0] First application candidate data:", JSON.stringify(applications[0].candidate, null, 2))
-      console.log("[v0] Current filters:", JSON.stringify(filters, null, 2))
+      // console.log("[v0] First application candidate data:", JSON.stringify(applications[0].candidate, null, 2))
+      // console.log("[v0] Current filters:", JSON.stringify(filters, null, 2))
     }
 
     // Filter by active tab
@@ -506,12 +784,12 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
     // Filter by keywords - search in skills_for_role and skills_you_know
     if (filters.keywords.trim()) {
       const keyword = filters.keywords.toLowerCase()
-      console.log("[v0] Filtering by keyword:", keyword)
+      // console.log("[v0] Filtering by keyword:", keyword)
       result = result.filter((app) => {
         const skillsForRole = Array.isArray(app.candidate?.skills_for_role) ? app.candidate.skills_for_role : []
         const skillsYouKnow = Array.isArray(app.candidate?.skills_you_know) ? app.candidate.skills_you_know : []
-        console.log("[v0] Candidate skills_for_role:", skillsForRole)
-        console.log("[v0] Candidate skills_you_know:", skillsYouKnow)
+        // console.log("[v0] Candidate skills_for_role:", skillsForRole)
+        // console.log("[v0] Candidate skills_you_know:", skillsYouKnow)
 
         if (filters.searchInSkillsOnly) {
           // Search only in skills
@@ -530,7 +808,7 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           skillsYouKnow.some((skill: string) => skill?.toLowerCase().includes(keyword))
         )
       })
-      console.log("[v0] After keyword filter, results:", result.length)
+      // console.log("[v0] After keyword filter, results:", result.length)
     }
 
     // Filter by location (State and City) - use CURRENT location, not preferred
@@ -580,23 +858,23 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
 
     // Filter by experience range
     if (filters.experience.min > 0 || filters.experience.max < 30) {
-      console.log("[v0] Filtering by experience:", filters.experience)
+      // console.log("[v0] Filtering by experience:", filters.experience)
       result = result.filter((app) => {
         const expYears = app.candidate?.total_experience_years || 0
         const expMonths = app.candidate?.total_experience_months || 0
-        const totalExp = expYears + expMonths / 12
-        console.log("[v0] Candidate experience:", { expYears, expMonths, totalExp })
+        const totalExp = expYears + (expMonths || 0) / 12
+        // console.log("[v0] Candidate experience:", { expYears, expMonths, totalExp })
         return totalExp >= filters.experience.min && totalExp <= filters.experience.max
       })
-      console.log("[v0] After experience filter, results:", result.length)
+      // console.log("[v0] After experience filter, results:", result.length)
     }
 
     // Filter by notice period
     if (filters.noticePeriod.length > 0) {
-      console.log("[v0] Filtering by notice period:", filters.noticePeriod)
+      // console.log("[v0] Filtering by notice period:", filters.noticePeriod)
       result = result.filter((app) => {
         const candidateNotice = app.candidate?.notice_period?.toLowerCase() || ""
-        console.log("[v0] Candidate notice period:", candidateNotice)
+        // console.log("[v0] Candidate notice period:", candidateNotice)
         return filters.noticePeriod.some((period) => {
           const periodLower = period.toLowerCase()
           if (periodLower === "immediate" || periodLower === "immediately joining") {
@@ -639,18 +917,18 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           return candidateNotice.includes(periodLower)
         })
       })
-      console.log("[v0] After notice period filter, results:", result.length)
+      // console.log("[v0] After notice period filter, results:", result.length)
     }
 
     // Filter by salary range
     if (filters.salary.min > 0 || filters.salary.max < 100) {
-      console.log("[v0] Filtering by salary:", filters.salary)
+      // console.log("[v0] Filtering by salary:", filters.salary)
       result = result.filter((app) => {
         // Check both annual_salary and preferred_salary fields
         const annualSalary = app.candidate?.annual_salary || ""
         const preferredSalary = app.candidate?.preferred_salary || ""
-        console.log("[v0] Candidate annual_salary:", annualSalary)
-        console.log("[v0] Candidate preferred_salary:", preferredSalary)
+        // console.log("[v0] Candidate annual_salary:", annualSalary)
+        // console.log("[v0] Candidate preferred_salary:", preferredSalary)
 
         // Parse salary value - handle various formats like "10 LPA", "1000000", "10,00,000"
         const parseSalary = (salaryStr: string): number => {
@@ -670,19 +948,19 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
         }
 
         const salaryInLPA = Math.max(parseSalary(annualSalary), parseSalary(preferredSalary))
-        console.log("[v0] Parsed salary in LPA:", salaryInLPA)
+        // console.log("[v0] Parsed salary in LPA:", salaryInLPA)
         return salaryInLPA >= filters.salary.min && salaryInLPA <= filters.salary.max
       })
-      console.log("[v0] After salary filter, results:", result.length)
+      // console.log("[v0] After salary filter, results:", result.length)
     }
 
     // Filter by education
     if (filters.education.length > 0) {
-      console.log("[v0] Filtering by education:", filters.education)
+      // console.log("[v0] Filtering by education:", filters.education)
       result = result.filter((app) => {
         const qualification = app.candidate?.highest_qualification?.toLowerCase() || ""
         const course = app.candidate?.course?.toLowerCase() || ""
-        console.log("[v0] Candidate qualification:", qualification, "course:", course)
+        // console.log("[v0] Candidate qualification:", qualification, "course:", course)
 
         return filters.education.some((edu) => {
           const eduLower = edu.toLowerCase()
@@ -776,24 +1054,24 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           return qualification.includes(eduLower) || course.includes(eduLower)
         })
       })
-      console.log("[v0] After education filter, results:", result.length)
+      // console.log("[v0] After education filter, results:", result.length)
     }
 
     // Filter by gender
     if (filters.gender.length > 0) {
-      console.log("[v0] Filtering by gender:", filters.gender)
+      // console.log("[v0] Filtering by gender:", filters.gender)
       result = result.filter((app) => {
         const candidateGender = app.candidate?.gender?.toLowerCase().trim() || ""
-        console.log("[v0] Candidate gender:", candidateGender)
+        // console.log("[v0] Candidate gender:", candidateGender)
         // Use exact match instead of includes to avoid "female".includes("male") = true
         return filters.gender.some((gen) => candidateGender === gen.toLowerCase().trim())
       })
-      console.log("[v0] After gender filter, results:", result.length)
+      // console.log("[v0] After gender filter, results:", result.length)
     }
 
     // Filter by diversity (this field may not exist in DB yet, keeping for future use)
     if (filters.diversity.length > 0) {
-      console.log("[v0] Filtering by diversity:", filters.diversity)
+      // console.log("[v0] Filtering by diversity:", filters.diversity)
       // Skip diversity filter if no diversity field exists
       // This can be implemented when diversity data is added to the database
     }
@@ -868,6 +1146,10 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
         newColumns.splice(targetIndex, 0, draggedItem)
       }
 
+      console.log(
+        "[v0] Columns reordered - new order:",
+        newColumns.filter((c) => c.selected).map((c) => c.label),
+      )
       return newColumns
     })
 
@@ -916,6 +1198,10 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
 
       return newColumns
     })
+  }
+
+  const handleCheckboxChange = (id: string, checked: boolean) => {
+    setSelectedApplications((prev) => (checked ? [...prev, id] : prev.filter((appId) => appId !== id)))
   }
 
   if (loading) {
@@ -1031,7 +1317,12 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                   All Jobs
                 </Link>
                 <ChevronRight className="h-3 w-3 md:h-4 md:w-4 text-gray-400 flex-shrink-0" />
-                <span className="text-gray-900 font-medium truncate">{jobDetails?.title || "Loading..."}</span>
+                <Link
+                  href={`/employer/preview-job/${jobId}`}
+                  className="text-gray-900 font-medium truncate hover:text-blue-600 hover:underline transition-colors cursor-pointer"
+                >
+                  {jobDetails?.title || "Loading..."}
+                </Link>
                 {jobDetails?.status && (
                   <Badge
                     className={`ml-1 md:ml-2 text-xs flex-shrink-0 ${
@@ -1624,20 +1915,47 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                 <SlidersHorizontal className="h-3 w-3 md:h-4 md:w-4 mr-2" />
                 Filters
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCalculateCVScores}
-                disabled={calculatingScores}
-                className="text-xs md:text-sm bg-transparent"
-              >
-                {calculatingScores ? "Calculating..." : "Calculate CV Scores"}
-              </Button>
+              {/* Removed Calculate CV Score button */}
               <span className="text-xs md:text-sm text-gray-600">
                 Showing {filteredApplications.length} response{filteredApplications.length !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 border border-gray-300 rounded-md p-1">
+                <Button
+                  variant={viewMode === "table" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("table")}
+                  className="h-7 px-2 text-xs"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="ml-1">Table</span>
+                </Button>
+                <Button
+                  variant={viewMode === "cards" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("cards")}
+                  className="h-7 px-2 text-xs"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <span className="ml-1">Cards</span>
+                </Button>
+              </div>
+
               <span className="text-xs md:text-sm text-gray-600 whitespace-nowrap">Sort by:</span>
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-full sm:w-32 h-8 text-xs md:text-sm">
@@ -1662,158 +1980,124 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
           </div>
 
           <div className="overflow-x-auto">
-            {/* Desktop table view */}
-            <div className="hidden md:block">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="w-12 px-4 py-3">
-                      <Checkbox
-                        checked={
-                          selectedApplications.length === filteredApplications.length && filteredApplications.length > 0
-                        }
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedApplications(filteredApplications.map((app) => app.id))
-                          } else {
-                            setSelectedApplications([])
-                          }
-                        }}
-                      />
-                    </th>
-                    {showCVScores && <th className="px-4 py-3 font-medium">CV Score</th>}
-                    <th className="px-4 py-3 font-medium">Candidate Name</th>
-                    <th className="px-4 py-3 font-medium">Designation</th>
-                    <th className="px-4 py-3 font-medium">Company</th>
-                    <th className="px-4 py-3 font-medium">Key Skills</th>
-                    <th className="px-4 py-3 font-medium">Phone</th>
-                    <th className="px-4 py-3 font-medium">Location</th>
-                    <th className="px-4 py-3 font-medium">Notice Period/Availability</th>
-                    <th className="px-4 py-3 font-medium">Salary</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="w-12 px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+            {viewMode === "table" ? (
+              <>
+                {/* Desktop table view */}
+                <div className="hidden md:block">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="w-12 px-4 py-3">
+                          <Checkbox
+                            checked={selectedApplications.length === paginatedApplications.length}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </th>
+                        {getSelectedColumns().map((column) => (
+                          <th key={column.key} className="px-4 py-3 font-medium text-left">
+                            {column.label}
+                          </th>
+                        ))}
+                        <th className="w-12 px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedApplications.map((app) => (
+                        <tr key={app.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <Checkbox
+                              checked={selectedApplications.includes(app.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedApplications([...selectedApplications, app.id])
+                                } else {
+                                  setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
+                                }
+                              }}
+                            />
+                          </td>
+                          {getSelectedColumns().map((column) => (
+                            <td key={column.key} className="px-4 py-3">
+                              {renderCellContent(app, column.key)}
+                            </td>
+                          ))}
+                          <td className="px-4 py-3">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                  <MoreVertical className="h-4 w-4 text-gray-600" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    window.location.href = `mailto:${app.candidate.email}`
+                                  }}
+                                >
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  Email
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedApplication(app)
+                                    setShowForwardModal(true)
+                                  }}
+                                >
+                                  <Forward className="h-4 w-4 mr-2" />
+                                  Forward
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
+                                    if (phoneNumber) {
+                                      window.open(`https://wa.me/${phoneNumber}`, "_blank")
+                                    } else {
+                                      alert("Candidate has no valid phone number for WhatsApp.")
+                                    }
+                                  }}
+                                >
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  WhatsApp
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile card view (existing) */}
+                <div className="md:hidden space-y-3">
                   {paginatedApplications.map((app) => (
-                    <tr key={app.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <Checkbox
-                          checked={selectedApplications.includes(app.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedApplications([...selectedApplications, app.id])
-                            } else {
-                              setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
-                            }
-                          }}
-                        />
-                      </td>
-                      {showCVScores && <td className="px-4 py-3">{getCVScoreBadge(app.cv_score)}</td>}
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/employer/candidate-profile/${app.candidate_id}?jobId=${jobId}&jobTitle=${encodeURIComponent(jobDetails?.title || "")}&applicationId=${app.id}`}
-                          className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors break-words"
-                        >
-                          {app.candidate.full_name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 break-words">{getDesignation(app.candidate)}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 break-words">
-                          {app.candidate.company_name || "Not mentioned"}
+                    <div key={app.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <Checkbox
+                            checked={selectedApplications.includes(app.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedApplications([...selectedApplications, app.id])
+                              } else {
+                                setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
+                              }
+                            }}
+                            className="mt-1 flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-gray-900 break-words">
+                              {app.candidate.full_name}
+                            </h3>
+                            <p className="text-xs text-gray-600 break-words">{getDesignation(app.candidate)}</p>
+                            {app.cv_score !== null && app.cv_score !== undefined && (
+                              <div className="mt-1">{getCVScoreBadge(app.cv_score)}</div>
+                            )}
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-600 break-words">
-                          {app.candidate.skills_for_role?.slice(0, 3).join(", ") || "Not mentioned"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {visibleContacts.has(app.candidate_id) ? (
-                          <span className="text-sm text-gray-900 font-mono">{app.candidate.mobile_number}</span>
-                        ) : (
-                          <button
-                            onClick={() => toggleContactVisibility(app.candidate_id)}
-                            className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
-                          >
-                            Show contact
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 break-words">
-                          {app.candidate.current_city && app.candidate.current_state
-                            ? `${app.candidate.current_city}, ${app.candidate.current_state}`
-                            : app.candidate.current_city || app.candidate.current_state || "Not mentioned"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 break-words">
-                          {getNoticePeriodOrAvailability(app.candidate)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-gray-900 break-words">
-                          {formatSalary(app.candidate.preferred_salary)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={app.status || "applied"}
-                          onValueChange={(value) => handleStatusUpdate(app.id, value)}
-                        >
-                          <SelectTrigger
-                            className={`w-auto min-w-[120px] h-8 text-xs border ${
-                              app.status === "shortlisted"
-                                ? "bg-green-100 text-green-700 border-green-200"
-                                : app.status === "rejected"
-                                  ? "bg-red-100 text-red-700 border-red-200"
-                                  : app.status === "maybe"
-                                    ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-                                    : "bg-blue-100 text-blue-700 border-blue-200"
-                            }`}
-                          >
-                            <SelectValue>
-                              {app.status === "applied"
-                                ? "Select"
-                                : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="applied" className="text-blue-700">
-                              <span className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                Select
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="shortlisted" className="text-green-700">
-                              <span className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                Shortlisted
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="maybe" className="text-yellow-700">
-                              <span className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-                                Maybe
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="rejected" className="text-red-700">
-                              <span className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                                Rejected
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button className="p-1 hover:bg-gray-100 rounded">
+                            <button className="p-1 hover:bg-gray-100 rounded flex-shrink-0">
                               <MoreVertical className="h-4 w-4 text-gray-600" />
                             </button>
                           </DropdownMenuTrigger>
@@ -1837,7 +2121,6 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
-                                // Ensure mobile_number is valid before constructing the URL
                                 const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
                                 if (phoneNumber) {
                                   window.open(`https://wa.me/${phoneNumber}`, "_blank")
@@ -1851,168 +2134,425 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
 
-            <div className="md:hidden space-y-3">
-              {paginatedApplications.map((app) => (
-                <div key={app.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      <div className="space-y-2 text-xs">
+                        {app.candidate.company_name && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Company:</span>
+                            <span className="text-gray-900 break-words flex-1">{app.candidate.company_name}</span>
+                          </div>
+                        )}
+                        {app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Skills:</span>
+                            <span className="text-gray-900 break-words flex-1">
+                              {app.candidate.skills_for_role.slice(0, 3).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {(app.candidate.current_city || app.candidate.current_state) && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 font-medium flex-shrink-0">Location:</span>
+                            <span className="text-gray-900 break-words flex-1">
+                              {app.candidate.current_city && app.candidate.current_state
+                                ? `${app.candidate.current_city}, ${app.candidate.current_state}`
+                                : app.candidate.current_city || app.candidate.current_state}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Notice Period:</span>
+                          <span className="text-gray-900 break-words flex-1">
+                            {getNoticePeriodOrAvailability(app.candidate)}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Salary:</span>
+                          <span className="text-gray-900 break-words flex-1">
+                            {formatSalary(app.candidate.preferred_salary)}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 font-medium flex-shrink-0">Phone:</span>
+                          <div className="flex-1">
+                            {visibleContacts.has(app.candidate_id) ? (
+                              <span className="text-gray-900 font-mono">{app.candidate.mobile_number}</span>
+                            ) : (
+                              <button
+                                onClick={() => toggleContactVisibility(app.candidate_id)}
+                                className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
+                              >
+                                Show contact
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 font-medium">Status:</span>
+                          <Select
+                            value={app.status || "applied"}
+                            onValueChange={(value) => handleStatusUpdate(app.id, value)}
+                          >
+                            <SelectTrigger
+                              className={`flex-1 h-8 text-xs border ${
+                                app.status === "shortlisted"
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : app.status === "rejected"
+                                    ? "bg-red-50 text-red-700 border-red-200"
+                                    : app.status === "maybe"
+                                      ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                                      : "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}
+                            >
+                              <SelectValue>
+                                {app.status === "applied"
+                                  ? "Select"
+                                  : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="applied">Select</SelectItem>
+                              <SelectItem value="shortlisted">Shortlisted</SelectItem>
+                              <SelectItem value="maybe">Maybe</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              /* Card View */
+              <div className="space-y-4">
+                {paginatedApplications.map((app) => (
+                  <div
+                    key={app.id}
+                    className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                  >
+                    {/* Checkbox and Name Header */}
+                    <div className="flex items-start gap-3 mb-4">
                       <Checkbox
                         checked={selectedApplications.includes(app.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedApplications([...selectedApplications, app.id])
-                          } else {
-                            setSelectedApplications(selectedApplications.filter((id) => id !== app.id))
-                          }
-                        }}
-                        className="mt-1 flex-shrink-0"
+                        onCheckedChange={(checked) => handleCheckboxChange(app.id, checked as boolean)}
                       />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-semibold text-gray-900 break-words">{app.candidate.full_name}</h3>
-                        <p className="text-xs text-gray-600 break-words">{getDesignation(app.candidate)}</p>
-                        {app.cv_score !== null && app.cv_score !== undefined && (
-                          <div className="mt-1">{getCVScoreBadge(app.cv_score)}</div>
-                        )}
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button className="p-1 hover:bg-gray-100 rounded flex-shrink-0">
-                          <MoreVertical className="h-4 w-4 text-gray-600" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            window.location.href = `mailto:${app.candidate.email}`
-                          }}
-                        >
-                          <Mail className="h-4 w-4 mr-2" />
-                          Email
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedApplication(app)
-                            setShowForwardModal(true)
-                          }}
-                        >
-                          <Forward className="h-4 w-4 mr-2" />
-                          Forward
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
-                            if (phoneNumber) {
-                              window.open(`https://wa.me/${phoneNumber}`, "_blank")
-                            } else {
-                              alert("Candidate has no valid phone number for WhatsApp.")
-                            }
-                          }}
-                        >
-                          <MessageSquare className="h-4 w-4 mr-2" />
-                          WhatsApp
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    {app.candidate.company_name && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Company:</span>
-                        <span className="text-gray-900 break-words flex-1">{app.candidate.company_name}</span>
-                      </div>
-                    )}
-                    {app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0 && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Skills:</span>
-                        <span className="text-gray-900 break-words flex-1">
-                          {app.candidate.skills_for_role.slice(0, 3).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                    {(app.candidate.current_city || app.candidate.current_state) && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500 font-medium flex-shrink-0">Location:</span>
-                        <span className="text-gray-900 break-words flex-1">
-                          {app.candidate.current_city && app.candidate.current_state
-                            ? `${app.candidate.current_city}, ${app.candidate.current_state}`
-                            : app.candidate.current_city || app.candidate.current_state}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Notice Period:</span>
-                      <span className="text-gray-900 break-words flex-1">
-                        {getNoticePeriodOrAvailability(app.candidate)}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Salary:</span>
-                      <span className="text-gray-900 break-words flex-1">
-                        {formatSalary(app.candidate.preferred_salary)}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium flex-shrink-0">Phone:</span>
                       <div className="flex-1">
-                        {visibleContacts.has(app.candidate_id) ? (
-                          <span className="text-gray-900 font-mono">{app.candidate.mobile_number}</span>
-                        ) : (
-                          <button
-                            onClick={() => toggleContactVisibility(app.candidate_id)}
-                            className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded border border-blue-300 transition-colors"
-                          >
-                            Show contact
-                          </button>
+                        <Link
+                          href={`/employer/candidate-profile/${app.candidate_id}?jobId=${jobId}`}
+                          className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        >
+                          {app.candidate.full_name}
+                        </Link>
+                        {app.candidate.recommended && (
+                          <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                            Recommended
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 font-medium">Status:</span>
-                      <Select
-                        value={app.status || "applied"}
-                        onValueChange={(value) => handleStatusUpdate(app.id, value)}
-                      >
-                        <SelectTrigger
-                          className={`flex-1 h-8 text-xs border ${
+                    {/* Main Content: Left (Details) | Divider | Right (Profile + Actions) */}
+                    <div className="flex gap-6">
+                      {/* LEFT SIDE - All Professional Details */}
+                      <div className="flex-1 space-y-2">
+                        {/* Experience, Notice Period, Location Row */}
+                        <div className="flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+                          {app.candidate.total_experience_years > 0 && (
+                            <span className="flex items-center gap-1">
+                              <Briefcase className="h-4 w-4" />
+                              {app.candidate.total_experience_years}y
+                            </span>
+                          )}
+                          {app.candidate.notice_period && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              {app.candidate.notice_period}
+                            </span>
+                          )}
+                          {app.candidate.current_city && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              {app.candidate.current_city}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Current Employment */}
+                        {getCurrentEmployment(app.candidate) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Current</span>
+                            <span className="text-gray-900">{getCurrentEmployment(app.candidate)}</span>
+                          </div>
+                        )}
+
+                        {/* Previous Employment */}
+                        {app.candidate.employment_history && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Previous</span>
+                            <span className="text-gray-900">
+                              {typeof app.candidate.employment_history === "object" &&
+                              app.candidate.employment_history !== null
+                                ? `${app.candidate.employment_history.currentJobTitle || app.candidate.employment_history.jobRole || ""} ${app.candidate.employment_history.companyName ? `at ${app.candidate.employment_history.companyName}` : ""}`.trim() ||
+                                  "Not specified"
+                                : app.candidate.employment_history}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Education */}
+                        {(app.candidate.highest_qualification ||
+                          app.candidate.course ||
+                          app.candidate.highest_education ||
+                          app.candidate.education) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Education</span>
+                            <span className="text-gray-900">
+                              {app.candidate.highest_qualification ||
+                                app.candidate.course ||
+                                app.candidate.highest_education ||
+                                app.candidate.education}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Salary Details */}
+                        {(app.candidate.current_salary || app.candidate.preferred_salary) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Salary</span>
+                            <span className="text-gray-900">
+                              {app.candidate.current_salary && `₹${app.candidate.current_salary}`}
+                              {app.candidate.current_salary && app.candidate.preferred_salary && " | "}
+                              {app.candidate.preferred_salary && `Expected: ₹${app.candidate.preferred_salary}`}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Preferred Locations */}
+                        {app.candidate.preferred_locations && app.candidate.preferred_locations.length > 0 && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Pref. locations</span>
+                            <span className="text-gray-900">
+                              {app.candidate.preferred_locations.slice(0, 2).join(", ")}
+                              {app.candidate.preferred_locations.length > 2 && (
+                                <span className="text-blue-600 ml-1">
+                                  +{app.candidate.preferred_locations.length - 2} more
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Languages Known */}
+                        {app.candidate.languages_known && app.candidate.languages_known.length > 0 && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Languages</span>
+                            <span className="text-gray-900">{app.candidate.languages_known.join(", ")}</span>
+                          </div>
+                        )}
+
+                        {/* Key Skills */}
+                        {((app.candidate.skills_you_know && app.candidate.skills_you_know.length > 0) ||
+                          (app.candidate.skills_for_role && app.candidate.skills_for_role.length > 0)) && (
+                          <div className="flex gap-2 text-sm">
+                            <span className="text-gray-500 font-medium min-w-[80px]">Key skills</span>
+                            <span className="text-gray-700">
+                              {(app.candidate.skills_you_know || app.candidate.skills_for_role)?.join(" | ")}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Dynamic Custom Column Fields */}
+                        {availableColumns
+                          .filter(
+                            (col) =>
+                              col.selected &&
+                              ![
+                                "candidateName",
+                                "skills",
+                                "current",
+                                "education",
+                                "location",
+                                "noticePeriod",
+                                "experience",
+                                "salary",
+                                "preferredLocations",
+                                "languages",
+                              ].includes(col.key),
+                          )
+                          .map((col) => {
+                            const value = getColumnValue(app, col.key)
+                            if (!value || value === "-") return null
+
+                            return (
+                              <div key={col.key} className="flex gap-2 text-sm">
+                                <span className="text-gray-500 font-medium min-w-[80px]">{col.label}</span>
+                                <span className="text-gray-900">{value}</span>
+                              </div>
+                            )
+                          })}
+                      </div>
+
+                      {/* VERTICAL DIVIDER */}
+                      <div className="w-px bg-gray-200 flex-shrink-0" />
+
+                      {/* RIGHT SIDE - Profile, Headline, Contact, Action Icons */}
+                      <div className="w-48 flex-shrink-0 flex flex-col items-center space-y-3">
+                        {/* Profile Avatar */}
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+                          {app.candidate.full_name.charAt(0).toUpperCase()}
+                        </div>
+
+                        <p className="text-xs text-center text-gray-600 italic leading-relaxed px-2 min-h-[32px]">
+                          {app.candidate.resume_headline || "Professional seeking opportunities"}
+                        </p>
+
+                        {/* Contact Button */}
+                        {visibleContacts.has(app.candidate_id) ? (
+                          <span className="text-xs text-gray-900 font-mono px-3 py-1.5 bg-gray-50 rounded border border-gray-200 text-center w-full">
+                            {app.candidate.mobile_number}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleContactVisibility(app.candidate_id)}
+                            className="text-xs w-full"
+                          >
+                            <Phone className="h-3 w-3 mr-1" />
+                            Contact
+                          </Button>
+                        )}
+
+                        {/* Action Icons */}
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <button
+                            onClick={() => (window.location.href = `mailto:${app.candidate.email}`)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Email"
+                          >
+                            <Mail className="h-4 w-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedApplication(app)
+                              setShowForwardModal(true)
+                            }}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Forward"
+                          >
+                            <Forward className="h-4 w-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const phoneNumber = app.candidate.mobile_number?.replace(/\D/g, "")
+                              if (phoneNumber) {
+                                window.open(`https://wa.me/${phoneNumber}`, "_blank")
+                              }
+                            }}
+                            className="p-2 hover:bg-green-50 rounded-lg transition-colors group"
+                            title="WhatsApp"
+                          >
+                            <svg
+                              className="h-5 w-5 text-green-600 group-hover:text-green-700"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Row - Status Buttons */}
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "shortlisted")}
+                          className={`text-xs ${
                             app.status === "shortlisted"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : app.status === "rejected"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : app.status === "maybe"
-                                  ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                              ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                              : "bg-green-100 text-green-700 border-green-300 hover:bg-green-600 hover:text-white hover:border-green-600"
                           }`}
                         >
-                          <SelectValue>
-                            {app.status === "applied"
-                              ? "Select"
-                              : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="applied">Select</SelectItem>
-                          <SelectItem value="shortlisted">Shortlisted</SelectItem>
-                          <SelectItem value="maybe">Maybe</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                      </Select>
+                          <Check className="h-3 w-3 mr-1" />
+                          Shortlist
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "maybe")}
+                          className={`text-xs ${
+                            app.status === "maybe"
+                              ? "bg-yellow-600 text-white border-yellow-600 hover:bg-yellow-700"
+                              : "bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-600 hover:text-white hover:border-yellow-600"
+                          }`}
+                        >
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Maybe
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStatusUpdate(app.id, "rejected")}
+                          className={`text-xs ${
+                            app.status === "rejected"
+                              ? "bg-red-600 text-white border-red-600 hover:bg-red-700"
+                              : "bg-red-100 text-red-700 border-red-300 hover:bg-red-600 hover:text-white hover:border-red-600"
+                          }`}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+
+                      {/* Applied Date & CV Score */}
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        {app.cv_score !== null && app.cv_score !== undefined && (
+                          <span className="font-medium text-blue-600">{Math.round(app.cv_score)}% Match</span>
+                        )}
+                        <span>Applied on {new Date(app.applied_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
+
+                    {/* Comment Section */}
+                    {showCommentInput === app.id ? (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <Textarea placeholder="Add your comment here..." className="w-full text-sm mb-2" rows={3} />
+                        <div className="flex gap-2">
+                          <Button size="sm" className="text-xs">
+                            Save Comment
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs bg-transparent"
+                            onClick={() => setShowCommentInput(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowCommentInput(app.id)}
+                        className="mt-4 text-sm text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Add comment
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs md:text-sm text-gray-600">
@@ -2139,11 +2679,20 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
                     className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
                   >
                     <Checkbox
+                      id={column.key}
                       checked={column.selected}
                       onCheckedChange={(checked) => {
-                        setAvailableColumns((prev) =>
-                          prev.map((col) => (col.key === column.key ? { ...col, selected: checked === true } : col)),
-                        )
+                        console.log("[v0] Checkbox toggled:", column.key, "to", checked)
+                        setAvailableColumns((prev) => {
+                          const updated = prev.map((col) =>
+                            col.key === column.key ? { ...col, selected: checked === true } : col,
+                          )
+                          console.log(
+                            "[v0] Updated availableColumns:",
+                            updated.filter((c) => c.selected).map((c) => c.key),
+                          )
+                          return updated
+                        })
                       }}
                     />
                     <span className="text-sm text-gray-700 break-words">{column.label}</span>
@@ -2217,15 +2766,21 @@ export function JobResponsesManager({ jobId, employerId }: { jobId: string; empl
             </Button>
             <Button
               onClick={async () => {
-                const newVisibleColumns: any = {}
+                console.log(
+                  "[v0] Apply clicked - Current availableColumns:",
+                  availableColumns.filter((c) => c.selected).map((c) => c.key),
+                )
+                const newVisibleColumns: Record<string, boolean> = {}
                 availableColumns.forEach((col) => {
                   newVisibleColumns[col.key] = col.selected
                 })
+                console.log("[v0] Setting visibleColumns:", newVisibleColumns)
                 setVisibleColumns(newVisibleColumns)
                 setShowCustomizeColumns(false)
 
                 // Save to database
                 await saveColumnPreferencesToDB()
+                console.log("[v0] Column preferences saved")
               }}
               className="flex-1 bg-[#0277bd] hover:bg-[#01579b]"
             >

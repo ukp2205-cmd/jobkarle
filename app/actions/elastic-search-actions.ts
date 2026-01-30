@@ -11,6 +11,7 @@ export async function searchJobsWithElastic(
     max_salary?: number
     employment_type?: string
     work_mode?: string
+    date_posted?: "24h" | "7d" | "30d" | "all"
   },
 ) {
   try {
@@ -45,6 +46,18 @@ export async function searchJobsWithElastic(
       }
     }
 
+    if (filters?.employment_type) {
+      requestBody.employment_type = filters.employment_type
+    }
+
+    if (filters?.work_mode) {
+      requestBody.work_mode = filters.work_mode
+    }
+
+    if (filters?.date_posted && filters.date_posted !== "all") {
+      requestBody.date_posted = filters.date_posted
+    }
+
     console.log("[v0] === Elasticsearch Search Attempt ===")
     console.log("[v0] Request body:", requestBody)
 
@@ -69,13 +82,20 @@ export async function searchJobsWithElastic(
       return await fallbackToSupabaseSearch(query, filters)
     }
 
-    console.log("[v0] ✓ Elasticsearch search successful - Jobs:", data.jobs?.length || 0)
+    const sortedJobs = (data.jobs || []).sort((a: any, b: any) => {
+      const aPremium = a.category === "premium" ? 1 : 0
+      const bPremium = b.category === "premium" ? 1 : 0
+      if (aPremium !== bPremium) return bPremium - aPremium
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    console.log("[v0] ✓ Elasticsearch search successful - Jobs:", sortedJobs.length)
     return {
       success: true,
-      jobs: data.jobs || [],
+      jobs: sortedJobs,
       total: data.total || 0,
       source: "elasticsearch",
-      jobsCount: data.jobs?.length || 0,
+      jobsCount: sortedJobs.length,
     }
   } catch (error: any) {
     console.log("[v0] ⚠️ Elasticsearch error, falling back to Supabase search:", error.message)
@@ -93,16 +113,16 @@ async function fallbackToSupabaseSearch(
     max_salary?: number
     employment_type?: string
     work_mode?: string
+    date_posted?: "24h" | "7d" | "30d" | "all"
   },
 ) {
   try {
     console.log("[v0] === Using Supabase Search Fallback ===")
 
-    // Convert filters to Supabase search format
     const supabaseFilters: any = {}
 
     if (filters?.city) {
-      supabaseFilters.locations = [filters.city]
+      supabaseFilters.locations = filters.city.split(",").map((c) => c.trim())
     }
 
     if (filters?.min_experience !== undefined) {
@@ -129,7 +149,10 @@ async function fallbackToSupabaseSearch(
       supabaseFilters.workModes = [filters.work_mode]
     }
 
-    // Call existing Supabase search with relevance scoring
+    if (filters?.date_posted && filters.date_posted !== "all") {
+      supabaseFilters.datePosted = filters.date_posted
+    }
+
     const { searchJobs } = await import("@/app/actions/candidate-search-actions")
     const result = await searchJobs(query, supabaseFilters)
 
@@ -137,14 +160,21 @@ async function fallbackToSupabaseSearch(
       throw new Error(result.error || "Supabase search failed")
     }
 
-    console.log("[v0] ✓ Supabase fallback search successful - Jobs:", result.jobs?.length || 0)
+    const sortedJobs = (result.jobs || []).sort((a: any, b: any) => {
+      const aPremium = a.category === "premium" ? 1 : 0
+      const bPremium = b.category === "premium" ? 1 : 0
+      if (aPremium !== bPremium) return bPremium - aPremium
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    console.log("[v0] ✓ Supabase fallback search successful - Jobs:", sortedJobs.length)
 
     return {
       success: true,
-      jobs: result.jobs || [],
-      total: result.jobs?.length || 0,
+      jobs: sortedJobs,
+      total: sortedJobs.length,
       source: "supabase_fallback",
-      jobsCount: result.jobs?.length || 0,
+      jobsCount: sortedJobs.length,
     }
   } catch (error: any) {
     console.error("[v0] ✗ Supabase fallback also failed:", error.message)

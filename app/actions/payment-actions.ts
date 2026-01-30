@@ -1,151 +1,161 @@
 "use server"
 
-import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import crypto from "crypto"
-import { allocateCredits } from "./credits-actions"
-import { getPlanDetailsBySlug } from "./plans-actions"
+import { allocateCredits, type PlanType } from "./credits-actions"
 
-export type BillingCycle = "monthly" | "annual"
+interface PaymentResponse {
+  orderId: string
+  orderAmount: number
+  referenceId: string
+  paymentStatus: string
+  paymentMethod: string
+  rawResponse: any
+}
 
-interface PaymentInitiationData {
+interface InitiatePaymentParams {
   employerId: string
   planType: string
-  billingCycle: BillingCycle
+  billingCycle: string
   employerName: string
   employerEmail: string
   employerPhone: string
 }
 
 /**
- * Generate Cashfree payment order signature
+ * Initiate payment with Razorpay
  */
-function generateCashfreeSignature(data: string, clientSecret: string): string {
-  return crypto.createHmac("sha256", clientSecret).update(data).digest("base64")
-}
+export async function initiatePayment(params: InitiatePaymentParams) {
+  const supabase = createAdminClient()
 
-/**
- * Initiate payment with Cashfree
- */
-export async function initiatePayment(data: PaymentInitiationData) {
   try {
-    const supabase = createAdminClient()
+    const { employerId, planType, billingCycle, employerName, employerEmail, employerPhone } = params
 
-    console.log("[v0] Payment initiation for employer:", data.employerId, "plan:", data.planType)
+    console.log("[v0] Initiating payment for employer:", employerId, "plan:", planType)
 
-    const planDetails = await getPlanDetailsBySlug(data.planType)
+    // Get plan details from database
+    const { data: plan, error: planError } = await supabase
+      .from("plans")
+      .select("*")
+      .eq("slug", planType)
+      .maybeSingle()
 
-    if (!planDetails || planDetails.price === 0) {
-      console.error("[v0] Invalid plan or plan is free:", data.planType)
-      return {
-        success: false,
-        message: "Invalid plan or plan does not require payment.",
-      }
+    if (planError) {
+      console.error("[v0] Error fetching plan:", planError)
+      return { success: false, message: "Error fetching plan details" }
     }
 
-    const amount = planDetails.price
+    if (!plan) {
+      console.error("[v0] Plan not found for slug:", planType)
+      return { success: false, message: `Plan '${planType}' not found. Please contact support.` }
+    }
 
-    console.log("[v0] Found plan:", planDetails.slug, "Price:", amount)
+    // Calculate amount with GST
+    const baseAmount = plan.price
+    const GST_RATE = 0.18 // 18% GST
+    const gstAmount = parseFloat((baseAmount * GST_RATE).toFixed(2))
+    const amount = parseFloat((baseAmount + gstAmount).toFixed(2))
+    const amountInPaise = Math.round(amount * 100) // Convert to paise for database storage
+
+    console.log("[v0] Plan details - Base:", baseAmount, "GST:", gstAmount, "Total:", amount, "Paise:", amountInPaise, "Credits:", plan.credits_allocated)
 
     // Generate unique order ID
-    const orderId = `JOBKARLE_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`
-
-    const normalizedPlanTypeForDB = planDetails.slug
+    const orderId = `ORDER_${Date.now()}_${employerId.substring(0, 8)}`
 
     // Create payment transaction record
-    const { data: paymentRecord, error: insertError } = await supabase
+    const { data: transaction, error: transactionError } = await supabase
       .from("payment_transactions")
       .insert({
-        employer_id: data.employerId,
-        plan_type: normalizedPlanTypeForDB,
-        payment_gateway: "cashfree",
-        billing_cycle: planDetails.billing_cycle,
-        amount: amount,
+        employer_id: employerId,
         merchant_transaction_id: orderId,
+        amount: amountInPaise, // Store amount in paise (integer)
+        plan_type: planType,
+        billing_cycle: billingCycle,
         status: "pending",
+        payment_gateway: "razorpay",
       })
       .select()
       .single()
 
-    if (insertError) {
-      console.error("[v0] Error creating payment transaction:", insertError.message)
-      return { success: false, message: "Failed to initiate payment" }
+    if (transactionError || !transaction) {
+      console.error("[v0] Failed to create transaction:", transactionError)
+      return { success: false, message: "Failed to create payment transaction" }
     }
 
-    console.log("[v0] Payment transaction created:", orderId, "with plan type:", normalizedPlanTypeForDB)
+    console.log("[v0] Created transaction:", transaction.id)
 
-    const clientId = process.env.CASHFREE_CLIENT_ID || ""
-    const clientSecret = process.env.CASHFREE_CLIENT_SECRET || ""
+    // Get Razorpay credentials from environment
+    const keyId = process.env.RAZORPAY_KEY_ID
+    const keySecret = process.env.RAZORPAY_KEY_SECRET
 
-    if (!clientId || !clientSecret) {
-      console.error("[v0] Cashfree credentials missing")
+    if (!keyId || !keySecret) {
+      console.error("[v0] Razorpay credentials not configured")
       return { success: false, message: "Payment gateway not configured" }
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.jobkarle.com"
+    console.log("[v0] Using Razorpay for payment processing")
 
-    // Prepare Cashfree order request
-    const orderRequest = {
-      order_id: orderId,
-      order_amount: amount,
-      order_currency: "INR",
-      customer_details: {
-        customer_id: data.employerId,
-        customer_email: data.employerEmail,
-        customer_phone: data.employerPhone,
-        customer_name: data.employerName,
+    // Create Razorpay order
+    const razorpayUrl = "https://api.razorpay.com/v1/orders"
+    
+    console.log("[v0] ========== RAZORPAY ORDER CREATION ==========")
+    console.log("[v0] Amount received from frontend (INR):", amount)
+    console.log("[v0] Amount in paise for Razorpay:", amountInPaise)
+    console.log("[v0] Expected: ₹5 base should be ₹5.90 with GST = 590 paise")
+    
+    const orderPayload = {
+      amount: amountInPaise,
+      currency: "INR",
+      receipt: orderId,
+      notes: {
+        employer_id: employerId,
+        employer_name: employerName,
+        employer_email: employerEmail,
+        plan_type: planType,
+        credits: plan.credits_allocated,
       },
-      order_meta: {
-        return_url: `${appUrl}/employer/payment/success?order_id=${orderId}`,
-        notify_url: `${appUrl}/api/payment/webhook`,
-      },
-      order_note: `JobKarle ${planDetails.name} (${amount} INR)`,
     }
 
-    console.log("[v0] Creating Cashfree order:", orderId, "for plan:", planDetails.name)
+    console.log("[v0] Creating Razorpay order with payload:", JSON.stringify(orderPayload, null, 2))
 
-    // Call Cashfree API to create order
-    const cashfreeResponse = await fetch("https://api.cashfree.com/pg/orders", {
+    const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString("base64")
+
+    const response = await fetch(razorpayUrl, {
       method: "POST",
       headers: {
-        "X-Client-Id": clientId,
-        "X-Client-Secret": clientSecret,
         "Content-Type": "application/json",
-        "x-api-version": "2023-08-01",
+        Authorization: `Basic ${authHeader}`,
       },
-      body: JSON.stringify(orderRequest),
+      body: JSON.stringify(orderPayload),
     })
 
-    const cashfreeData = await cashfreeResponse.json()
-
-    if (!cashfreeResponse.ok) {
-      console.error("[v0] Cashfree API error:", cashfreeData)
-      return {
-        success: false,
-        message: cashfreeData.message || "Failed to create payment order",
-      }
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("[v0] Razorpay API error:", response.status, errorText)
+      return { success: false, message: "Failed to create payment order" }
     }
 
-    console.log("[v0] Cashfree order created successfully:", orderId)
+    const razorpayOrder = await response.json()
+    console.log("[v0] Razorpay order created:", razorpayOrder.id)
 
-    const paymentSessionId = cashfreeData.payment_session_id
-    if (!paymentSessionId) {
-      console.error("[v0] No payment session ID received from Cashfree")
-      return {
-        success: false,
-        message: "Failed to generate payment link",
-      }
-    }
+    // Update transaction with Razorpay order ID and credits info
+    await supabase
+      .from("payment_transactions")
+      .update({
+        transaction_id: razorpayOrder.id,
+        response_data: {
+          ...razorpayOrder,
+          credits: plan.credits_allocated, // Store credits in response_data
+        },
+      })
+      .eq("id", transaction.id)
 
-    console.log("[v0] Payment session ID generated:", paymentSessionId)
-
-    // Return order details and payment_session_id for frontend SDK
     return {
       success: true,
-      orderId: cashfreeData.order_id,
-      paymentSessionId: paymentSessionId,
-      transactionId: orderId,
-      amount: amount,
+      razorpayOrderId: razorpayOrder.id,
+      orderId: orderId,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      keyId: keyId, // Send key ID for client-side initialization
     }
   } catch (error: any) {
     console.error("[v0] Payment initiation error:", error)
@@ -154,117 +164,77 @@ export async function initiatePayment(data: PaymentInitiationData) {
 }
 
 /**
- * Verify Cashfree payment callback
+ * Verify payment and allocate credits to employer
  */
-export async function verifyPayment(paymentResponse: any) {
+export async function verifyPayment(paymentResponse: PaymentResponse) {
+  const supabase = createAdminClient()
+
   try {
-    const supabase = createAdminClient()
-    const { orderId, orderAmount, referenceId, paymentStatus, paymentMethod } = paymentResponse
+    console.log("[v0] Verifying payment for order:", paymentResponse.orderId)
 
-    console.log("[v0] Verifying Cashfree payment for order:", orderId)
-    console.log("[v0] Payment status received:", paymentStatus)
-    console.log("[v0] Full payment response:", JSON.stringify(paymentResponse, null, 2))
-
-    if (!paymentStatus) {
-      console.error("[v0] Payment status is empty or null for order:", orderId)
-      return { success: false, message: "Payment abandoned - no payment status received" }
-    }
-
-    // Fetch transaction from database
+    // Find the payment transaction by order ID
     const { data: transaction, error: fetchError } = await supabase
       .from("payment_transactions")
       .select("*")
-      .eq("merchant_transaction_id", orderId)
+      .eq("merchant_transaction_id", paymentResponse.orderId)
       .single()
 
     if (fetchError || !transaction) {
-      console.error("[v0] Transaction not found:", orderId)
+      console.error("[v0] Transaction not found:", fetchError)
       return { success: false, message: "Transaction not found" }
     }
 
-    // Verify amount matches
-    if (Number.parseInt(orderAmount) !== transaction.amount) {
-      console.error("[v0] Amount mismatch for order:", orderId)
-      return { success: false, message: "Amount verification failed" }
-    }
+    console.log("[v0] Found transaction:", transaction.id, "for employer:", transaction.employer_id)
 
-    const successStatuses = ["SUCCESS", "success", "AUTHORIZED"]
-    const failureStatuses = ["FAILED", "failed", "CANCELLED", "cancelled", "ABANDONED", "abandoned"]
-
-    if (successStatuses.includes(paymentStatus)) {
-      console.log("[v0] Payment SUCCESSFUL for order:", orderId, "Status:", paymentStatus)
-
-      // Allocate credits to employer
-      const creditResult = await allocateCredits(transaction.employer_id, transaction.plan_type)
-
-      if (!creditResult.success) {
-        console.error("[v0] Failed to allocate credits after successful payment")
-        await supabase
-          .from("payment_transactions")
-          .update({
-            status: "failed",
-            error_message: "Credit allocation failed",
-            response_data: paymentResponse,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", transaction.id)
-
-        return {
-          success: false,
-          message: "Payment successful but credit allocation failed. Please contact support.",
-        }
-      }
-
-      // Update transaction with success status
-      await supabase
-        .from("payment_transactions")
-        .update({
-          status: "success",
-          payment_id: referenceId,
-          allocated_credit_id: creditResult.creditId,
-          response_data: paymentResponse,
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", transaction.id)
-
-      // Update employer_credits with payment transaction ID and billing cycle
-      await supabase
-        .from("employer_credits")
-        .update({
-          payment_transaction_id: transaction.id,
-          billing_cycle: transaction.billing_cycle,
-        })
-        .eq("id", creditResult.creditId)
-
-      return {
-        success: true,
-        message: "Payment successful! Credits have been added to your account.",
-        transactionId: orderId,
-      }
-    } else {
-      console.log("[v0] Payment FAILED/ABANDONED for order:", orderId, "Status:", paymentStatus)
-
-      // Payment failed, abandoned, or has any non-success status
-      const failureReason = failureStatuses.includes(paymentStatus) ? paymentStatus : paymentStatus || "abandoned"
-
+    // Check if payment is successful
+    if (paymentResponse.paymentStatus !== "SUCCESS") {
+      console.log("[v0] Payment not successful, status:", paymentResponse.paymentStatus)
+      
+      // Update transaction status to failed
       await supabase
         .from("payment_transactions")
         .update({
           status: "failed",
-          error_message: `Payment ${failureReason}`,
-          response_data: paymentResponse,
-          completed_at: new Date().toISOString(),
+          payment_id: paymentResponse.referenceId,
+          response_data: paymentResponse.rawResponse,
           updated_at: new Date().toISOString(),
         })
         .eq("id", transaction.id)
 
-      return {
-        success: false,
-        message: `Payment ${failureReason}. Please try again.`,
-        transactionId: orderId,
-      }
+      return { success: false, message: "Payment failed" }
     }
+
+    // Payment is successful - allocate credits
+    console.log("[v0] Payment successful, allocating credits to employer:", transaction.employer_id)
+
+    const planType = transaction.plan_type as PlanType
+    const creditResult = await allocateCredits(transaction.employer_id, planType)
+
+    if (!creditResult.success) {
+      console.error("[v0] Failed to allocate credits:", creditResult.message)
+      return { success: false, message: "Failed to allocate credits" }
+    }
+
+    // Update transaction status to completed
+    const { error: updateError } = await supabase
+      .from("payment_transactions")
+      .update({
+        status: "completed",
+        payment_id: paymentResponse.referenceId,
+        response_data: paymentResponse.rawResponse,
+        completed_at: new Date().toISOString(),
+        allocated_credit_id: creditResult.creditId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", transaction.id)
+
+    if (updateError) {
+      console.error("[v0] Failed to update transaction:", updateError)
+      // Credits are allocated, so we still return success
+    }
+
+    console.log("[v0] Payment verification and credit allocation successful")
+    return { success: true, message: "Payment verified and credits allocated" }
   } catch (error: any) {
     console.error("[v0] Payment verification error:", error)
     return { success: false, message: error.message || "Payment verification failed" }
@@ -272,26 +242,30 @@ export async function verifyPayment(paymentResponse: any) {
 }
 
 /**
- * Get payment history for an employer
+ * Check payment status by order ID
  */
-export async function getPaymentHistory(employerId: string) {
-  try {
-    const supabase = await createServerClient()
+export async function checkPaymentStatus(orderId: string) {
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
+  try {
+    const { data: transaction, error } = await supabase
       .from("payment_transactions")
       .select("*")
-      .eq("employer_id", employerId)
-      .order("created_at", { ascending: false })
+      .eq("merchant_transaction_id", orderId)
+      .single()
 
-    if (error) {
-      console.error("[v0] Error fetching payment history:", error)
-      return { success: false, message: error.message, data: [] }
+    if (error || !transaction) {
+      return { success: false, message: "Transaction not found" }
     }
 
-    return { success: true, data: data || [] }
+    return {
+      success: true,
+      status: transaction.status,
+      amount: transaction.amount,
+      planType: transaction.plan_type,
+    }
   } catch (error: any) {
-    console.error("[v0] Payment history exception:", error)
-    return { success: false, message: error.message, data: [] }
+    console.error("[v0] Error checking payment status:", error)
+    return { success: false, message: error.message }
   }
 }

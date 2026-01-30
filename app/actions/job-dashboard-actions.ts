@@ -13,7 +13,11 @@ export async function getJobPostingById(jobId: string) {
 
     const supabase = await createServerClient()
 
-    const { data: job, error } = await supabase.from("job_postings").select("*").eq("id", jobId).single()
+    const { data: job, error } = await supabase
+      .from("job_postings")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
+      .eq("id", jobId)
+      .single()
 
     if (error) {
       console.error("[v0] Error fetching job posting:", error)
@@ -45,7 +49,7 @@ export async function getEmployerJobs(employerId: string, filters?: { status?: s
 
     let query = supabase
       .from("job_postings")
-      .select("*")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("employer_id", employerId)
       .order("created_at", { ascending: false })
 
@@ -216,19 +220,9 @@ export async function repostJob(jobId: string, employerId: string) {
 
     const supabase = await createServerClient()
 
-    // Check if employer has at least 2 credits
-    const balance = await getActiveCredits(employerId)
-    if (!balance || balance.remainingCredits < 2) {
-      return {
-        success: false,
-        error: "You need at least 2 credits to repost this job. Please purchase credits.",
-      }
-    }
-
-    // Get the current job to verify status
     const { data: job, error: fetchError } = await supabase
       .from("job_postings")
-      .select("status, employer_id")
+      .select("status, employer_id, category")
       .eq("id", jobId)
       .single()
 
@@ -237,22 +231,41 @@ export async function repostJob(jobId: string, employerId: string) {
       return { success: false, error: "Job not found" }
     }
 
+    console.log("[v0] Job found:", job)
+
     // Verify ownership
     if (job.employer_id !== employerId) {
+      console.log("[v0] Unauthorized - job employer:", job.employer_id, "vs current employer:", employerId)
       return { success: false, error: "Unauthorized to repost this job" }
     }
 
-    // Only allow reposting for closed/expired/inactive jobs
-    if (job.status === "published") {
-      return { success: false, error: "Job is already active" }
+    const creditsNeeded = job.category === "premium" ? 2 : 1
+    console.log(`[v0] Credits needed for ${job.category} job:`, creditsNeeded)
+
+    console.log("[v0] Calling getActiveCredits...")
+    const balance = await getActiveCredits(employerId)
+    console.log("[v0] getActiveCredits returned:", balance)
+
+    if (!balance || balance.remainingCredits < creditsNeeded) {
+      console.log("[v0] Insufficient credits - balance:", balance, "needed:", creditsNeeded)
+      return {
+        success: false,
+        error: `You need at least ${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} to repost this job. Please purchase credits.`,
+      }
     }
 
+    console.log("[v0] Sufficient credits available, proceeding with repost...")
+
+    // Only block deleted jobs
     if (job.status === "deleted") {
+      console.log("[v0] Job is deleted")
       return { success: false, error: "Cannot repost a deleted job" }
     }
 
-    // Deduct 2 credits
-    const deductResult = await deductCredits(employerId, 2)
+    console.log("[v0] Deducting", creditsNeeded, "credits...")
+    const deductResult = await deductCredits(employerId, creditsNeeded)
+    console.log("[v0] Deduct result:", deductResult)
+
     if (!deductResult.success) {
       return {
         success: false,
@@ -260,16 +273,17 @@ export async function repostJob(jobId: string, employerId: string) {
       }
     }
 
-    // Update the job: set status to published, update timestamps, set new expiry
+    console.log("[v0] Credits deducted, updating job status...")
+
     const now = new Date()
     const expiresAt = new Date(now)
-    expiresAt.setDate(expiresAt.getDate() + 30) // 30 days from now
+    expiresAt.setDate(expiresAt.getDate() + 30) // Extend 30 days from now
 
     const { data, error } = await supabase
       .from("job_postings")
       .update({
         status: "published",
-        created_at: now.toISOString(),
+        created_at: now.toISOString(), // Refresh posted date so job appears fresh
         updated_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
       })
@@ -279,12 +293,10 @@ export async function repostJob(jobId: string, employerId: string) {
 
     if (error) {
       console.error("[v0] Error reposting job:", error)
-      // Attempt to refund credits if update failed
-      // Note: refundCredits would need to be imported if implemented
       return { success: false, error: error.message }
     }
 
-    console.log("[v0] Job reposted successfully, 2 credits deducted")
+    console.log(`[v0] Job refreshed successfully, ${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} deducted`)
     return { success: true, job: data }
   } catch (error) {
     console.error("[v0] Error in repostJob:", error)

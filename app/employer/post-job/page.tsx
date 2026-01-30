@@ -1,6 +1,7 @@
 import { JobPostingForm } from "@/components/job-posting-form"
 import { getEmployerSession } from "@/app/actions/employer-auth-actions"
 import { EmployerSessionWrapper } from "@/components/employer-session-wrapper"
+import { FreeCreditsNotificationWrapper } from "@/components/free-credits-notification-wrapper"
 import Link from "next/link"
 
 export default async function PostJobPage({
@@ -61,10 +62,12 @@ export default async function PostJobPage({
   console.log("[v0] User authenticated, showing job posting form for employer:", session.employerId)
 
   return (
-    <EmployerSessionWrapper>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
-        <JobPostingForm employerId={session.employerId} jobType={params.type} />
-      </div>
-    </EmployerSessionWrapper>
+    <FreeCreditsNotificationWrapper>
+      <EmployerSessionWrapper>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+          <JobPostingForm employerId={session.employerId} jobType={params.type} logoUrl={session.logoUrl} />
+        </div>
+      </EmployerSessionWrapper>
+    </FreeCreditsNotificationWrapper>
   )
 }

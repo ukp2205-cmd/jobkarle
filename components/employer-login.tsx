@@ -43,15 +43,79 @@ export default function EmployerLogin() {
 
     try {
       console.log("[v0] Attempting to login employer:", formData.email)
+      const { loginEmployer } = await import("@/app/actions/employer-auth-actions")
+      const { getActiveCredits } = await import("@/app/actions/credits-actions")
+      
       const result = await loginEmployer(formData.email, formData.password)
 
       if (result.success) {
-        console.log("[v0] Login successful, redirecting to dashboard")
+        console.log("[v0] Login successful, allocating free credits if needed")
+        
+        // Auto-allocate 10 free monthly credits on first login or if expired
+        try {
+          const employerId = result.session?.employerId
+          
+          // Only check/allocate credits if we have a valid employerId
+          if (employerId) {
+            const { allocateMonthlyFreeCredits, hasActiveFreeCredits } = await import("@/app/actions/free-credits-actions")
+            const hasCredits = await hasActiveFreeCredits(employerId)
+            
+            if (!hasCredits) {
+              console.log("[v0] No active free credits found, allocating 10 monthly free credits")
+              await allocateMonthlyFreeCredits(employerId)
+            } else {
+              console.log("[v0] Employer already has active free credits")
+            }
+          } else {
+            console.warn("[v0] No employerId in session, skipping free credits check")
+          }
+        } catch (error) {
+          console.error("[v0] Error checking/allocating free credits:", error)
+        }
+        
+        console.log("[v0] Checking for redirect parameters")
+        
+        // Check URL params for redirect and plan selection
+        const urlParams = new URLSearchParams(window.location.search)
+        const redirectUrl = urlParams.get("redirect")
+        const planSlug = urlParams.get("plan")
+        
+        // If coming from pricing page with a selected plan, redirect to pricing with plan param
+        if (redirectUrl === "/employer/pricing" && planSlug) {
+          console.log("[v0] Redirecting back to pricing with selected plan:", planSlug)
+          window.location.href = `/employer/pricing?selectedPlan=${planSlug}`
+          return
+        }
+        
+        // If there's a general redirect URL, use it
+        if (redirectUrl) {
+          console.log("[v0] Redirecting to:", redirectUrl)
+          window.location.href = redirectUrl
+          return
+        }
+        
+        console.log("[v0] No redirect param, checking credits")
+        
+        // Check if employer has credits
+        if (result.session?.employerId) {
+          const creditBalance = await getActiveCredits(result.session.employerId)
+          console.log("[v0] Credit balance:", creditBalance)
+          
+          // If no credits or insufficient credits (less than 2), redirect to pricing
+          if (!creditBalance || creditBalance.remainingCredits < 2) {
+            console.log("[v0] No sufficient credits, redirecting to pricing page")
+            window.location.href = "/employer/pricing?source=login&reason=no_credits"
+            return
+          }
+        }
+        
+        console.log("[v0] Credits available, redirecting to dashboard")
         window.location.href = "/employer/dashboard"
       } else {
         setError(result.error || "Login failed. Please try again.")
       }
     } catch (err) {
+      console.error("[v0] Login error:", err)
       setError("An unexpected error occurred. Please try again.")
     } finally {
       setLoading(false)

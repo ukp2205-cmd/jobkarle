@@ -1,157 +1,224 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Briefcase, ArrowLeft, Mail, CheckCircle2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
-import { requestEmployerPasswordReset } from "@/app/actions/password-reset-actions"
+import { ArrowLeft, Mail, Briefcase, CheckCircle2 } from "lucide-react"
+import { sendEmailViaMSG91 } from "@/app/actions/email-actions"
+import { createClient } from "@/lib/supabase/client"
+
+const PRODUCTION_DOMAIN = "https://jobkarle.com"
 
 export default function EmployerForgotPassword() {
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
-  const [resetUrl, setResetUrl] = useState("")
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [sentEmail, setSentEmail] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
-    setMessage("")
-    setResetUrl("")
     setIsLoading(true)
+    setMessage(null)
 
     try {
-      const result = await requestEmployerPasswordReset(email)
-
-      if (result.success) {
-        setMessage(result.message || "Password reset link sent to your email.")
-        if (result.resetUrl) {
-          setResetUrl(result.resetUrl)
-        }
-      } else {
-        setError(result.error || "Failed to send reset link")
+      if (!email || !email.includes("@")) {
+        setMessage({ type: "error", text: "Please enter a valid email address" })
+        setIsLoading(false)
+        return
       }
-    } catch (error) {
-      setError("An unexpected error occurred")
-    } finally {
+
+      const supabase = createClient()
+
+      const { data: employer, error: queryError } = await supabase
+        .from("employers")
+        .select("username, company_name, id")
+        .eq("email", email)
+        .single()
+
+      if (queryError || !employer) {
+        setMessage({ type: "error", text: "Email not found in our system" })
+        setIsLoading(false)
+        return
+      }
+
+      const employerName = employer?.username || employer?.company_name || "User"
+
+      const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+      const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000)
+
+      const { error: updateError } = await supabase
+        .from("employers")
+        .update({
+          reset_token: resetToken,
+          reset_token_expires_at: resetTokenExpiry.toISOString(),
+        })
+        .eq("id", employer.id)
+
+      if (updateError) {
+        setMessage({ type: "error", text: "Failed to generate reset link. Please try again." })
+        setIsLoading(false)
+        return
+      }
+
+      const resetLink = `${PRODUCTION_DOMAIN}/employer/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
+
+      // Show success to user immediately
+      setSentEmail(email)
+      setIsSuccess(true)
+      setEmail("")
+      setIsLoading(false)
+
+      // Send email in background without waiting
+      sendEmailViaMSG91({
+        to: email,
+        subject: "Reset Your JobKarle Employer Account Password",
+        html: "",
+        resetLink: resetLink,
+        name: employerName,
+      }).catch((error) => {
+        // Log error but don't show to user since they already see success
+        console.error("[v0] Background email send failed:", error)
+      })
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error.message || "An unexpected error occurred. Please try again.",
+      })
       setIsLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="p-8 shadow-2xl border-0 bg-white/80 backdrop-blur">
-          <div className="space-y-6">
-            <div className="text-center space-y-3">
-              <Link href="/" className="inline-flex items-center justify-center gap-2 mb-4 hover:opacity-80 transition">
-                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <Briefcase className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-2xl font-bold text-gray-900">JobKarle</span>
-              </Link>
-              <h1 className="text-3xl font-bold text-gray-900">Forgot Password?</h1>
-              <p className="text-gray-600">
-                No worries! Enter your email and we'll send you a link to reset your password.
-              </p>
+  if (isSuccess) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-blue-50/30 p-4">
+        <div className="w-full max-w-[400px]">
+          <div className="bg-white rounded-xl shadow-lg shadow-gray-200/50 border border-gray-100 p-6 text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {message && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm text-green-700 font-medium">{message}</p>
-                      {resetUrl && (
-                        <div className="mt-3 p-3 bg-white rounded border border-green-200">
-                          <p className="text-xs text-gray-600 mb-2">Development Mode - Reset Link:</p>
-                          <a href={resetUrl} className="text-xs text-blue-600 hover:text-blue-700 break-all underline">
-                            {resetUrl}
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Check Your Email</h2>
+            <p className="text-gray-500 text-sm mb-4">
+              We've sent a reset link to <span className="font-medium text-gray-700">{sentEmail}</span>
+            </p>
 
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
-                  <span className="font-medium">⚠️</span>
-                  <span>{error}</span>
-                </div>
-              )}
+            <div className="bg-slate-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
+              Didn't receive it? Check spam folder or request a new link.
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-semibold text-gray-700">
-                  Email Address
-                </Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className="h-12 pl-10 pr-4 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+            <Button
+              onClick={() => setIsSuccess(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-10 rounded-lg font-medium text-sm mb-2"
+            >
+              Send Another Link
+            </Button>
+
+            <Link
+              href="/employer/login"
+              className="block w-full py-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+            >
+              Back to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-blue-50/30 p-4">
+      <div className="w-full max-w-[400px]">
+        <div className="bg-white rounded-xl shadow-lg shadow-gray-200/50 border border-gray-100 p-6">
+          {/* Logo */}
+          <div className="flex justify-center mb-5">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-2 rounded-lg">
+                <Briefcase className="h-5 w-5 text-white" />
               </div>
-
-              <Button
-                type="submit"
-                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-base shadow-lg hover:shadow-xl transition-all"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Sending...
-                  </span>
-                ) : (
-                  "Send Reset Link"
-                )}
-              </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-white text-gray-500">or</span>
-                </div>
-              </div>
-
-              <Link href="/employer/login">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-12 border-2 border-gray-300 hover:border-blue-600 hover:bg-blue-50 text-gray-700 hover:text-blue-600 font-semibold transition-all bg-transparent"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Login
-                </Button>
-              </Link>
-            </form>
-
-            <div className="text-center text-sm text-gray-500">
-              <p>
-                Candidate?{" "}
-                <a href="/candidate/forgot-password" className="text-blue-600 hover:text-blue-700 font-medium">
-                  Reset Candidate Password
-                </a>
-              </p>
+              <span className="text-xl font-bold text-blue-600">JobKarle</span>
             </div>
           </div>
-        </Card>
+
+          {/* Header */}
+          <div className="text-center mb-5">
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">Forgot Password?</h1>
+            <p className="text-gray-500 text-sm">
+              No worries! Enter your email and we'll send you a link to reset your password.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email Input */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10 h-11 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-blue-500 bg-gray-50/50 focus:bg-white text-sm"
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {message && (
+              <Alert variant={message.type === "error" ? "destructive" : "default"} className="py-2">
+                <AlertDescription className="text-xs">{message.text}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white h-11 rounded-lg font-semibold text-sm shadow-sm"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Sending...
+                </div>
+              ) : (
+                "Send Reset Link"
+              )}
+            </Button>
+
+            {/* Divider */}
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="mx-3 text-gray-400 text-xs">or</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            {/* Back to Login */}
+            <Link
+              href="/employer/login"
+              className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 h-11 rounded-lg font-medium text-sm hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Login
+            </Link>
+
+            {/* Candidate Link */}
+            <p className="text-center text-xs text-gray-500 pt-3 border-t border-gray-100">
+              Candidate?{" "}
+              <Link href="/candidate/forgot-password" className="text-blue-600 hover:text-blue-700 font-medium">
+                Reset Candidate Password
+              </Link>
+            </p>
+          </form>
+        </div>
       </div>
     </div>
   )

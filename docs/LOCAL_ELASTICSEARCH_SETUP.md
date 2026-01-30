@@ -6,9 +6,9 @@ This guide will help you set up and test Elasticsearch locally with your JobKarl
 
 Add this single variable to your Vercel project (or local .env file):
 
-```env
+\`\`\`env
 ELASTIC_URL=http://localhost:9200
-```
+\`\`\`
 
 **Note:** For local Elasticsearch (free version), you don't need `ELASTIC_USERNAME` or `ELASTIC_PASSWORD`. Authentication is optional and only used if credentials are provided.
 
@@ -16,12 +16,12 @@ ELASTIC_URL=http://localhost:9200
 
 Open your browser or terminal and test:
 
-```bash
+\`\`\`bash
 curl http://localhost:9200
-```
+\`\`\`
 
 You should see something like:
-```json
+\`\`\`json
 {
   "name" : "node-1",
   "cluster_name" : "elasticsearch",
@@ -29,36 +29,36 @@ You should see something like:
     "number" : "8.x.x"
   }
 }
-```
+\`\`\`
 
 ## Step 3: Create the Jobs Index
 
 Run the setup script to create the index with proper mappings:
 
-```bash
+\`\`\`bash
 npm run setup-elastic
-```
+\`\`\`
 
 Expected output:
-```
+\`\`\`
 [v0] Creating Elasticsearch index: jobs
 [v0] Index created successfully with mappings
-```
+\`\`\`
 
 ## Step 4: Index Existing Jobs
 
 Bulk import all existing jobs from Supabase:
 
-```bash
+\`\`\`bash
 npm run reindex-jobs
-```
+\`\`\`
 
 Expected output:
-```
+\`\`\`
 [v0] Reindexing jobs from Supabase...
 [v0] Found 150 active jobs
 [v0] Successfully indexed 150 jobs to Elasticsearch
-```
+\`\`\`
 
 ## Step 5: Test the Search
 
@@ -73,12 +73,12 @@ Expected output:
 ### Option B: Test via API
 
 **Test basic search:**
-```bash
+\`\`\`bash
 curl "http://localhost:3000/api/jobs/search?keyword=developer&page=1&limit=10"
-```
+\`\`\`
 
 **Test with filters:**
-```bash
+\`\`\`bash
 curl -X POST "http://localhost:3000/api/jobs/search" \
   -H "Content-Type: application/json" \
   -d '{
@@ -88,18 +88,18 @@ curl -X POST "http://localhost:3000/api/jobs/search" \
     "page": 1,
     "limit": 20
   }'
-```
+\`\`\`
 
 **Test autocomplete:**
-```bash
+\`\`\`bash
 curl "http://localhost:3000/api/jobs/search?autocomplete=soft&field=title"
-```
+\`\`\`
 
 ### Option C: Test via Browser Console
 
 Open your browser console on the homepage and run:
 
-```javascript
+\`\`\`javascript
 // Test search
 fetch('/api/jobs/search?keyword=developer&page=1&limit=5')
   .then(r => r.json())
@@ -109,7 +109,7 @@ fetch('/api/jobs/search?keyword=developer&page=1&limit=5')
 fetch('/api/jobs/search?autocomplete=soft&field=title')
   .then(r => r.json())
   .then(data => console.log('Suggestions:', data))
-```
+\`\`\`
 
 ## Step 6: Test Automatic Indexing
 
@@ -123,7 +123,7 @@ If it appears, automatic indexing is working!
 
 Check what's in your Elasticsearch index:
 
-```bash
+\`\`\`bash
 # Count documents
 curl "http://localhost:9200/jobs/_count"
 
@@ -140,16 +140,16 @@ curl "http://localhost:9200/jobs/_search?pretty" \
       }
     }
   }'
-```
+\`\`\`
 
 ## Troubleshooting
 
 ### Error: "Cannot connect to Elasticsearch"
 
 **Check if Elasticsearch is running:**
-```bash
+\`\`\`bash
 curl http://localhost:9200
-```
+\`\`\`
 
 If not running, start Elasticsearch. Installation varies by OS:
 - **Windows**: Run `elasticsearch.bat` from the bin folder
@@ -159,34 +159,34 @@ If not running, start Elasticsearch. Installation varies by OS:
 ### Error: "Index not found"
 
 Run the setup script again:
-```bash
+\`\`\`bash
 npm run setup-elastic
-```
+\`\`\`
 
 ### No search results
 
 1. **Check if jobs exist in Supabase:**
-```sql
+\`\`\`sql
 SELECT COUNT(*) FROM job_postings WHERE status = 'active';
-```
+\`\`\`
 
 2. **Check if jobs are in Elasticsearch:**
-```bash
+\`\`\`bash
 curl "http://localhost:9200/jobs/_count"
-```
+\`\`\`
 
 3. **If count is 0, reindex:**
-```bash
+\`\`\`bash
 npm run reindex-jobs
-```
+\`\`\`
 
 ### Jobs not auto-indexing
 
 Check the console logs when posting a job. You should see:
-```
+\`\`\`
 [v0] Indexing job to Elasticsearch: {job_id}
 [v0] Job indexed successfully
-```
+\`\`\`
 
 If you see errors, verify:
 - `ELASTIC_URL` environment variable is set

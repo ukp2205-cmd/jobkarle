@@ -2,25 +2,167 @@
 
 import React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Check, Eye, EyeOff, Upload, X } from "lucide-react"
+import { Check, Eye, EyeOff, Upload } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import {
   createCandidate,
-  updateEmploymentDetails,
   checkEmailExists,
   uploadResume,
-  updateEducationDetails,
   updatePreferencesAndComplete,
+  updateEmploymentDetails,
+  updateEducationDetails,
 } from "@/app/actions/candidate-actions"
-import { MonthYearPicker } from "@/components/ui/date-picker"
+import { fetchInstitutions, addCustomInstitution as saveCustomInstitution } from "@/app/actions/institution-actions"
+import { getEducationsByLevel, getSpecializationsByEducation } from "@/app/actions/education-actions"
+import { getDepartmentsByIndustry, saveCustomDepartment } from "@/app/actions/department-actions"
+import { getRoleCategoriesByDepartment, saveCustomRoleCategory } from "@/app/actions/role-category-actions"
+
 import Link from "next/link"
 
+const qualificationCourseSpecializationMapping: Record<
+  string,
+  {
+    courses: string[]
+    specializations: Record<string, string[]>
+  }
+> = {
+  "10th": {
+    courses: ["CBSE", "ICSE", "State Board", "NIOS", "Other"],
+    specializations: {},
+  },
+  "12th": {
+    courses: ["Science", "Commerce", "Arts"],
+    specializations: {},
+  },
+  Diploma: {
+    courses: [
+      "Mechanical Engineering",
+      "Civil Engineering",
+      "Electrical Engineering",
+      "Electronics Engineering",
+      "Computer Engineering",
+      "Information Technology",
+      "Automobile Engineering",
+      "Chemical Engineering",
+      "Textile Engineering",
+      "Other",
+    ],
+    specializations: {
+      "Mechanical Engineering": ["CAD/CAM", "Thermal Engineering", "Production", "Automobile", "General"],
+      "Civil Engineering": ["Structural", "Transportation", "Environmental", "Geotechnical", "General"],
+      "Electrical Engineering": ["Power Systems", "Control Systems", "Electronics", "General"],
+      "Electronics Engineering": ["VLSI", "Embedded Systems", "Communication", "General"],
+      "Computer Engineering": ["Software Development", "Networking", "Database", "General"],
+      "Information Technology": ["Web Development", "Mobile Apps", "Cloud Computing", "General"],
+      "Automobile Engineering": ["Design", "Manufacturing", "Maintenance", "General"],
+      "Chemical Engineering": ["Process Engineering", "Petrochemical", "General"],
+      "Textile Engineering": ["Fabric Technology", "Apparel Design", "General"],
+      Other: ["General"],
+    },
+  },
+  "Graduation/Diploma": {
+    courses: ["B.Tech/B.E.", "B.Sc", "BCA", "BBA", "B.Com", "BA", "LLB", "B.Pharm", "B.Arch", "Other"],
+    specializations: {
+      "B.Tech/B.E.": [
+        "Computer Science",
+        "IT",
+        "Mechanical",
+        "Civil",
+        "Electrical",
+        "Electronics",
+        "Chemical",
+        "Other",
+      ],
+      "B.Sc": ["Physics", "Chemistry", "Mathematics", "Computer Science", "Biology", "Other"],
+      BCA: ["General", "Cloud Computing", "Data Science"],
+      BBA: ["Finance", "Marketing", "HR", "Operations", "General"],
+      "B.Com": ["General", "Accounting", "Finance"],
+      BA: ["English", "Economics", "Psychology", "Sociology", "Other"],
+      LLB: ["Corporate Law", "Criminal Law", "General"],
+      "B.Arch": ["General", "Urban Design"],
+      Other: ["General"],
+    },
+  },
+  "Post Graduation/Masters": {
+    courses: ["M.Tech/M.E.", "M.Sc", "MCA", "MBA", "M.Com", "MA", "LLM", "M.Pharm", "Other"],
+    specializations: {
+      "M.Tech/M.E.": [
+        "Computer Science",
+        "IT",
+        "Mechanical",
+        "Civil",
+        "Electrical",
+        "Electronics",
+        "Data Science",
+        "AI/ML",
+        "Other",
+      ],
+      "M.Sc": ["Physics", "Chemistry", "Mathematics", "Computer Science", "Data Science", "Other"],
+      MCA: ["General", "Cloud Computing", "Data Science", "AI/ML"],
+      MBA: ["Finance", "Marketing", "HR", "Operations", "Strategy", "General"],
+      "M.Com": ["General", "Accounting", "Finance"],
+      MA: ["English", "Economics", "Psychology", "Sociology", "Other"],
+      LLM: ["Corporate Law", "Criminal Law", "IP Law", "General"],
+      "M.Pharm": ["General", "Clinical Pharmacy", "Pharmacology"],
+      Other: ["General"],
+    },
+  },
+  "Doctorate/PhD": {
+    courses: ["PhD Computer Science", "PhD Engineering", "PhD Management", "PhD Science", "PhD Arts", "Other"],
+    specializations: {
+      "PhD Computer Science": ["AI/ML", "Data Science", "Cybersecurity", "General"],
+      "PhD Engineering": ["Mechanical", "Civil", "Electrical", "Chemical", "General"],
+      "PhD Management": ["Finance", "Marketing", "Strategy", "General"],
+      "PhD Science": ["Physics", "Chemistry", "Biology", "Mathematics", "General"],
+      "PhD Arts": ["Literature", "History", "Philosophy", "General"],
+      Other: ["General"],
+    },
+  },
+}
+
+const NOTICE_PERIOD_OPTIONS = ["Immediate", "15 Days", "1 Month", "2 Months", "3 Months", "More than 3 Months"]
+
 const getSupabase = () => createClient()
+
+const validatePassword = (password: string): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = []
+
+  if (password.length < 8) {
+    errors.push("At least 8 characters")
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    errors.push("At least 1 uppercase letter")
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push("At least 1 number")
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push("At least 1 special character (!@#$%^&*)")
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  }
+}
+
+const formatIndianNumber = (value: string): string => {
+  // Remove all non-digits
+  const digits = value.replace(/\D/g, "")
+  if (!digits) return ""
+
+  // Format with Indian comma system (XX,XX,XXX)
+  const num = Number.parseInt(digits)
+  return num.toLocaleString("en-IN")
+}
 
 type EmploymentEntry = {
   currentlyEmployed: "yes" | "no" | ""
@@ -32,13 +174,17 @@ type EmploymentEntry = {
   durationTo: string
   annualSalary: string
   noticePeriod: string
+  industry?: string // Added to EmploymentEntry
+  department?: string // Added to EmploymentEntry
+  roleCategory?: string // Added to EmploymentEntry
+  jobRole?: string // Added to EmploymentEntry
 }
 
 type AdditionalEmploymentEntry = {
   companyName: string
   jobTitle: string
-  fromDate: string // MM/YY format
-  toDate: string // MM/YY format
+  fromDate: string // MM/YY format - Changed to 'durationFrom' for consistency
+  toDate: string // MM/YY format - Changed to 'durationTo' for consistency
 }
 
 type RegistrationData = {
@@ -51,6 +197,7 @@ type RegistrationData = {
   workStatus: "experienced" | "fresher" | ""
   resume: File | null
   resumeUrl: string
+  candidateId: string | null // Added to store candidate ID
 
   // Step 2: OTP (not stored, just verified)
   otp: string
@@ -60,8 +207,7 @@ type RegistrationData = {
   additionalEmployment: AdditionalEmploymentEntry[] // Additional employment with simplified fields
   totalExperienceYears: string
   totalExperienceMonths: string
-  skillsForRole: string[]
-  skillsYouKnow: string[]
+  skills: string[]
   industry: string
   department: string
   roleCategory: string
@@ -73,8 +219,11 @@ type RegistrationData = {
   courseType: string
   specialization: string
   university: string
-  startingYear: string
+  startingYear: string // Now removed in favor of passingYear
   passingYear: string
+  passingYearFrom: string // Added for year range
+  passingYearTo: string // Added for year range
+  percentage?: string // Added for percentage/grade
   certifications: Array<{
     name: string
     issuer: string
@@ -116,6 +265,7 @@ type StepProps = {
   setFormData?: any
   setIsLoading?: (loading: boolean) => void
   isLoading?: boolean
+  handleCompleteRegistration?: () => void // Added for completion handler
 }
 
 type Skill = {
@@ -124,50 +274,189 @@ type Skill = {
   category: string
 }
 
+const calculateTotalExperienceFromEmployment = (
+  formData: RegistrationData,
+  updateFormData: (field: keyof RegistrationData, value: any) => void,
+) => {
+  let totalMonths = 0
+
+  console.log("[v0] Calculating total experience...")
+
+  // Calculate from current employment
+  if (formData.currentEmployment?.durationFrom) {
+    const fromDateParts = formData.currentEmployment.durationFrom.split("-")
+    const fromDate = new Date(Number(fromDateParts[0]), Number(fromDateParts[1]) - 1, 1)
+
+    let toDate: Date
+    if (formData.currentEmployment.durationTo === "Present" || !formData.currentEmployment.durationTo) {
+      toDate = new Date()
+    } else {
+      const toDateParts = formData.currentEmployment.durationTo.split("-")
+      toDate = new Date(Number(toDateParts[0]), Number(toDateParts[1]) - 1, 1)
+    }
+
+    if (toDate < fromDate) {
+      console.warn("[v0] Current employment 'To' date is before 'From' date")
+    } else {
+      const months = (toDate.getFullYear() - fromDate.getFullYear()) * 12 + (toDate.getMonth() - fromDate.getMonth())
+      console.log(
+        "[v0] Current employment:",
+        formData.currentEmployment.durationFrom,
+        "to",
+        formData.currentEmployment.durationTo,
+        "=",
+        months,
+        "months",
+      )
+      totalMonths += Math.max(0, months)
+    }
+  }
+
+  // Calculate from previous employments
+  formData.additionalEmployment.forEach((emp, index) => {
+    if (emp.fromDate && emp.toDate) {
+      const fromDateParts = emp.fromDate.split("-")
+      const fromDate = new Date(Number(fromDateParts[0]), Number(fromDateParts[1]) - 1, 1)
+
+      const toDateParts = emp.toDate.split("-")
+      const toDate = new Date(Number(toDateParts[0]), Number(toDateParts[1]) - 1, 1)
+
+      if (toDate < fromDate) {
+        console.warn(`[v0] Previous employment #${index + 1} 'To' date is before 'From' date`)
+      } else {
+        const months = (toDate.getFullYear() - fromDate.getFullYear()) * 12 + (toDate.getMonth() - fromDate.getMonth())
+        console.log(`[v0] Previous employment #${index + 1}:`, emp.fromDate, "to", emp.toDate, "=", months, "months")
+        totalMonths += Math.max(0, months)
+      }
+    }
+  })
+
+  const years = Math.floor(totalMonths / 12)
+  const months = totalMonths % 12
+
+  console.log("[v0] Total experience:", totalMonths, "months =", years, "years", months, "months")
+
+  updateFormData("totalExperienceYears", String(years))
+  updateFormData("totalExperienceMonths", String(months))
+}
+
 export default function CandidateRegistration() {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("candidateRegistrationStep")
+      return saved ? Number.parseInt(saved, 10) : 1
+    }
+    return 1
+  })
   const [isLoading, setIsLoading] = useState(false)
 
-  const [formData, setFormData] = useState<RegistrationData>({
-    fullName: "",
-    email: "",
-    password: "",
-    mobileNumber: "",
-    mobileVerified: false, // Initialize mobileVerified to false
-    workStatus: "",
-    resume: null,
-    resumeUrl: "",
-    otp: "",
-    currentEmployment: null,
-    additionalEmployment: [],
+  // Removed state variables from here, they belong in Step3EmploymentAndSkills
 
-    totalExperienceYears: "",
-    totalExperienceMonths: "",
-    skillsForRole: [],
-    skillsYouKnow: [],
-    industry: "",
-    department: "",
-    roleCategory: "",
-    jobRole: "",
-    highestQualification: "",
-    course: "",
-    courseType: "",
-    specialization: "",
-    university: "",
-    startingYear: "",
-    passingYear: "",
-    certifications: [],
-    resumeHeadline: "",
-    preferredLocations: [],
-    preferredSalary: "",
-    gender: "",
-    currentCity: "",
-    currentState: "",
-    availabilityToJoin: "",
-    dateOfBirth: "",
-    maritalStatus: "",
-    languagesKnown: [],
-    projects: [],
+  const [formData, setFormData] = useState<RegistrationData>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("candidateRegistrationData")
+        if (saved) {
+          const parsed = JSON.parse(saved)
+          // Validate that parsed data is an object
+          if (parsed && typeof parsed === "object") {
+            console.log("[v0] Loaded saved registration data from localStorage")
+            // Don't restore password or OTP for security
+            // Ensure essential fields are present, even if empty, to prevent runtime errors
+            const defaultFormData = {
+              fullName: "",
+              email: "",
+              password: "",
+              mobileNumber: "",
+              mobileVerified: false,
+              workStatus: "",
+              resume: null,
+              resumeUrl: "",
+              otp: "",
+              candidateId: null,
+              currentEmployment: null,
+              additionalEmployment: [],
+              totalExperienceYears: "",
+              totalExperienceMonths: "",
+              skills: [],
+              industry: "",
+              department: "",
+              roleCategory: "",
+              jobRole: "",
+              highestQualification: "",
+              course: "",
+              courseType: "",
+              specialization: "",
+              university: "",
+              startingYear: "",
+              passingYear: "",
+              passingYearFrom: "",
+              passingYearTo: "",
+              certifications: [],
+              resumeHeadline: "",
+              preferredLocations: [],
+              preferredSalary: "",
+              gender: "",
+              currentCity: "",
+              currentState: "",
+              availabilityToJoin: "",
+              dateOfBirth: "",
+              maritalStatus: "",
+              languagesKnown: [],
+              projects: [],
+            }
+            return { ...defaultFormData, ...parsed, password: "", otp: "", resume: null }
+          }
+        }
+      } catch (error) {
+        console.error("[v0] Failed to parse saved registration data:", error)
+        // Clear corrupted data
+        localStorage.removeItem("candidateRegistrationData")
+      }
+    }
+    return {
+      fullName: "",
+      email: "",
+      password: "",
+      mobileNumber: "",
+      mobileVerified: false, // Initialize mobileVerified to false
+      workStatus: "",
+      resume: null,
+      resumeUrl: "",
+      otp: "",
+      candidateId: null, // Initialize candidateId to null
+      currentEmployment: null,
+      additionalEmployment: [],
+
+      totalExperienceYears: "",
+      totalExperienceMonths: "",
+      skills: [],
+      industry: "",
+      department: "",
+      roleCategory: "",
+      jobRole: "",
+      highestQualification: "",
+      course: "",
+      courseType: "",
+      specialization: "",
+      university: "",
+      startingYear: "", // This field is effectively removed from the form logic
+      passingYear: "",
+      passingYearFrom: "", // Initialize new fields
+      passingYearTo: "", // Initialize new fields
+      certifications: [],
+      resumeHeadline: "",
+      preferredLocations: [],
+      preferredSalary: "",
+      gender: "",
+      currentCity: "",
+      currentState: "",
+      availabilityToJoin: "",
+      dateOfBirth: "",
+      maritalStatus: "",
+      languagesKnown: [],
+      projects: [],
+    }
   })
 
   const isFresher = formData.workStatus === "fresher"
@@ -184,30 +473,69 @@ export default function CandidateRegistration() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const formatIndianNumber = (value: string): string => {
-    // Remove all non-digits
-    const digits = value.replace(/\D/g, "")
-    if (!digits) return ""
-
-    // Format with Indian comma system (XX,XX,XXX)
-    const num = Number.parseInt(digits)
-    return num.toLocaleString("en-IN")
-  }
-
   const handleSalaryChange = (value: string) => {
     // Remove existing commas and format
     const formatted = formatIndianNumber(value)
     updateFormData("preferredSalary", formatted)
   }
 
-  const currentStep = step // Alias for clarity
+  const handleCompleteRegistration = async () => {
+    if (isLoading) return
+    setIsLoading?.(true)
+
+    console.log("[v0] handleCompleteRegistration called")
+
+    try {
+      // Call the API to save all preferences and complete registration
+      // Note: The function `updatePreferencesAndComplete` is expected to take the email of the candidate
+      // to identify them and then the data object containing their preferences and other details.
+      const result = await updatePreferencesAndComplete(formData.email, {
+        resumeHeadline: formData.resumeHeadline,
+        preferredLocations: formData.preferredLocations,
+        preferredSalary: formData.preferredSalary,
+        gender: formData.gender,
+        currentCity: formData.currentCity,
+        currentState: formData.currentState,
+        availabilityToJoin: formData.availabilityToJoin,
+        dateOfBirth: formData.dateOfBirth,
+        languagesKnown: formData.languagesKnown,
+        maritalStatus: formData.maritalStatus,
+        projects: formData.projects,
+        certifications: formData.certifications,
+        skills: formData.skills,
+      })
+
+      if (result.success) {
+        console.log("[v0] Registration completed successfully!")
+
+        // Show success message
+        alert("🎉 Registration Completed Successfully!\n\nYour profile has been created. Please login to continue.")
+
+        // Redirect to login page after a short delay
+        setTimeout(() => {
+          window.location.href = "/candidate/login"
+        }, 1000)
+      } else {
+        console.error("[v0] Error completing registration:", result.error)
+        alert("Error completing registration: " + result.error)
+        setIsLoading?.(false)
+      }
+    } catch (error) {
+      console.error("[v0] Exception completing registration:", error)
+      alert("An unexpected error occurred. Please try again.")
+      setIsLoading?.(false)
+    }
+  }
+
   const setStepState = (step: number) => {
     // Renamed to avoid conflict with the original setStep
-    console.log("[v0] In setStep, prev:", currentStep, "isFresher:", isFresher)
-    const maxStep = 5
-    console.log("[v0] maxStep:", maxStep, "prev:", currentStep)
+    console.log("[v0] In setStepState, prev:", step, "isFresher:", isFresher) // Corrected variable name here
 
-    if (step === 3 && currentStep === 2 && isFresher) {
+    const maxStep = getTotalSteps() // Declare maxStep here
+
+    if (step === 3 && step <= 2 && isFresher) {
+      // This condition seems incorrect. It should likely be:
+      // if (step === 3 && step_before === 2 && isFresher) or similar logic
       console.log("[v0] Fresher going to Step 3 to add skills (mandatory)")
     }
 
@@ -239,113 +567,14 @@ export default function CandidateRegistration() {
 
   const prevStep = () => {
     setStep((prev) => {
-      if (prev === 3 && formData.mobileVerified) {
-        return 1 // Skip step 2 (OTP) and go directly to step 1
-      }
-      if (isFresher && prev === 4) {
-        return 3 // Go back to Step 3 (Skills & Employment) from Step 4 (Education)
-      }
+      // The logic here is simplified. If the goal is always to go back one step,
+      // this condition might need adjustment based on specific navigation rules.
+      // For example, skipping a step if it was already completed or not applicable.
+      // The original condition `formData.mobileVerified` for step 2 seems related to
+      // skipping the OTP step if already verified, which might be handled differently now.
+      // For now, general back navigation is implemented.
       return Math.max(prev - 1, 1)
     })
-  }
-
-  const getDisplayStep = (stepNumber: number) => {
-    if (!isFresher) return stepNumber
-    // For fresher: 1->1, 2->2, 4->3, 5->4, 6->5
-    if (stepNumber <= 2) return stepNumber
-    return stepNumber - 1
-  }
-
-  const stepProps = {
-    formData,
-    updateFormData,
-    nextStep,
-    prevStep,
-    setFormData,
-    setIsLoading,
-    isLoading,
-  }
-
-  // Import Step4EducationCombined and Step5HeadlineAndPreferences here
-  // Assuming these components are defined elsewhere and need to be imported.
-  // If they are in the same file, they should be declared above.
-  // For now, let's assume they exist.
-  // Placeholder imports, replace with actual import paths if necessary
-  // const Step4EducationCombined = ({}: StepProps) => <div>Education Step</div>
-  // const Step5HeadlineAndPreferences = ({}: StepProps) => <div>Preferences Step</div>
-
-  // Placeholder for Step4EducationCombined component
-  const Step4EducationCombinedPlaceholder = ({}: StepProps) => {
-    return (
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardHeader className="border-b">
-          <CardTitle className="text-2xl">Education Details</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Provide details about your educational qualifications.</p>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Education form fields will go here */}
-          <div className="text-center text-muted-foreground">Education details coming soon...</div>
-          <div className="flex justify-between pt-4 border-t">
-            <Button type="button" variant="outline" className="rounded-full px-8 bg-transparent">
-              Back
-            </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8">Save & Continue</Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Placeholder for Step5HeadlineAndPreferences component
-  const Step5HeadlineAndPreferencesPlaceholder = ({}: StepProps) => {
-    return (
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardHeader className="border-b">
-          <CardTitle className="text-2xl">Headline & Preferences</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">Refine your profile and set your job preferences.</p>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Headline and preferences form fields will go here */}
-          <div className="text-center text-muted-foreground">Headline & Preferences coming soon...</div>
-          <div className="flex justify-between pt-4 border-t">
-            <Button type="button" variant="outline" className="rounded-full px-8 bg-transparent">
-              Back
-            </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8">
-              Complete Registration
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Corrected assignments for Step4 and Step5 components
-  const Step5HeadlineAndPreferences = Step5PersonalAndPreferences
-  const Step4EducationCombined = Step4EducationAndProjects
-
-  const renderStep = () => {
-    switch (step) {
-      case 1:
-        return <Step1Initial {...stepProps} />
-      case 2:
-        return <Step2OTP {...stepProps} />
-      case 3:
-        // Only render employment step if not a fresher
-        // Renamed the component to Step3EmploymentAndSkills for clarity
-        return <Step3EmploymentAndSkills {...stepProps} />
-      case 4:
-        return <Step4EducationCombined {...stepProps} />
-      case 5: // Combined step for preferences
-        return <Step5HeadlineAndPreferences {...stepProps} />
-      // case 6: // This case is no longer needed due to combining steps
-      //   // This case might not be reached if step 5 is combined.
-      //   // If it is still needed for some logic, ensure it uses the correct component or redirect.
-      //   // For the purpose of this merge, we'll map step 6 to the combined component if needed.
-      //   return <Step5HeadlineAndPreferences {...stepProps} />
-      default:
-        return <Step1Initial {...stepProps} />
-    }
   }
 
   const getStepStatus = (stepNumber: number) => {
@@ -360,7 +589,7 @@ export default function CandidateRegistration() {
         { step: 1, label: "Basic details", description: "" },
         { step: 2, label: "Verification", description: "" },
         // Step 3 (Employment/Skills) is now mandatory for freshers, so it's included in the labels.
-        { step: 3, label: "Skills", description: "Tell us your core skills" },
+        { step: 3, label: "Skills & Experience", description: "Tell us about your skills and any experience" },
         { step: 4, label: "Education", description: "Employers prefer to know about your Education" },
         { step: 5, label: "Preferences", description: "" }, // Changed label to "Preferences"
       ]
@@ -373,6 +602,78 @@ export default function CandidateRegistration() {
       { step: 5, label: "Preferences", description: "" }, // Changed label to "Preferences"
     ]
   }
+
+  const stepProps = {
+    formData,
+    updateFormData,
+    nextStep,
+    prevStep,
+    setFormData,
+    setIsLoading,
+    isLoading,
+    handleCompleteRegistration, // Pass the new handler
+  }
+
+  const renderStep = () => {
+    switch (step) {
+      case 1:
+        // Renamed Step1Initial to Step1BasicInfo
+        return <Step1BasicInfo {...stepProps} />
+      case 2:
+        return <Step2OTP {...stepProps} />
+      case 3:
+        // Only render employment step if not a fresher
+        // Renamed the component to Step3EmploymentAndSkills to reflect its functionality
+        return <Step3EmploymentAndSkills {...stepProps} />
+      case 4:
+        // RENDER STEP 4 EDUCATION HERE
+        return <Step4EducationAndProjects {...stepProps} />
+      case 5: // Combined step for preferences
+        return <Step5HeadlineAndPreferences {...stepProps} />
+      default:
+        return <Step1BasicInfo {...stepProps} />
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candidateRegistrationStep", step.toString())
+    }
+  }, [step])
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Create a copy without sensitive data
+      const dataToSave = {
+        ...formData,
+        password: "", // Don't save password
+        otp: "", // Don't save OTP
+        resume: null, // Can't serialize File objects
+      }
+      localStorage.setItem("candidateRegistrationData", JSON.stringify(dataToSave))
+    }
+  }, [formData])
+
+  const clearRegistrationData = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("candidateRegistrationStep")
+      localStorage.removeItem("candidateRegistrationData")
+    }
+  }
+
+  const getStepLabel = (stepNum: number) => {
+    // This function is used for the stepper labels but the logic is in getStepLabels()
+    // Returning it here for completeness in case it was intended to be modified
+    const labels = getStepLabels()
+    const stepInfo = labels.find((s) => s.step === stepNum)
+    return stepInfo ? stepInfo.label : `Step ${stepNum}`
+  }
+
+  const maxStep = useMemo(() => {
+    // Experienced: steps 1, 2, 3, 4, 5
+    // Freshers: steps 1, 2, skip 3, 4, 5
+    return 5
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -400,59 +701,112 @@ export default function CandidateRegistration() {
 
       {/* Main Content Area */}
       {step === 1 ? (
-        renderStep()
+        // Step 1: Show sidebar with registration form
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 max-w-7xl mx-auto px-4">
+          {/* Left Side - Illustration */}
+          <div className="lg:w-1/3 order-2 lg:order-1">
+            <Card className="p-4 md:p-6 h-full">
+              <div className="flex justify-center mb-4 md:mb-6">
+                <img
+                  src="/person-waving-with-briefcase-illustration.jpg"
+                  alt="Registration illustration"
+                  className="h-32 md:h-40"
+                />
+              </div>
+              <ul className="space-y-2 md:space-y-3 text-sm md:text-base text-gray-700">
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Register now – it's free</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Sign up and get hired faster</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Join today and find your next job</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Create your profile & apply instantly</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span>Start your job search now</span>
+                </li>
+              </ul>
+            </Card>
+          </div>
+          {/* Right Side - Form */}
+          <div className="lg:w-2/3 order-1 lg:order-2">{renderStep()}</div>
+        </div>
       ) : (
-        <div className="flex flex-col lg:flex-row max-w-6xl mx-auto mt-4 md:mt-8 px-4">
-          {/* Sidebar */}
-          <div className="w-full lg:w-64 lg:pr-8 mb-6 lg:mb-0">
-            <div className="relative">
-              <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0">
-                {getStepLabels().map((item, index, arr) => {
-                  const isCompleted = step > item.step
-                  const isActive = step === item.step
-                  const displayIndex = index + 1
+        // Steps 2-5: Show vertical progress stepper on left and step content on right
+        <div className="max-w-7xl mx-auto px-4 py-6 lg:py-8">
+          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+            {/* Left Side - Vertical Stepper */}
+            <div className="lg:w-1/4 lg:sticky lg:top-24 lg:self-start">
+              <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
+                <div className="space-y-1">
+                  {getStepLabels().map((stepInfo, index) => {
+                    const stepStatus = getStepStatus(stepInfo.step)
+                    const isCompleted = stepStatus === "completed"
+                    const isCurrent = stepStatus === "current"
+                    const isUpcoming = stepStatus === "upcoming"
 
-                  return (
-                    <div key={item.step} className="flex items-start mb-0 lg:mb-8 flex-shrink-0 mr-6 lg:mr-0">
-                      <div className="flex flex-col items-center mr-2 lg:mr-4">
-                        <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                            isCompleted
-                              ? "bg-green-500"
-                              : isActive
-                                ? "border-2 border-green-500 bg-white"
-                                : "border-2 border-gray-300 bg-white"
-                          }`}
-                        >
-                          {isCompleted && <Check className="w-4 h-4 text-white" />}
-                        </div>
-                        {index < arr.length - 1 && (
+                    return (
+                      <div key={stepInfo.step} className="relative">
+                        {/* Connector Line */}
+                        {index < getStepLabels().length - 1 && (
                           <div
-                            className={`hidden lg:block w-0.5 h-16 ${isCompleted ? "bg-green-500" : "bg-gray-300"}`}
+                            className={`absolute left-4 top-8 w-0.5 h-12 ${
+                              isCompleted ? "bg-green-500" : "bg-gray-200"
+                            }`}
                           />
                         )}
-                      </div>
-                      <div>
-                        <div
-                          className={`font-medium text-sm lg:text-base whitespace-nowrap lg:whitespace-normal ${isActive ? "text-green-600" : isCompleted ? "text-gray-900" : "text-gray-500"}`}
-                        >
-                          {item.label}
-                        </div>
-                        {item.description && isActive && (
-                          <div className="text-xs lg:text-sm text-gray-500 mt-1 hidden lg:block">
-                            {item.description}
+
+                        {/* Step Item */}
+                        <div className="flex items-start gap-3 py-2">
+                          {/* Step Circle */}
+                          <button
+                            type="button"
+                            onClick={() => isCompleted && setStep(stepInfo.step)}
+                            disabled={!isCompleted}
+                            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm transition-all ${
+                              isCompleted
+                                ? "bg-green-500 text-white cursor-pointer hover:bg-green-600 hover:scale-110"
+                                : isCurrent
+                                  ? "bg-purple-600 text-white ring-4 ring-purple-100"
+                                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                            }`}
+                          >
+                            {isCompleted ? <Check className="w-4 h-4" /> : stepInfo.step}
+                          </button>
+
+                          {/* Step Content */}
+                          <div className="flex-1 min-w-0">
+                            <div
+                              className={`font-semibold text-sm ${
+                                isCurrent ? "text-purple-600" : isCompleted ? "text-gray-900" : "text-gray-400"
+                              }`}
+                            >
+                              {stepInfo.label}
+                            </div>
+                            {stepInfo.description && (
+                              <div className="text-xs text-gray-500 mt-0.5">{stepInfo.description}</div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Main Content */}
-          <div className="flex-1">{renderStep()}</div>
+            {/* Right Side - Step Content */}
+            <div className="lg:w-3/4">{renderStep()}</div>
+          </div>
         </div>
       )}
 
@@ -497,23 +851,8 @@ export default function CandidateRegistration() {
   )
 }
 
-const validatePassword = (password: string): { isValid: boolean; message: string } => {
-  if (password.length < 8) {
-    return { isValid: false, message: "Password must be at least 8 characters long" }
-  }
-  if (!/[A-Z]/.test(password)) {
-    return { isValid: false, message: "Password must contain at least one uppercase letter" }
-  }
-  if (!/[0-9]/.test(password)) {
-    return { isValid: false, message: "Password must contain at least one number" }
-  }
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    return { isValid: false, message: "Password must contain at least one special character" }
-  }
-  return { isValid: true, message: "" }
-}
-
-function Step1Initial({
+// Renamed Step1Initial to Step1BasicInfo
+function Step1BasicInfo({
   formData,
   updateFormData,
   nextStep,
@@ -524,42 +863,37 @@ function Step1Initial({
 }: StepProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [passwordValidation, setPasswordValidation] = useState<{ isValid: boolean; errors: string[] }>({
+    isValid: false,
+    errors: [],
+  })
+
+  const handlePasswordChange = (value: string) => {
+    updateFormData("password", value)
+    setPasswordValidation(validatePassword(value))
+  }
 
   // Updated handleSubmit
   const handleSubmit = async () => {
     if (isLoading) return
 
-    setIsLoading(true)
-    console.log("[v0] Step1 handleSubmit called")
-
-    // Basic validation for required fields
-    const newErrors: Record<string, string> = {}
-    if (!formData.fullName) newErrors.fullName = "Full name is required"
-    if (!formData.email) newErrors.email = "Email is required"
-    if (!formData.password) newErrors.password = "Password is required"
-    if (!formData.mobileNumber) newErrors.mobileNumber = "Mobile number is required"
-    if (!formData.workStatus) newErrors.workStatus = "Work status is required"
-
-    // Validate password separately using the helper function
-    if (formData.password) {
-      const passwordValidation = validatePassword(formData.password)
-      if (!passwordValidation.isValid) {
-        newErrors.password = passwordValidation.message
-      }
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
-      setIsLoading(false)
+    // Validate password before submitting
+    const { isValid: isPasswordValid } = validatePassword(formData.password)
+    if (!isPasswordValid) {
+      alert("Password does not meet the requirements. Please check the criteria.")
+      setPasswordValidation(validatePassword(formData.password)) // Ensure validation message is shown
       return
     }
+
+    setIsLoading?.(true)
+    console.log("[v0] Step1 handleSubmit called")
 
     try {
       // Check if email already exists
       const emailCheck = await checkEmailExists(formData.email)
       if (emailCheck.exists) {
         alert("Email already registered")
-        setIsLoading(false)
+        setIsLoading?.(false)
         return
       }
 
@@ -572,7 +906,7 @@ function Step1Initial({
 
         if (!uploadResult.success) {
           alert(`Failed to upload resume: ${uploadResult.error}`)
-          setIsLoading(false)
+          setIsLoading?.(false)
           return
         }
 
@@ -593,6 +927,8 @@ function Step1Initial({
       console.log("[v0] createCandidate result:", result)
 
       if (result.success) {
+        // Store candidateId from the result
+        updateFormData("candidateId", result.candidateId)
         nextStep()
       } else {
         alert(result.error || "Registration failed")
@@ -601,7 +937,7 @@ function Step1Initial({
       console.error("[v0] Error in handleSubmit:", error)
       alert("An error occurred during registration")
     } finally {
-      setIsLoading(false)
+      setIsLoading?.(false)
     }
   }
 
@@ -630,302 +966,274 @@ function Step1Initial({
     }
 
     updateFormData("resume", file)
-    // For now, just store file name - actual upload would be to Supabase Storage
-    // updateFormData("resumeUrl", file.name) // This line is now handled by the upload logic in handleSubmit
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-8 max-w-5xl mx-auto px-4">
-      {/* Left Side - Illustration */}
-      <div className="flex-1 order-2 lg:order-1">
-        <Card className="p-4 md:p-6">
-          <div className="flex justify-center mb-4 md:mb-6">
-            <img
-              src="/person-waving-with-briefcase-illustration.jpg"
-              alt="Registration illustration"
-              className="h-32 md:h-40"
-            />
+    <>
+      <Card className="p-4 md:p-8">
+        <h2 className="text-xl md:text-2xl font-bold text-center text-primary mb-4 md:mb-6">
+          Start your career Journey with JobKarle Now !
+        </h2>
+        <p> India's top jobs, one platform. </p>
+        {errors.form && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">{errors.form}</div>
+        )}
+
+        <div className="space-y-4">
+          {/* Full Name */}
+          <div>
+            <Label htmlFor="fullName" className="text-sm">
+              Full name<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="fullName"
+                value={formData.fullName}
+                onChange={(e) => updateFormData("fullName", e.target.value)}
+                placeholder="What is your name?"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.fullName ? "border-red-500" : ""}`}
+                required
+              />
+              {formData.fullName && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              )}
+            </div>
+            {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
           </div>
-          <ul className="space-y-2 md:space-y-3 text-sm md:text-base text-gray-700">
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Register now – it's free</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Sign up and get hired faster</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Join today and find your next job</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Start your job search now</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check className="w-4 h-4 md:w-5 md:h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span>Create your profile & apply instantly</span>
-            </li>
-          </ul>
-        </Card>
-      </div>
 
-      {/* Right Side - Form */}
-      <div className="flex-1 order-1 lg:order-2">
-        <Card className="p-4 md:p-8">
-          <h2 className="text-xl md:text-2xl font-bold text-center text-primary mb-4 md:mb-6">
-            Start your career Journey with JobKarle Now !
-          </h2>
-          <p> India’s top jobs, one platform. </p>
-          {errors.form && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-              {errors.form}
+          {/* Email */}
+          <div>
+            <Label htmlFor="email" className="text-sm">
+              Email ID<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => updateFormData("email", e.target.value)}
+                placeholder="Tell us your Email ID"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.email ? "border-red-500" : ""}`}
+                required
+              />
+              {formData.email && formData.email.includes("@") && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              )}
             </div>
-          )}
+            <p className="text-xs text-gray-500 mt-1">We'll notify you about matching jobs and updates here</p>
+            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+          </div>
 
-          <div className="space-y-4">
-            {/* Full Name */}
-            <div>
-              <Label htmlFor="fullName" className="text-sm">
-                Full name<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="fullName"
-                  value={formData.fullName}
-                  onChange={(e) => updateFormData("fullName", e.target.value)}
-                  placeholder="What is your name?"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.fullName ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.fullName && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+          {/* Password */}
+          <div>
+            <Label htmlFor="password" className="text-sm">
+              Password<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => handlePasswordChange(e.target.value)}
+                placeholder="Create a password"
+                className={`mt-1 h-12 rounded-full px-4 pr-12 text-sm ${errors.password ? "border-red-500" : ""}`}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <Eye className="w-4 h-4 text-gray-400" />
                 )}
-              </div>
-              {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName}</p>}
+              </button>
             </div>
-
-            {/* Email */}
-            <div>
-              <Label htmlFor="email" className="text-sm">
-                Email ID<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => updateFormData("email", e.target.value)}
-                  placeholder="Tell us your Email ID"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.email ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.email && formData.email.includes("@") && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">We’ll notify you about matching jobs and updates here</p>
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
-
-            {/* Password */}
-            <div>
-              <Label htmlFor="password" className="text-sm">
-                Password<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) => {
-                    updateFormData("password", e.target.value)
-                    const validation = validatePassword(e.target.value)
-                    if (!validation.isValid) {
-                      setErrors({ ...errors, password: validation.message })
-                    } else {
-                      const newErrors = { ...errors }
-                      delete newErrors.password
-                      setErrors(newErrors)
-                    }
-                  }}
-                  required
-                  placeholder="Create a strong password"
-                  className="pr-10 h-10 text-sm rounded-full"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-              <p className="text-xs text-gray-500 mt-1">
-                Must contain: 1 uppercase, 1 number, 1 special character (min. 8 characters)
-              </p>
-            </div>
-
-            {/* Mobile Number */}
-            <div>
-              <Label htmlFor="mobile" className="text-sm">
-                Mobile number<span className="text-red-500">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="mobile"
-                  value={formData.mobileNumber}
-                  onChange={(e) => updateFormData("mobileNumber", e.target.value)}
-                  placeholder="+91 Enter your mobile number"
-                  className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.mobileNumber ? "border-red-500" : ""}`}
-                  required
-                />
-                {formData.mobileNumber && formData.mobileNumber.length >= 10 && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Recruiters will use this number to contact you for job opportunities
-              </p>
-              {errors.mobileNumber && <p className="text-red-500 text-xs mt-1">{errors.mobileNumber}</p>}
-            </div>
-
-            {/* Work Status */}
-            <div>
-              <Label className="text-sm">
-                Work status<span className="text-red-500">*</span>
-              </Label>
-              <div className="flex flex-col md:flex-row gap-3 md:gap-4 mt-2">
-                <button
-                  onClick={() => updateFormData("workStatus", "experienced")}
-                  className={`flex-1 p-3 md:p-4 border rounded-lg text-left transition-all ${
-                    formData.workStatus === "experienced"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-2">
-                      <div className="font-medium text-sm md:text-base">I'm experienced</div>
-                      <div className="text-xs md:text-sm text-blue-500">
-                        I have work experience (excluding internships)
-                      </div>
-                    </div>
-                    <img
-                      src="/briefcase-icon.png"
-                      alt="Experienced"
-                      className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0"
-                    />
+            {formData.password && (
+              <div className="mt-2 space-y-1">
+                {passwordValidation.isValid ? (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    Strong password
+                  </p>
+                ) : (
+                  <div className="text-xs space-y-1">
+                    <p className="text-gray-600 font-medium">Password must contain:</p>
+                    {[
+                      { met: formData.password.length >= 8, text: "At least 8 characters" },
+                      { met: /[A-Z]/.test(formData.password), text: "At least 1 uppercase letter" },
+                      { met: /[0-9]/.test(formData.password), text: "At least 1 number" },
+                      {
+                        met: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password),
+                        text: "At least 1 special character (!@#$%^&*)",
+                      },
+                    ].map((req, idx) => (
+                      <p
+                        key={idx}
+                        className={`flex items-center gap-1 ${req.met ? "text-green-600" : "text-gray-500"}`}
+                      >
+                        {req.met ? (
+                          <Check className="w-3 h-3" />
+                        ) : (
+                          <span className="w-3 h-3 rounded-full border border-gray-300" />
+                        )}
+                        {req.text}
+                      </p>
+                    ))}
                   </div>
-                </button>
-                <button
-                  onClick={() => updateFormData("workStatus", "fresher")}
-                  className={`flex-1 p-3 md:p-4 border rounded-lg text-left transition-all ${
-                    formData.workStatus === "fresher"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 pr-2">
-                      <div className="font-medium text-sm md:text-base">I'm a fresher</div>
-                      <div className="text-xs md:text-sm text-blue-500">
-                        I am a student/ Haven't worked after graduation
-                      </div>
-                    </div>
-                    <img
-                      src="/graduation-cap-icon.png"
-                      alt="Fresher"
-                      className="w-8 h-8 md:w-10 md:h-10 flex-shrink-0"
-                    />
-                  </div>
-                </button>
+                )}
               </div>
-              {errors.workStatus && <p className="text-red-500 text-xs mt-1">{errors.workStatus}</p>}
-            </div>
+            )}
+            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+          </div>
 
-            {/* Resume Upload */}
-            <div>
-              <Label className="text-sm">Resume</Label>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2">
-                <label className="cursor-pointer">
-                  <input type="file" className="hidden" accept=".doc,.docx,.pdf" onChange={handleFileUpload} />
-                  <span className="bg-orange-500 text-white px-3 py-2 rounded-full text-xs sm:text-sm font-medium hover:bg-orange-600 transition-colors inline-flex items-center gap-2">
-                    <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Upload Resume
-                  </span>
-                </label>
-                <span className="text-xs text-gray-500">DOC, DOCX, PDF | Max: 5 MB</span>
-              </div>
-              {formData.resume && <p className="text-xs text-green-600 mt-1">Selected: {formData.resume.name}</p>}
-              <p className="text-xs text-gray-500 mt-1">Upload your resume to improve your chances of getting hired.</p>
+          {/* Mobile Number */}
+          <div>
+            <Label htmlFor="mobile" className="text-sm">
+              Mobile number<span className="text-red-500">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="mobile"
+                value={formData.mobileNumber}
+                onChange={(e) => updateFormData("mobileNumber", e.target.value)}
+                placeholder="+91 Enter your mobile number"
+                className={`mt-1 h-12 rounded-full px-4 text-sm ${errors.mobileNumber ? "border-red-500" : ""}`}
+                required
+              />
+              {formData.mobileNumber && formData.mobileNumber.length >= 10 && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+              )}
             </div>
-
-            {/* Terms Checkbox */}
-            <div className="flex items-start gap-2">
-              <input type="checkbox" id="updates" className="mt-1" />
-              <label htmlFor="updates" className="text-xs text-gray-600">
-                Get important updates and offers on SMS, email, and WhatsApp
-              </label>
-            </div>
-
-            <p className="text-xs text-gray-500">
-              By registering, you accept the{" "}
-              <a href="#" className="text-blue-600 hover:underline">
-                Terms and Conditions
-              </a>{" "}
-              &{" "}
-              <a href="#" className="text-blue-600 hover:underline">
-                Privacy Policy
-              </a>{" "}
-              of JobKarle.com
+            <p className="text-xs text-gray-500 mt-1">
+              Recruiters will use this number to contact you for job opportunities
             </p>
-
-            <Button
-              // onClick={handleRegister} // Original onClick
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="w-full sm:w-auto h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8"
-            >
-              {isLoading ? "Registering..." : "Register now"}
-            </Button>
+            {errors.mobileNumber && <p className="text-red-500 text-xs mt-1">{errors.mobileNumber}</p>}
           </div>
-        </Card>
 
-        {/* Google Sign In */}
-        <div className="flex items-center justify-end mt-4 gap-2">
-          <span className="text-gray-500 text-xs">Or</span>
-          <span className="text-gray-600 text-xs">Continue with</span>
-          <Button variant="outline" className="gap-2 bg-transparent h-9 px-4">
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Google
+          {/* Work Status */}
+          <div>
+            <Label className="text-sm">
+              Work status<span className="text-red-500">*</span>
+            </Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mt-2">
+              <div
+                onClick={() => updateFormData("workStatus", "experienced")}
+                className={`cursor-pointer p-4 border rounded-lg transition-all h-full ${
+                  formData.workStatus === "experienced"
+                    ? "border-l-4 border-l-purple-600 border-t border-r border-b border-gray-200 bg-purple-50"
+                    : "border border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between h-full">
+                  <div className="flex-1 pr-3">
+                    <div className="font-semibold text-gray-900">I'm experienced</div>
+                    <div className="text-sm text-blue-500 mt-1">I have work experience (excluding internships)</div>
+                  </div>
+                  <img src="/briefcase-work-icon.jpg" alt="Experienced" className="w-10 h-10 flex-shrink-0" />
+                </div>
+              </div>
+              <div
+                onClick={() => updateFormData("workStatus", "fresher")}
+                className={`cursor-pointer p-4 border rounded-lg transition-all h-full ${
+                  formData.workStatus === "fresher"
+                    ? "border-l-4 border-l-purple-600 border-t border-r border-b border-gray-200 bg-purple-50"
+                    : "border border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start justify-between h-full">
+                  <div className="flex-1 pr-3">
+                    <div className="font-semibold text-gray-900">I'm a fresher</div>
+                    <div className="text-sm text-blue-500 mt-1">I am a student/ Haven't worked after graduation</div>
+                  </div>
+                  <img src="/graduation-cap-student-icon.jpg" alt="Fresher" className="w-10 h-10 flex-shrink-0" />
+                </div>
+              </div>
+            </div>
+            {errors.workStatus && <p className="text-red-500 text-xs mt-1">{errors.workStatus}</p>}
+          </div>
+
+          {/* Resume Upload */}
+          <div>
+            <Label className="text-sm">Resume</Label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2">
+              <label className="cursor-pointer">
+                <input type="file" className="hidden" accept=".doc,.docx,.pdf" onChange={handleFileUpload} />
+                <span className="bg-orange-500 text-white px-3 py-2 rounded-full text-xs sm:text-sm font-medium hover:bg-orange-600 transition-colors inline-flex items-center gap-2">
+                  <Upload className="w-3 h-3 sm:w-4 sm:h-4" />
+                  Upload Resume
+                </span>
+              </label>
+              <span className="text-xs text-gray-500">DOC, DOCX, PDF | Max: 5 MB</span>
+            </div>
+            {formData.resume && <p className="text-xs text-green-600 mt-1">Selected: {formData.resume.name}</p>}
+            <p className="text-xs text-gray-500 mt-1">Upload your resume to improve your chances of getting hired.</p>
+          </div>
+
+          {/* Terms Checkbox */}
+          <div className="flex items-start gap-2">
+            <input type="checkbox" id="updates" className="mt-1" />
+            <label htmlFor="updates" className="text-xs text-gray-600">
+              Get important updates and offers on SMS, email, and WhatsApp
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            By registering, you accept the{" "}
+            <a href="#" className="text-blue-600 hover:underline">
+              Terms and Conditions
+            </a>{" "}
+            &{" "}
+            <a href="#" className="text-blue-600 hover:underline">
+              Privacy Policy
+            </a>{" "}
+            of JobKarle.com
+          </p>
+
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8 h-12"
+          >
+            {isLoading ? "Registering..." : "Register now"}
           </Button>
         </div>
+      </Card>
+
+      {/* Google Sign In - Moved inside the return statement and wrapped in Fragment */}
+      <div className="flex items-center justify-end mt-4 gap-2">
+        <span className="text-gray-500 text-xs">Or</span>
+        <span className="text-gray-600 text-xs">Continue with</span>
+        <Button variant="outline" className="gap-2 bg-transparent h-9 px-4">
+          <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <path
+              fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+            />
+          </svg>
+          Google
+        </Button>
       </div>
-    </div>
+    </>
   )
 }
 
 function Step2OTP({ formData, updateFormData, nextStep, prevStep, setIsLoading, isLoading }: StepProps) {
+  const [showPassword, setShowPassword] = useState(false) // This was duplicated from Step1BasicInfo and is not needed here. Removed.
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
   const inputRefs = [
     useRef<HTMLInputElement>(null),
@@ -1152,6 +1460,7 @@ function Step2OTP({ formData, updateFormData, nextStep, prevStep, setIsLoading, 
   )
 }
 
+// Renamed from Step3EmploymentCombined to Step3EmploymentAndSkills to reflect its functionality
 function Step3EmploymentAndSkills({
   formData,
   updateFormData,
@@ -1159,14 +1468,64 @@ function Step3EmploymentAndSkills({
   prevStep,
   setIsLoading,
   isLoading,
+  setFormData,
 }: StepProps) {
+  const [isCurrentEmploymentSaved, setIsCurrentEmploymentSaved] = useState(false)
+  const [isCurrentEmploymentEditable, setIsCurrentEmploymentEditable] = useState(true)
+
   const [allSkills, setAllSkills] = useState<Skill[]>([])
   const [skillSearch, setSkillSearch] = useState("")
+  const [skillDuplicateError, setSkillDuplicateError] = useState("")
   const [showSkillDropdown, setShowSkillDropdown] = useState(false)
   const [loadingSkills, setLoadingSkills] = useState(true)
+
+  // State for dropdowns and search inputs related to industry, department, role, and job title
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false)
+  const [departmentSearch, setDepartmentSearch] = useState("")
+
+  // CHANGE Add state for departments and selected industry ID
+  const [departments, setDepartments] = useState<Array<{ id: string; department_name: string }>>([])
+  const [selectedIndustryId, setSelectedIndustryId] = useState<string | null>(null)
+  const [industriesData, setIndustriesData] = useState<Array<{ id: string; name: string }>>([])
+
+  const [showRoleCategoryDropdown, setShowRoleCategoryDropdown] = useState(false)
+  const [roleCategorySearch, setRoleCategorySearch] = useState("")
+  const [showJobTitleDropdown, setShowJobTitleDropdown] = useState(false)
+  const [jobTitleSearch, setJobTitleSearch] = useState("")
   const [showCityDropdown, setShowCityDropdown] = useState(false)
   const [isSaving, setIsSaving] = React.useState(false) // Added for saving state
   const [selectedRoleCategory, setSelectedRoleCategory] = useState<string>("") // Added for the fix
+  const [showCurrentEmploymentForm, setShowCurrentEmploymentForm] = useState<boolean>(
+    formData.workStatus === "experienced",
+  ) // State to control the visibility of the current employment form
+  const [additionalEmploymentCount, setAdditionalEmploymentCount] = useState(0)
+  const [experienceInputs, setExperienceInputs] = useState<{
+    [key: number]: { companyName: string; jobTitle: string; fromDate: string; toDate: string }
+  }>({})
+  const firstInputRef = useRef<HTMLInputElement>(null)
+  const [currentEmployment, setCurrentEmployment] = useState<EmploymentEntry>(
+    formData.currentEmployment || {
+      currentlyEmployed: "",
+      companyName: "",
+      currentJobTitle: "",
+      currentCity: "",
+      currentState: "",
+      durationFrom: "",
+      durationTo: "Present", // Set to "Present" by default
+      annualSalary: "",
+      noticePeriod: "",
+      industry: "",
+      department: "",
+      roleCategory: "",
+      jobRole: "",
+    },
+  )
+
+  // CHANGE Fetch role categories when department changes
+  const [roleCategories, setRoleCategories] = useState<Array<{ id: string; role_category_name: string }>>([])
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | null>(null)
 
   // Fetch skills from Supabase
   useState(() => {
@@ -1183,419 +1542,74 @@ function Step3EmploymentAndSkills({
     fetchSkills()
   })
 
-  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
-  const [industrySearch, setIndustrySearch] = useState("")
+  // CHANGE Fetch industries from database on component mount
+  useEffect(() => {
+    const fetchIndustriesFromDB = async () => {
+      try {
+        const supabase = await createClient()
+        const { data, error } = await supabase.from("industries").select("id, name").order("name")
 
-  // Updated industry and department structure to include roles and departments within industries
-  const industries = [
-    {
-      name: "IT Services & Consulting",
-      departments: [
-        "Software Development",
-        "Web Development",
-        "Mobile Development",
-        "Cloud Services",
-        "IT Support",
-        "Consulting",
-        "System Administration",
-        "Network Administration",
-      ],
-      roles: [
-        {
-          department: "Software Development",
-          category: "Software Development",
-          titles: [
-            "Software Engineer",
-            "Senior Software Engineer",
-            "Tech Lead",
-            "Principal Engineer",
-            "Software Architect",
-          ],
-        },
-        {
-          department: "Web Development",
-          category: "Web Development",
-          titles: ["Frontend Developer", "Backend Developer", "Full Stack Developer", "Web Developer"],
-        },
-        {
-          department: "IT Support",
-          category: "Customer Service",
-          titles: ["IT Support Specialist", "Help Desk Technician"],
-        },
-      ],
-    },
-    {
-      name: "Software Product",
-      departments: [
-        "Product Development",
-        "Software Engineering",
-        "QA/Testing",
-        "DevOps",
-        "Product Management",
-        "Technical Support",
-      ],
-      roles: [
-        {
-          department: "Product Development",
-          category: "Software Development",
-          titles: ["Software Engineer", "Senior Software Engineer"],
-        },
-        {
-          department: "Product Management",
-          category: "Product Management",
-          titles: ["Product Manager", "Senior Product Manager"],
-        },
-      ],
-    },
-    {
-      name: "Internet",
-      departments: [
-        "Digital Marketing",
-        "Content Development",
-        "Web Development",
-        "Product Management",
-        "Business Development",
-      ],
-      roles: [
-        {
-          department: "Digital Marketing",
-          category: "Digital Marketing",
-          titles: [
-            "Digital Marketing Executive",
-            "SEO Specialist",
-            "SEM Specialist",
-            "Social Media Manager",
-            "Head - Digital Marketing",
-          ],
-        },
-        { department: "Product Management", category: "Product Management", titles: ["Product Manager"] },
-      ],
-    },
-    {
-      name: "Banking",
-      departments: [
-        "Retail Banking",
-        "Corporate Banking",
-        "Investment Banking",
-        "Credit & Risk",
-        "Operations",
-        "Compliance",
-        "Customer Service",
-      ],
-      roles: [
-        { department: "Retail Banking", category: "Banking Operations", titles: ["Bank Teller", "Loan Officer"] },
-        { department: "Credit & Risk", category: "Risk Management", titles: ["Credit Analyst", "Risk Manager"] },
-        { department: "Customer Service", category: "Customer Service", titles: ["Customer Service Representative"] },
-      ],
-    },
-    {
-      name: "Financial Services",
-      departments: [
-        "Financial Analysis",
-        "Portfolio Management",
-        "Trading",
-        "Risk Management",
-        "Compliance",
-        "Operations",
-      ],
-      roles: [
-        {
-          department: "Financial Analysis",
-          category: "Financial Analysis",
-          titles: ["Financial Analyst", "Senior Financial Analyst"],
-        },
-        { department: "Risk Management", category: "Risk Management", titles: ["Risk Analyst"] },
-      ],
-    },
-    {
-      name: "Insurance",
-      departments: [
-        "Underwriting",
-        "Claims Processing",
-        "Sales & Distribution",
-        "Actuarial",
-        "Risk Management",
-        "Customer Service",
-      ],
-      roles: [
-        {
-          department: "Underwriting",
-          category: "Insurance Underwriting",
-          titles: ["Underwriter", "Senior Underwriter"],
-        },
-        { department: "Claims Processing", category: "Claims Management", titles: ["Claims Adjuster"] },
-      ],
-    },
-    {
-      name: "BPO / Call Centre",
-      departments: [
-        "Customer Service",
-        "Technical Support",
-        "Sales",
-        "Back Office Operations",
-        "Quality Assurance",
-        "Training",
-      ],
-      roles: [
-        {
-          department: "Customer Service",
-          category: "Customer Service",
-          titles: ["Customer Service Representative", "Call Center Agent"],
-        },
-        { department: "Technical Support", category: "Technical Support", titles: ["Technical Support Specialist"] },
-      ],
-    },
-    {
-      name: "Analytics / KPO / Research",
-      departments: [
-        "Data Analysis",
-        "Business Intelligence",
-        "Market Research",
-        "Financial Analysis",
-        "Research & Development",
-      ],
-      roles: [
-        {
-          department: "Data Analysis",
-          category: "Data Analysis",
-          titles: ["Data Analyst", "Senior Data Analyst", "Analytics Manager", "Data Scientist"],
-        },
-        { department: "Market Research", category: "Market Research", titles: ["Market Research Analyst"] },
-      ],
-    },
-    {
-      name: "Healthcare",
-      departments: ["Clinical Services", "Nursing", "Diagnostics", "Pharmacy", "Administration", "Medical Records"],
-      roles: [
-        {
-          department: "Clinical Services",
-          category: "Healthcare Professionals",
-          titles: ["Doctor", "Nurse Practitioner"],
-        },
-        { department: "Administration", category: "Healthcare Administration", titles: ["Hospital Administrator"] },
-      ],
-    },
-    {
-      name: "Pharmaceutical",
-      departments: [
-        "Research & Development",
-        "Quality Control",
-        "Regulatory Affairs",
-        "Production",
-        "Sales & Marketing",
-      ],
-      roles: [
-        { department: "Research & Development", category: "R&D", titles: ["Research Scientist"] },
-        { department: "Sales & Marketing", category: "Pharma Sales", titles: ["Medical Representative"] },
-      ],
-    },
-    {
-      name: "Medical Devices",
-      departments: [
-        "Research & Development",
-        "Quality Assurance",
-        "Regulatory Affairs",
-        "Manufacturing",
-        "Sales & Marketing",
-      ],
-      roles: [
-        { department: "Research & Development", category: "R&D", titles: ["R&D Engineer"] },
-        { department: "Sales & Marketing", category: "Medical Sales", titles: ["Medical Device Sales Representative"] },
-      ],
-    },
-    {
-      name: "Manufacturing",
-      departments: ["Production", "Quality Control", "Supply Chain", "Maintenance", "Planning", "Engineering"],
-      roles: [
-        { department: "Production", category: "Operations", titles: ["Production Supervisor", "Plant Manager"] },
-        { department: "Engineering", category: "Engineering", titles: ["Mechanical Engineer", "Electrical Engineer"] },
-      ],
-    },
-    {
-      name: "Automobile",
-      departments: [
-        "Design & Development",
-        "Manufacturing",
-        "Quality Control",
-        "Sales & Marketing",
-        "After Sales Service",
-      ],
-      roles: [
-        {
-          department: "Design & Development",
-          category: "Automotive Engineering",
-          titles: ["Automotive Design Engineer"],
-        },
-        { department: "Sales & Marketing", category: "Automotive Sales", titles: ["Car Sales Executive"] },
-      ],
-    },
-    {
-      name: "Consumer Electronics",
-      departments: [
-        "Product Development",
-        "Manufacturing",
-        "Quality Control",
-        "Sales & Marketing",
-        "Technical Support",
-      ],
-      roles: [
-        {
-          department: "Product Development",
-          category: "Electronics Engineering",
-          titles: ["Product Development Engineer"],
-        },
-        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Associate"] },
-      ],
-    },
-    {
-      name: "FMCG",
-      departments: ["Sales & Marketing", "Supply Chain", "Production", "Quality Control", "Brand Management"],
-      roles: [
-        { department: "Sales & Marketing", category: "Sales", titles: ["Sales Executive", "Field Sales Manager"] },
-        {
-          department: "Brand Management",
-          category: "Brand Management",
-          titles: ["Brand Manager", "Senior Brand Manager", "Brand Head"],
-        },
-      ],
-    },
-    {
-      name: "Retail",
-      departments: [
-        "Store Operations",
-        "Merchandising",
-        "Visual Merchandising",
-        "Customer Service",
-        "Inventory Management",
-      ],
-      roles: [
-        {
-          department: "Store Operations",
-          category: "Retail Operations",
-          titles: ["Store Manager", "Assistant Store Manager"],
-        },
-        { department: "Customer Service", category: "Customer Service", titles: ["Retail Associate"] },
-      ],
-    },
-    {
-      name: "E-commerce",
-      departments: ["Operations", "Marketing", "Customer Service", "Logistics", "Product Management", "Technology"],
-      roles: [
-        { department: "Operations", category: "Operations", titles: ["E-commerce Operations Manager"] },
-        { department: "Marketing", category: "Digital Marketing", titles: ["E-commerce Marketing Specialist"] },
-      ],
-    },
-    {
-      name: "Telecommunications",
-      departments: ["Network Operations", "Customer Service", "Sales", "Technical Support", "IT Infrastructure"],
-      roles: [
-        { department: "Network Operations", category: "Network Engineering", titles: ["Network Engineer"] },
-        { department: "Customer Service", category: "Customer Service", titles: ["Telecom Customer Support"] },
-      ],
-    },
-    {
-      name: "Media & Entertainment",
-      departments: ["Content Creation", "Production", "Marketing", "Distribution", "Digital Media"],
-      roles: [
-        { department: "Content Creation", category: "Content", titles: ["Content Creator", "Scriptwriter"] },
-        { department: "Marketing", category: "Marketing", titles: ["Marketing Manager"] },
-      ],
-    },
-    {
-      name: "Education",
-      departments: ["Teaching", "Administration", "Curriculum Development", "Student Services", "IT Support"],
-      roles: [
-        { department: "Teaching", category: "Teaching", titles: ["Teacher", "Professor"] },
-        { department: "Administration", category: "Educational Administration", titles: ["School Administrator"] },
-      ],
-    },
-    {
-      name: "Real Estate",
-      departments: ["Sales", "Marketing", "Property Management", "Project Management", "Legal & Compliance"],
-      roles: [
-        { department: "Sales", category: "Real Estate Sales", titles: ["Real Estate Agent"] },
-        { department: "Property Management", category: "Property Management", titles: ["Property Manager"] },
-      ],
-    },
-    {
-      name: "Construction",
-      departments: ["Project Management", "Civil Engineering", "Quality Control", "Safety", "Procurement"],
-      roles: [
-        {
-          department: "Project Management",
-          category: "Construction Management",
-          titles: ["Project Manager", "Site Engineer"],
-        },
-        { department: "Civil Engineering", category: "Engineering", titles: ["Civil Engineer"] },
-      ],
-    },
-    {
-      name: "Travel & Tourism",
-      departments: ["Sales & Reservations", "Operations", "Tour Operations", "Customer Service", "Marketing"],
-      roles: [
-        { department: "Sales & Reservations", category: "Travel Sales", titles: ["Travel Agent"] },
-        { department: "Tour Operations", category: "Tour Management", titles: ["Tour Operator"] },
-      ],
-    },
-    {
-      name: "Hospitality",
-      departments: ["Front Office", "Food & Beverage", "Housekeeping", "Kitchen", "Sales & Marketing"],
-      roles: [
-        { department: "Front Office", category: "Hotel Management", titles: ["Front Desk Manager"] },
-        { department: "Food & Beverage", category: "Culinary", titles: ["Chef", "F&B Manager"] },
-      ],
-    },
-    {
-      name: "Logistics & Supply Chain",
-      departments: ["Warehousing", "Transportation", "Inventory Management", "Procurement", "Supply Planning"],
-      roles: [
-        { department: "Warehousing", category: "Logistics Operations", titles: ["Warehouse Manager"] },
-        { department: "Transportation", category: "Transportation Management", titles: ["Logistics Coordinator"] },
-      ],
-    },
-    {
-      name: "Oil & Gas",
-      departments: ["Exploration", "Production", "Refining", "Operations", "Engineering", "Safety"],
-      roles: [
-        { department: "Production", category: "Oil & Gas Operations", titles: ["Field Operations Manager"] },
-        { department: "Engineering", category: "Petroleum Engineering", titles: ["Petroleum Engineer"] },
-      ],
-    },
-    {
-      name: "Power & Energy",
-      departments: ["Operations", "Maintenance", "Engineering", "Project Management", "Safety"],
-      roles: [
-        { department: "Operations", category: "Power Plant Operations", titles: ["Plant Operator"] },
-        { department: "Engineering", category: "Power Systems Engineering", titles: ["Power Systems Engineer"] },
-      ],
-    },
-    {
-      name: "Government / PSU",
-      departments: ["Administration", "Public Relations", "Finance", "Human Resources", "Technical Services"],
-      roles: [
-        { department: "Administration", category: "Public Administration", titles: ["Administrative Officer"] },
-        { department: "Finance", category: "Government Finance", titles: ["Accountant"] },
-      ],
-    },
-    {
-      name: "NGO / Non-Profit",
-      departments: ["Program Management", "Fund Raising", "Communications", "Field Operations", "Administration"],
-      roles: [
-        { department: "Program Management", category: "Program Management", titles: ["Program Manager"] },
-        { department: "Fund Raising", category: "Fundraising", titles: ["Fundraiser"] },
-      ],
-    },
-    {
-      name: "Legal",
-      departments: ["Corporate Law", "Litigation", "Compliance", "Legal Advisory", "Contracts"],
-      roles: [
-        { department: "Corporate Law", category: "Corporate Law", titles: ["Corporate Lawyer"] },
-        { department: "Litigation", category: "Litigation", titles: ["Litigation Lawyer"] },
-      ],
-    },
-  ]
+        if (error) {
+          console.error("[v0] Error fetching industries:", error)
+          return
+        }
 
-  const indianCities = [
+        console.log(`[v0] Fetched ${data?.length || 0} industries from database`)
+        setIndustriesData(data || [])
+      } catch (error) {
+        console.error("[v0] Exception fetching industries:", error)
+      }
+    }
+
+    fetchIndustriesFromDB()
+  }, [])
+
+  // CHANGE Fetch departments when industry changes
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      if (!selectedIndustryId) {
+        setDepartments([])
+        return
+      }
+
+      console.log("[v0] Fetching departments for industry ID:", selectedIndustryId)
+      const result = await getDepartmentsByIndustry(selectedIndustryId)
+
+      if (result.success) {
+        console.log("[v0] Loaded departments:", result.departments.length)
+        setDepartments(result.departments)
+      } else {
+        console.error("[v0] Error loading departments:", result.error)
+        setDepartments([])
+      }
+    }
+
+    fetchDepartments()
+  }, [selectedIndustryId])
+
+  // CHANGE Fetch role categories when department changes
+  useEffect(() => {
+    const fetchRoleCategories = async () => {
+      if (selectedDepartmentId) {
+        console.log("[v0] Fetching role categories for department ID:", selectedDepartmentId)
+        const result = await getRoleCategoriesByDepartment(selectedDepartmentId)
+        if (result.success && result.data) {
+          setRoleCategories(result.data)
+          console.log("[v0] Loaded role categories:", result.data.length)
+        } else {
+          console.error("[v0] Failed to fetch role categories:", result.error)
+          setRoleCategories([])
+        }
+      } else {
+        setRoleCategories([])
+      }
+    }
+
+    fetchRoleCategories()
+  }, [selectedDepartmentId])
+
+  const INDIAN_CITIES = [
+    // Defined locally for Step3EmploymentAndSkills, used in Step5PersonalAndPreferences as well
     { city: "Mumbai", state: "Maharashtra" },
     { city: "Delhi", state: "Delhi" },
     { city: "Bangalore", state: "Karnataka" },
@@ -1606,2033 +1620,2552 @@ function Step3EmploymentAndSkills({
     { city: "Ahmedabad", state: "Gujarat" },
     { city: "Jaipur", state: "Rajasthan" },
     { city: "Surat", state: "Gujarat" },
-    { city: " Lucknow", state: "Uttar Pradesh" },
+    { city: "Lucknow", state: "Uttar Pradesh" },
     { city: "Kanpur", state: "Uttar Pradesh" },
     { city: "Nagpur", state: "Maharashtra" },
     { city: "Indore", state: "Madhya Pradesh" },
     { city: "Thane", state: "Maharashtra" },
     { city: "Bhopal", state: "Madhya Pradesh" },
-    { city: "Visakhakhakhakhakhakhakhakhakhakham", state: "Andhra Pradesh" },
-    { city: "Patna", state: "Bihar" },
-    { city: "Vadodara", state: "Gujarat" },
-    { city: "Ghaziabad", state: "Uttar Pradesh" },
+    { city: "Visakhapatnam", state: "Andhra Pradesh" },
   ]
 
-  const filteredSkills = allSkills.filter(
-    (skill) =>
-      skill.skill_name.toLowerCase().includes(skillSearch.toLowerCase()) &&
-      !formData.skillsForRole.includes(skill.skill_name),
-  )
+  const getDepartments = (industry: string) => {
+    return industryData[industry as keyof typeof industryData]?.departments || []
+  }
 
-  const suggestedSkills = allSkills.filter((skill) => !formData.skillsForRole.includes(skill.skill_name)).slice(0, 10)
+  const getRoles = (industry: string, department: string) => {
+    if (!industry || !department) return []
+    return Object.keys(
+      industryData[industry as keyof typeof industryData]?.roles[department as keyof typeof industryData.roles] || {},
+    )
+  }
 
-  const addSkill = (skillName: string) => {
-    if (!formData.skillsForRole.includes(skillName)) {
-      updateFormData("skillsForRole", [...formData.skillsForRole, skillName])
+  const getJobTitles = (industry: string, department: string, roleCategory: string) => {
+    if (!industry || !department || !roleCategory) return []
+    return (
+      industryData[industry as keyof typeof industryData]?.roles[department as keyof typeof industryData.roles][
+        roleCategory as keyof typeof industryData.roles.Engineering
+      ] || []
+    )
+  }
+
+  // CHANGE Update industry select handler to fetch departments
+  const handleIndustrySelect = async (industryName: string, industryId: string) => {
+    console.log("[v0] Selected industry:", industryName, "ID:", industryId)
+    updateFormData("industry", industryName)
+    setSelectedIndustryId(industryId)
+    updateFormData("department", "") // Reset department when industry changes
+    updateFormData("roleCategory", "") // Reset role category
+    updateFormData("jobRole", "") // Reset job role
+    setShowIndustryDropdown(false)
+    setIndustrySearch("")
+  }
+
+  const handleDepartmentSelect = (departmentName: string) => {
+    updateFormData("department", departmentName)
+    updateFormData("roleCategory", "") // Reset role category
+    updateFormData("jobRole", "") // Reset job role
+    setShowDepartmentDropdown(false) // Close department dropdown
+    setDepartmentSearch("") // Clear search
+  }
+
+  const handleRoleCategorySelect = (roleCategory: string) => {
+    updateFormData("roleCategory", roleCategory)
+    updateFormData("jobRole", "") // Reset job role
+    setShowRoleCategoryDropdown(false) // Close role category dropdown
+    setRoleCategorySearch("") // Clear search
+  }
+
+  const handleJobTitleSelect = (jobRole: string) => {
+    updateFormData("jobRole", jobRole)
+    setShowJobTitleDropdown(false) // Close job title dropdown
+    setJobTitleSearch("") // Clear search
+  }
+
+  const handleCitySelect = (city: string, state: string) => {
+    updateFormData("currentCity", city)
+    updateFormData("currentState", state)
+    setShowCityDropdown(false)
+  }
+
+  // CHANGE Add handler for custom department
+  const addCustomDepartment = async (departmentName: string) => {
+    if (!selectedIndustryId) {
+      console.error("[v0] Cannot add department without selected industry")
+      return
     }
+
+    console.log("[v0] Adding custom department:", departmentName)
+    const result = await saveCustomDepartment(departmentName, selectedIndustryId)
+
+    if (result.success) {
+      console.log("[v0] Custom department saved successfully")
+      updateFormData("department", departmentName)
+      setShowDepartmentDropdown(false)
+      setDepartmentSearch("")
+      // Refresh departments list
+      const refreshResult = await getDepartmentsByIndustry(selectedIndustryId)
+      if (refreshResult.success) {
+        setDepartments(refreshResult.departments)
+      }
+    } else {
+      console.error("[v0] Error saving custom department:", result.error)
+    }
+  }
+
+  // CHANGE Add custom role category save function
+  const addCustomRoleCategory = async (roleCategoryName: string) => {
+    if (!selectedDepartmentId) {
+      console.error("[v0] No department selected")
+      return
+    }
+
+    const result = await saveCustomRoleCategory(selectedDepartmentId, roleCategoryName)
+    if (result.success && result.data) {
+      // Add to local state
+      setRoleCategories((prev) => [...prev, result.data!])
+      // Update form
+      updateFormData("roleCategory", roleCategoryName)
+      setRoleCategorySearch(roleCategoryName)
+      setShowRoleCategoryDropdown(false)
+      updateFormData("jobRole", "")
+    } else {
+      console.error("[v0] Failed to save custom role category:", result.error)
+    }
+  }
+
+  // Calculate total experience
+  const totalExperienceInMonths =
+    Number.parseInt(formData.totalExperienceYears || "0") * 12 + Number.parseInt(formData.totalExperienceMonths || "0")
+
+  const calculateYearsMonths = (totalMonths: number) => {
+    const years = Math.floor(totalMonths / 12)
+    const months = totalMonths % 12
+    return { years: isNaN(years) ? 0 : years, months: isNaN(months) ? 0 : months }
+  }
+
+  const handleTotalExperienceChange = (field: "years" | "months", value: string) => {
+    const numericValue = Math.max(0, Number.parseInt(value.replace(/\D/g, "") || "0")) // Ensure non-negative integer
+
+    if (field === "years") {
+      const totalMonths = numericValue * 12 + Number.parseInt(formData.totalExperienceMonths || "0")
+      const { years: newYears, months: newMonths } = calculateYearsMonths(totalMonths)
+      updateFormData("totalExperienceYears", String(newYears))
+      updateFormData("totalExperienceMonths", String(newMonths))
+    } else {
+      const totalMonths = Number.parseInt(formData.totalExperienceYears || "0") * 12 + numericValue
+      const { years: newYears, months: newMonths } = calculateYearsMonths(totalMonths)
+      updateFormData("totalExperienceYears", String(newYears))
+      updateFormData("totalExperienceMonths", String(newMonths))
+    }
+  }
+
+  // Focus the first input field when the component mounts
+  useEffect(() => {
+    // The actual first input field is now within the skills section.
+    // Assigning the ref to the skills input.
+    if (firstInputRef.current) {
+      firstInputRef.current.focus()
+    }
+  }, [])
+
+  const handleInputChange = (type: "current" | "additional", index: number | null, field: string, value: string) => {
+    if (type === "current") {
+      // Ensure currentEmployment exists before trying to update it
+      if (!formData.currentEmployment) {
+        // Initialize if it's null, but this case should ideally be handled by the "Yes" button logic
+        updateFormData("currentEmployment", {
+          currentlyEmployed: "yes",
+          companyName: "",
+          currentJobTitle: "",
+          currentCity: "",
+          currentState: "",
+          durationFrom: "",
+          durationTo: "Present", // Set to "Present" by default
+          annualSalary: "",
+          noticePeriod: "",
+          industry: "", // Reset industry
+          department: "", // Reset department
+          roleCategory: "", // Reset roleCategory
+          jobRole: "", // Reset jobRole
+          currentlyEmployed: "yes", // Explicitly set to 'yes'
+        })
+      }
+
+      // Use a temporary object to hold updated currentEmployment
+      const updatedCurrentEmployment = {
+        ...(formData.currentEmployment || { currentlyEmployed: "yes" }), // Provide default if null
+        [field]: value,
+      }
+
+      // If the field is 'currentlyEmployed', handle the transition to null if 'no' is selected
+      if (field === "currentlyEmployed" && value === "no") {
+        updateFormData("currentEmployment", null)
+        // updateFormData("workStatus", "experienced") // This line was causing an issue if workStatus was already set to fresher
+      } else {
+        updateFormData("currentEmployment", updatedCurrentEmployment)
+      }
+    } else {
+      const newAdditionalEmployment = [...formData.additionalEmployment]
+      if (index !== null) {
+        newAdditionalEmployment[index] = {
+          ...newAdditionalEmployment[index],
+          [field]: value,
+        }
+      } else {
+        // Add new entry if index is null (e.g., adding a new job)
+        if (!newAdditionalEmployment[0] || newAdditionalEmployment[0].companyName) {
+          newAdditionalEmployment.push({
+            companyName: "",
+            jobTitle: "",
+            fromDate: "", // Corresponds to durationFrom
+            toDate: "", // Corresponds to durationTo
+          })
+        }
+        // Handle updating the newly added entry
+        const lastIndex = newAdditionalEmployment.length - 1
+        newAdditionalEmployment[lastIndex] = {
+          ...newAdditionalEmployment[lastIndex],
+          [field]: value,
+        }
+      }
+      updateFormData("additionalEmployment", newAdditionalEmployment)
+    }
+  }
+
+  const addAdditionalEmployment = () => {
+    updateFormData("additionalEmployment", [
+      ...formData.additionalEmployment,
+      { companyName: "", jobTitle: "", fromDate: "", toDate: "" },
+    ])
+  }
+
+  const removeAdditionalEmployment = (index: number) => {
+    updateFormData(
+      "additionalEmployment",
+      formData.additionalEmployment.filter((_, i) => i !== index),
+    )
+  }
+
+  const handleSkillSelect = (skill: Skill) => {
+    if (formData.skills.some((s) => s.toLowerCase() === skill.skill_name.toLowerCase())) {
+      setSkillDuplicateError("Skill already added")
+      setSkillSearch("")
+      setShowSkillDropdown(false)
+      return
+    }
+    updateFormData("skills", [...formData.skills, skill.skill_name])
     setSkillSearch("")
     setShowSkillDropdown(false)
   }
 
-  const removeSkill = (skillName: string) => {
+  const removeSkill = (skillToRemove: string) => {
     updateFormData(
-      "skillsForRole",
-      formData.skillsForRole.filter((s) => s !== skillName),
+      "skills",
+      formData.skills.filter((skill) => skill !== skillToRemove),
     )
   }
 
-  // State for current employment entry being edited/added
-  const [currentEntry, setCurrentEntry] = useState<EmploymentEntry>({
-    currentlyEmployed: "",
-    companyName: "",
-    currentJobTitle: "",
-    currentCity: "",
-    currentState: "",
-    durationFrom: "",
-    durationTo: "",
-    annualSalary: "",
-    noticePeriod: "",
-  })
-
-  // State for additional employment entries being edited/added
-  const [currentAdditionalEntry, setCurrentAdditionalEntry] = useState<AdditionalEmploymentEntry>({
-    companyName: "",
-    jobTitle: "",
-    fromDate: "",
-    toDate: "",
-  })
-  const [editingCurrentIndex, setEditingCurrentIndex] = useState<number | null>(null) // This state is not strictly needed for single current employment but kept for consistency if expanded
-  const [editingAdditionalIndex, setEditingAdditionalIndex] = useState<number | null>(null)
-  const [showCurrentEmploymentForm, setShowCurrentEmploymentForm] = useState(formData.currentEmployment === null)
-  const [showAdditionalEmploymentForm, setShowAdditionalEmploymentForm] = useState(false)
-
-  const handleSaveCurrentEmployment = () => {
-    // Basic validation could be added here
-    updateFormData("currentEmployment", currentEntry)
-    setShowCurrentEmploymentForm(false)
-    // If editing, reset index
-    if (editingCurrentIndex !== null) {
-      setEditingCurrentIndex(null)
-    }
-    // Reset form
-    setCurrentEntry({
-      currentlyEmployed: "",
-      companyName: "",
-      currentJobTitle: "",
-      currentCity: "",
-      currentState: "",
-      durationFrom: "",
-      durationTo: "",
-      annualSalary: "",
-      noticePeriod: "",
-    })
-  }
-
-  const editCurrentEmploymentEntry = () => {
-    // This function is called when the 'Edit' button is clicked for current employment.
-    // It sets the form to be visible and pre-fills the current employment data.
-    if (formData.currentEmployment) {
-      setCurrentEntry(formData.currentEmployment)
-      // setEditingCurrentIndex(0); // Assuming we edit the first (and only) current employment entry.
-      setShowCurrentEmploymentForm(true)
-    }
-  }
-
-  const handleSaveAdditionalEmployment = () => {
-    // Basic validation could be added here
-    if (editingAdditionalIndex !== null) {
-      // Update existing
-      const updated = [...formData.additionalEmployment]
-      updated[editingAdditionalIndex] = currentAdditionalEntry
-      updateFormData("additionalEmployment", updated)
-      setEditingAdditionalIndex(null)
-    } else {
-      // Add new
-      updateFormData("additionalEmployment", [...formData.additionalEmployment, currentAdditionalEntry])
-    }
-    // Reset form
-    setCurrentAdditionalEntry({
-      companyName: "",
-      jobTitle: "",
-      fromDate: "",
-      toDate: "",
-    })
-    setShowAdditionalEmploymentForm(false)
-  }
-
-  const deleteAdditionalEmploymentEntry = (index: number) => {
-    const updated = formData.additionalEmployment.filter((_, i) => i !== index)
-    updateFormData("additionalEmployment", updated)
-  }
-
-  // Updated validation for Step 3 - Made skills, industry, department mandatory for both experienced AND freshers
+  // CHANGE: Moved handleSaveAndContinue logic to this specific function
   const handleSaveAndContinue = async () => {
-    if (!formData.skillsForRole || formData.skillsForRole.length === 0) {
-      alert("Please add at least one key skill")
-      return
-    }
-
-    if (!formData.industry) {
-      alert("Please select an industry")
-      return
-    }
-
-    if (!formData.department) {
-      alert("Please select a department")
-      return
-    }
-
-    // if (!formData.roleCategory) { // This validation is now handled within the form logic
-    //   alert("Please select a role category")
-    //   return
-    // }
-
-    // if (!formData.jobRole) { // This validation is now handled within the form logic
-    //   alert("Please select a job role")
-    //   return
-    // }
-
-    if (formData.workStatus === "experienced") {
-      // Changed currentEmployment?.currentCompany to currentEmployment?.companyName to match the type
-      if (!formData.currentEmployment?.companyName) {
-        alert("Please enter your current/last company name")
-        return
+    // Helper function to get email from localStorage
+    const getEmailFromStorage = (): string => {
+      if (typeof window === "undefined") return ""
+      try {
+        const registrationData = localStorage.getItem("candidateRegistrationData")
+        if (registrationData) {
+          const parsed = JSON.JSON.parse(registrationData)
+          if (parsed.email) return parsed.email
+        }
+      } catch (e) {
+        console.error("[v0] Failed to get email from localStorage:", e)
       }
-
-      if (!formData.currentEmployment?.currentJobTitle) {
-        alert("Please enter your current job title")
-        return
-      }
-
-      if (!formData.totalExperienceYears || Number.parseInt(formData.totalExperienceYears) === 0) {
-        alert("Please enter your total years of experience")
-        return
-      }
+      return ""
     }
 
-    // Freshers automatically get 0 experience years
-    if (formData.workStatus === "fresher") {
-      updateFormData("totalExperienceYears", "0")
-      updateFormData("totalExperienceMonths", "0")
-    }
+    const email = formData.email || getEmailFromStorage()
 
-    if (isLoading || isSaving) {
-      console.log("[v0] Step3 Already saving, ignoring duplicate call. isSaving:", isSaving, "isLoading:", isLoading)
+    if (!email) {
+      alert("Email not found. Please start registration again.")
+      setIsLoading?.(false)
       return
     }
 
-    console.log("[v0] Step3 handleSaveAndContinue called")
-
-    setIsSaving(true)
     setIsLoading?.(true)
+    console.log("[v0] Step3 saving employment data for email:", email)
+
     try {
-      console.log("[v0] Calling updateEmploymentDetails")
-      const employmentData = {
-        // Added candidateId to employmentData
-        // candidateId: formData.candidateId, // Assuming candidateId is available on formData
-        currentEmployment: formData.workStatus === "experienced" ? formData.currentEmployment : null,
-        additionalEmployment: formData.workStatus === "experienced" ? formData.additionalEmployment : [],
-        totalExperienceYears:
-          formData.workStatus === "fresher" ? 0 : Number.parseInt(formData.totalExperienceYears) || 0,
-        totalExperienceMonths:
-          formData.workStatus === "fresher" ? 0 : Number.parseInt(formData.totalExperienceMonths) || 0,
-        skillsForRole: formData.skillsForRole,
-        skillsYouKnow: formData.skillsYouKnow, // Keep skillsYouKnow if it's used elsewhere
+      const result = await updateEmploymentDetails(email, {
+        employmentHistory: formData.additionalEmployment, // Assuming this maps to previous jobs
+        currentEmployment: formData.currentEmployment, // Assuming this is the current job details
+        workStatus: formData.workStatus,
+        totalExperienceYears: formData.totalExperienceYears,
+        totalExperienceMonths: formData.totalExperienceMonths,
+        // currentJobTitle: formData.currentJobTitle, // This seems redundant if currentEmployment.currentJobTitle is used
+        skills: formData.skills,
         industry: formData.industry,
         department: formData.department,
-        roleCategory: formData.roleCategory || "",
-        jobRole: formData.jobRole || "",
-      }
+        roleCategory: formData.roleCategory,
+        jobRole: formData.jobRole,
+      })
 
-      // Pass the employmentData object to updateEmploymentDetails
-      const result = await updateEmploymentDetails(formData.email, employmentData)
-
-      console.log("[v0] updateEmploymentDetails result:", result)
-
-      if (result.success) {
-        console.log("[v0] Success, calling nextStep")
-        await new Promise((resolve) => setTimeout(resolve, 100)) // Small delay
-        nextStep?.()
-        console.log("[v0] nextStep called")
-      } else {
-        console.log("[v0] Failed:", result.error)
-        alert(result.error || "Failed to save employment details")
-      }
-    } catch (error) {
-      console.error("[v0] Error saving employment:", error)
-      alert("An error occurred while saving employment details")
-    } finally {
-      console.log("[v0] Finally block, setting states to false")
-      setTimeout(() => {
+      if (!result.success) {
+        alert(`Failed to save employment details: ${result.error}`)
         setIsLoading?.(false)
-        setIsSaving(false)
-      }, 200)
+        return
+      }
+
+      console.log("[v0] Employment data saved successfully")
+      nextStep()
+    } catch (error) {
+      console.error("[v0] Error saving employment data:", error)
+      alert("An error occurred while saving your employment details")
+    } finally {
+      setIsLoading?.(false)
     }
   }
 
-  const commonSkills = [
-    "JavaScript",
-    "Python",
-    "Java",
-    "React",
-    "Node.js",
-    "Angular",
-    "Vue.js",
-    "TypeScript",
-    "HTML",
-    "CSS",
-    "SQL",
-    "MongoDB",
-    "PostgreSQL",
-    "MySQL",
-    "AWS",
-    "Azure",
-    "Docker",
-    "Kubernetes",
-    "Git",
-    "CI/CD",
-    "REST APIs",
-    "GraphQL",
-    "Redux",
-    "Express.js",
-    "Django",
-    "Flask",
-    "Spring Boot",
-    "Machine Learning",
-    "Data Analysis",
-    "Excel",
-    "Power BI",
-    "Tableau",
-    "Communication",
-    "Leadership",
-    "Project Management",
-    "Problem Solving",
-    "Team Collaboration",
-    "Agile",
-    "Scrum",
-    "Testing",
-    "Debugging",
-  ]
+  const filteredIndustries = industriesData.filter((industry) =>
+    industry.name.toLowerCase().includes(industrySearch.toLowerCase()),
+  )
 
-  const [showSkillsForRoleDropdown, setShowSkillsForRoleDropdown] = useState(false)
-  const [showSkillsYouKnowDropdown, setShowSkillsYouKnowDropdown] = useState(false)
-  const [skillInputForRole, setSkillInputForRole] = useState("")
-  const [skillInputYouKnow, setSkillInputYouKnow] = useState("")
+  // Placeholder data for departments, role categories, and job titles
+  // In a real application, this would likely come from a backend or a more complex data structure
+  const industryData = {
+    "IT Services & Consulting": {
+      departments: ["Engineering", "Sales", "Marketing", "HR", "Finance"],
+      roles: {
+        Engineering: {
+          "Software Development": [
+            "Frontend Developer",
+            "Backend Developer",
+            "Full Stack Developer",
+            "DevOps Engineer",
+          ],
+          "Data Science": ["Data Scientist", "Data Analyst", "Machine Learning Engineer"],
+          "Quality Assurance": ["QA Engineer", "Test Automation Engineer"],
+        },
+        Sales: {
+          "Sales Operations": ["Sales Executive", "Account Manager", "Business Development Manager"],
+          "Sales Management": ["Sales Manager", "Regional Sales Director"],
+        },
+        Marketing: {
+          "Digital Marketing": ["SEO Specialist", "Content Marketer", "Social Media Manager"],
+          "Product Marketing": ["Product Marketing Manager"],
+        },
+        HR: {
+          "Talent Acquisition": ["Recruiter", "Talent Acquisition Specialist"],
+          "HR Operations": ["HR Generalist", "HR Manager"],
+        },
+        Finance: {
+          Accounting: ["Accountant", "Financial Analyst"],
+          "Financial Planning": ["Finance Manager"],
+        },
+      },
+    },
+    "Software Product": {
+      departments: ["Product Management", "Engineering", "Customer Success"],
+      roles: {
+        "Product Management": {
+          "Product Strategy": ["Product Manager", "Product Owner"],
+          "User Experience": ["UX Designer", "UI Designer"],
+        },
+        Engineering: {
+          "Software Development": ["Software Engineer", "Senior Software Engineer"],
+          "Quality Assurance": ["QA Tester"],
+        },
+        "Customer Success": {
+          "Customer Support": ["Customer Support Representative", "Technical Support Engineer"],
+        },
+      },
+    },
+    Internet: {
+      departments: ["Operations", "Business Development"],
+      roles: {
+        Operations: {
+          "Platform Engineering": ["Site Reliability Engineer", "Platform Engineer"],
+          "Content Moderation": ["Content Moderator"],
+        },
+        "Business Development": {
+          Partnerships: ["Partnership Manager"],
+        },
+      },
+    },
+    "BPO / Call Centre": {
+      departments: ["Customer Service", "Technical Support", "Sales", "Operations", "Quality Assurance"],
+      roles: {
+        "Customer Service": {
+          "Voice Process": ["Customer Service Representative", "Customer Support Executive", "Call Center Agent"],
+          "Non-Voice Process": ["Chat Support Executive", "Email Support Representative"],
+          "Customer Relationship": ["CRM Executive", "Client Servicing Executive"],
+        },
+        "Technical Support": {
+          "IT Support": ["Technical Support Executive", "Help Desk Support", "IT Support Specialist"],
+          "Product Support": ["Technical Account Manager", "Product Support Engineer"],
+        },
+        Sales: {
+          Telesales: ["Telesales Executive", "Inside Sales Representative", "Lead Generation Executive"],
+          "Business Development": ["Business Development Executive", "Sales Coordinator"],
+        },
+        Operations: {
+          "Process Management": ["Process Associate", "Operations Manager", "Team Leader"],
+          "Workforce Management": ["Workforce Analyst", "Resource Manager"],
+        },
+        "Quality Assurance": {
+          "Quality Audit": ["Quality Analyst", "Quality Auditor", "Quality Manager"],
+          Training: ["Trainer", "Training Coordinator"],
+        },
+      },
+    },
+    // Add more industries, departments, roles, and job titles as needed
+  }
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader className="border-b">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-2xl">
-              {formData.workStatus === "fresher" ? "Skills & Preferences" : "Employment & Skills"}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              {/* Updated description for freshers */}
-              {formData.workStatus === "fresher"
-                ? "Tell us about your skills and career interests to help us recommend relevant jobs"
-                : "Share details about your work experience to help us recommend jobs suited to you"}
-            </p>
-          </div>
-        </div>
+    <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
+      <CardHeader className="border-b pb-4">
+        <CardTitle className="text-2xl font-bold">Employment Details & Skills</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Tell us about your experience and the skills you possess.</p>
       </CardHeader>
-      <CardContent className="pt-6 space-y-6 max-h-[600px] overflow-y-auto">
-        <div className="space-y-6 bg-white p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold">Skills</h3>
+      <CardContent className="pt-6 space-y-6">
+        {/* Skills section - NOW FIRST */}
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="skills" className="text-sm">
+              Skills <span className="text-red-500">*</span>
+            </Label>
+            <p className="text-xs text-gray-500 mb-2">Select from suggestions or add your own</p>
 
-          {/* Skills for Role - Autosuggest */}
-          <div className="space-y-2">
-            <Label className="text-sm">Key Skills for Your Role*</Label>
-            <div className="relative">
+            {/* Skill Input with Autosuggest */}
+            <div className="relative max-w-md">
               <Input
-                value={skillInputForRole}
+                id="skills"
+                type="text"
+                value={skillSearch}
                 onChange={(e) => {
-                  setSkillInputForRole(e.target.value)
-                  setShowSkillsForRoleDropdown(true)
+                  setSkillSearch(e.target.value)
+                  setShowSkillDropdown(true)
+                  setSkillDuplicateError("")
                 }}
-                onFocus={() => setShowSkillsForRoleDropdown(true)}
-                onBlur={() => setTimeout(() => setShowSkillsForRoleDropdown(false), 200)}
-                placeholder="Type to search skills..."
-                className="h-10 text-sm rounded-full"
-              />
-              {showSkillsForRoleDropdown && skillInputForRole && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {commonSkills
-                    .filter(
-                      (skill) =>
-                        skill.toLowerCase().includes(skillInputForRole.toLowerCase()) &&
-                        !formData.skillsForRole.includes(skill),
-                    )
-                    .map((skill) => (
-                      <button
-                        key={skill}
-                        type="button"
-                        onClick={() => {
-                          if (!formData.skillsForRole.includes(skill)) {
-                            updateFormData({ skillsForRole: [...formData.skillsForRole, skill] })
-                          }
-                          setSkillInputForRole("")
-                          setShowSkillsForRoleDropdown(false)
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                      >
-                        {skill}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {formData.skillsForRole.map((skill, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm flex items-center gap-2"
-                >
-                  {skill}
-                  <button
-                    type="button"
-                    onClick={() => updateFormData({ skillsForRole: formData.skillsForRole.filter((s) => s !== skill) })}
-                    className="hover:text-blue-900"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500">Add skills that are relevant to your job role</p>
-          </div>
-
-          {/* Skills You Know - Autosuggest */}
-          <div className="space-y-2">
-            <Label className="text-sm">Other Skills You Know</Label>
-            <div className="relative">
-              <Input
-                value={skillInputYouKnow}
-                onChange={(e) => {
-                  setSkillInputYouKnow(e.target.value)
-                  setShowSkillsYouKnowDropdown(true)
+                onFocus={() => setShowSkillDropdown(true)}
+                onBlur={() => setTimeout(() => setShowSkillDropdown(false), 300)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    const trimmedSkill = skillSearch.trim()
+                    if (trimmedSkill) {
+                      if (formData.skills.some((s) => s.toLowerCase() === trimmedSkill.toLowerCase())) {
+                        setSkillDuplicateError("Skill already added")
+                        return
+                      }
+                      updateFormData("skills", [...formData.skills, trimmedSkill])
+                    }
+                    setSkillSearch("")
+                    setShowSkillDropdown(false)
+                  }
                 }}
-                onFocus={() => setShowSkillsYouKnowDropdown(true)}
-                onBlur={() => setTimeout(() => setShowSkillsYouKnowDropdown(false), 200)}
-                placeholder="Type to search skills..."
-                className="h-10 text-sm rounded-full"
+                placeholder="Type to search or add custom skill"
+                className="mt-1 h-10 rounded-full"
+                ref={firstInputRef}
               />
-              {showSkillsYouKnowDropdown && skillInputYouKnow && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {commonSkills
-                    .filter(
-                      (skill) =>
-                        skill.toLowerCase().includes(skillInputYouKnow.toLowerCase()) &&
-                        !formData.skillsYouKnow.includes(skill),
-                    )
-                    .map((skill) => (
-                      <button
-                        key={skill}
-                        type="button"
-                        onClick={() => {
-                          if (!formData.skillsYouKnow.includes(skill)) {
-                            updateFormData({ skillsYouKnow: [...formData.skillsYouKnow, skill] })
-                          }
-                          setSkillInputYouKnow("")
-                          setShowSkillsYouKnowDropdown(false)
-                        }}
-                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                      >
-                        {skill}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {formData.skillsYouKnow.map((skill, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-sm flex items-center gap-2"
-                >
-                  {skill}
-                  <button
-                    type="button"
-                    onClick={() => updateFormData({ skillsYouKnow: formData.skillsYouKnow.filter((s) => s !== skill) })}
-                    className="hover:text-purple-900"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500">Add any additional skills you possess</p>
-          </div>
-        </div>
-
-        {formData.workStatus !== "fresher" && (
-          <>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-base">Employment History</h3>
-              </div>
-
-              {formData.currentEmployment && !showCurrentEmploymentForm && (
-                <div className="border rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-sm">{formData.currentEmployment.currentJobTitle}</p>
-                      <p className="text-xs text-muted-foreground">{formData.currentEmployment.companyName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formData.currentEmployment.currentCity}, {formData.currentEmployment.currentState}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formData.currentEmployment.durationFrom} to{" "}
-                        {formData.currentEmployment.currentlyEmployed === "yes"
-                          ? "Present"
-                          : formData.currentEmployment.durationTo}
-                      </p>
-                      <p className="text-xs">₹ {formData.currentEmployment.annualSalary} per year</p>
+              {skillDuplicateError && <p className="text-red-600 text-sm mt-1 font-medium">{skillDuplicateError}</p>}
+              {showSkillDropdown && skillSearch.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {loadingSkills ? (
+                    <div className="px-4 py-2 text-gray-500">Loading skills...</div>
+                  ) : allSkills.length === 0 ? (
+                    <div className="px-4 py-2 text-gray-500">
+                      No matching skills. Press Enter to add "{skillSearch}"
                     </div>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="ghost" size="sm" onClick={editCurrentEmploymentEntry}>
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!formData.currentEmployment && !showCurrentEmploymentForm && (
-                <div className="space-y-3">
-                  <Label className="text-sm">Are you currently employed?*</Label>
-                  <div className="flex gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setCurrentEntry({ ...currentEntry, currentlyEmployed: "yes" })
-                        setShowCurrentEmploymentForm(true)
-                      }}
-                      className="rounded-full"
-                    >
-                      Yes
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setCurrentEntry({ ...currentEntry, currentlyEmployed: "no" })
-                        setShowCurrentEmploymentForm(true)
-                      }}
-                      className="rounded-full"
-                    >
-                      No
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {showCurrentEmploymentForm && (
-                <div className="space-y-6 border rounded-lg p-4 bg-muted/20">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium text-sm">
-                      {currentEntry.currentlyEmployed === "yes"
-                        ? "Current Employment Details"
-                        : "Previous Employment Details"}
-                    </h3>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowCurrentEmploymentForm(false)
-                        setCurrentEntry({
-                          currentlyEmployed: "",
-                          companyName: "",
-                          currentJobTitle: "",
-                          currentCity: "",
-                          currentState: "",
-                          durationFrom: "",
-                          durationTo: "",
-                          annualSalary: "",
-                          noticePeriod: "",
-                        })
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm" htmlFor="companyName">
-                        {currentEntry.currentlyEmployed === "yes" ? "Current company" : "Previous company"}*
-                      </Label>
-                      <Input
-                        id="companyName"
-                        value={currentEntry.companyName}
-                        onChange={(e) => setCurrentEntry({ ...currentEntry, companyName: e.target.value })}
-                        placeholder="Eg. Amazon"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm" htmlFor="currentJobTitle">
-                        {currentEntry.currentlyEmployed === "yes" ? "Current job title" : "Previous job title"}*
-                      </Label>
-                      <Input
-                        id="currentJobTitle"
-                        value={currentEntry.currentJobTitle}
-                        onChange={(e) => setCurrentEntry({ ...currentEntry, currentJobTitle: e.target.value })}
-                        placeholder="Eg. Software Developer"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2 relative">
-                      <Label className="text-sm" htmlFor="currentCity">
-                        City*
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="currentCity"
-                          value={currentEntry.currentCity}
-                          onChange={(e) => {
-                            setCurrentEntry({ ...currentEntry, currentCity: e.target.value })
-                            setShowCityDropdown(true)
-                          }}
-                          onFocus={() => setShowCityDropdown(true)}
-                          placeholder="Select city"
-                          className="h-10 text-sm rounded-full"
-                        />
-                        {currentEntry.currentCity && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentEntry({ ...currentEntry, currentCity: "", currentState: "" })
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2"
+                  ) : (
+                    <>
+                      {allSkills
+                        .filter((skill) => skill.skill_name.toLowerCase().includes(skillSearch.toLowerCase()))
+                        .map((skill) => (
+                          <div
+                            key={skill.id}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 flex justify-between items-center"
+                            onClick={() => handleSkillSelect(skill)}
                           >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                      {showCityDropdown && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {indianCities
-                            .filter((c) => c.city.toLowerCase().includes(currentEntry.currentCity.toLowerCase()))
-                            .map((c) => (
-                              <button
-                                key={c.city}
-                                type="button"
-                                onClick={() => {
-                                  setCurrentEntry({ ...currentEntry, currentCity: c.city, currentState: c.state })
-                                  setShowCityDropdown(false)
-                                }}
-                                className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                              >
-                                {c.city}
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">State</Label>
-                      <Input
-                        value={currentEntry.currentState}
-                        disabled
-                        placeholder="Auto-filled"
-                        className="h-10 text-sm text-muted-foreground rounded-full"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">Duration*</Label>
-                    <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                      <MonthYearPicker
-                        value={currentEntry.durationFrom}
-                        onChange={(value) => setCurrentEntry({ ...currentEntry, durationFrom: value })}
-                        placeholder="MM/YY"
-                      />
-                      <span className="text-gray-400 text-sm">to</span>
-                      {currentEntry.currentlyEmployed === "yes" ? (
-                        <div className="h-10 px-3 border rounded-full bg-gray-50 flex items-center text-sm text-gray-500">
-                          Present
-                        </div>
-                      ) : (
-                        <MonthYearPicker
-                          value={currentEntry.durationTo}
-                          onChange={(value) => setCurrentEntry({ ...currentEntry, durationTo: value })}
-                          placeholder="MM/YY"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm" htmlFor="annualSalary">
-                        Annual salary (in ₹)*
-                      </Label>
-                      <Input
-                        id="annualSalary"
-                        value={currentEntry.annualSalary}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/,/g, "")
-                          if (/^\d*$/.test(value)) {
-                            const formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                            setCurrentEntry({ ...currentEntry, annualSalary: formatted })
-                          }
-                        }}
-                        placeholder="Eg. 5,00,000"
-                        className="h-10 text-sm rounded-full"
-                      />
-                    </div>
-
-                    {currentEntry.currentlyEmployed === "yes" && (
-                      <div className="space-y-2">
-                        <Label className="text-sm" htmlFor="noticePeriod">
-                          Notice period
-                        </Label>
-                        <select
-                          id="noticePeriod"
-                          value={currentEntry.noticePeriod}
-                          onChange={(e) => setCurrentEntry({ ...currentEntry, noticePeriod: e.target.value })}
-                          className="w-full h-10 px-3 border rounded-full text-sm"
+                            <span>{skill.skill_name}</span>
+                            <span className="text-xs text-gray-500">{skill.category}</span>
+                          </div>
+                        ))}
+                      {skillSearch.trim() && (
+                        <div
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                          onClick={() => {
+                            const trimmedSkill = skillSearch.trim()
+                            if (formData.skills.some((s) => s.toLowerCase() === trimmedSkill.toLowerCase())) {
+                              setSkillDuplicateError("Skill already added")
+                              setSkillSearch("")
+                              setShowSkillDropdown(false)
+                              return
+                            }
+                            updateFormData("skills", [...formData.skills, trimmedSkill])
+                            setSkillSearch("")
+                            setShowSkillDropdown(false)
+                          }}
                         >
-                          <option value="">Select</option>
-                          <option value="Immediate">Immediate</option>
-                          <option value="15 Days">15 Days</option>
-                          <option value="1 Month">1 Month</option>
-                          <option value="2 Months">2 Months</option>
-                          <option value="3 Months">3 Months</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    type="button"
-                    onClick={handleSaveCurrentEmployment}
-                    className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
-                  >
-                    {currentEntry.currentlyEmployed === "yes" ? "Save Current Employment" : "Save Previous Employment"}
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {formData.currentEmployment && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium text-sm">Previous Employment History</h3>
-                  {!showAdditionalEmploymentForm && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAdditionalEmploymentForm(true)}
-                      className="h-8 px-3 text-xs rounded-full"
-                    >
-                      + Add
-                    </Button>
+                          + Add "{skillSearch.trim()}" as custom skill
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
+              )}
+            </div>
 
-                {formData.additionalEmployment.length > 0 && (
-                  <div className="space-y-4">
-                    {formData.additionalEmployment.map((entry, index) => (
-                      <div key={index} className="border rounded-lg p-4 space-y-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium text-sm">{entry.jobTitle}</p>
-                            <p className="text-xs text-muted-foreground">{entry.companyName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {entry.fromDate} to {entry.toDate}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setCurrentAdditionalEntry(entry)
-                                setEditingAdditionalIndex(index)
-                                setShowAdditionalEmploymentForm(true)
-                              }}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                updateFormData({
-                                  additionalEmployment: formData.additionalEmployment.filter((_, i) => i !== index),
-                                })
-                              }}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+            {/* Selected Skills */}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {formData.skills.map((skill) => (
+                <span
+                  key={skill}
+                  className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
+                >
+                  {skill}
+                  <button
+                    type="button"
+                    onClick={() => removeSkill(skill)}
+                    className="ml-2 hover:text-blue-600 focus:outline-none"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Related Skills based on first selected skill */}
+            {formData.skills.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 mb-2">Related skills you might know:</p>
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const firstSkill = formData.skills[0].toLowerCase()
+                    let relatedSkills: string[] = []
+
+                    // Define related skill groups
+                    if (["javascript", "js"].some((s) => firstSkill.includes(s))) {
+                      relatedSkills = ["React", "Node.js", "TypeScript", "Vue.js", "Angular"]
+                    } else if (firstSkill.includes("python")) {
+                      relatedSkills = ["Django", "Flask", "Data Analysis", "Machine Learning", "Pandas"]
+                    } else if (firstSkill.includes("java")) {
+                      relatedSkills = ["Spring Boot", "Hibernate", "Maven", "Microservices"]
+                    } else if (firstSkill.includes("react")) {
+                      relatedSkills = ["JavaScript", "Redux", "Next.js", "React Native", "TypeScript"]
+                    } else if (firstSkill.includes("node")) {
+                      relatedSkills = ["Express.js", "MongoDB", "REST API", "Socket.io"]
+                    } else if (firstSkill.includes("sql") || firstSkill.includes("database")) {
+                      relatedSkills = ["MySQL", "PostgreSQL", "MongoDB", "Database Design"]
+                    } else if (firstSkill.includes("aws") || firstSkill.includes("cloud")) {
+                      relatedSkills = ["Docker", "Kubernetes", "Azure", "DevOps", "CI/CD"]
+                    } else {
+                      relatedSkills = ["Communication", "Team Collaboration", "Problem Solving", "Leadership"]
+                    }
+
+                    return relatedSkills
+                      .filter((skill) => !formData.skills.includes(skill))
+                      .slice(0, 5)
+                      .map((skill) => (
+                        <button
+                          key={skill}
+                          type="button"
+                          onClick={() => {
+                            if (!formData.skills.includes(skill)) {
+                              updateFormData("skills", [...formData.skills, skill])
+                            }
+                          }}
+                          className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                        >
+                          + {skill}
+                        </button>
+                      ))
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Employment History</h3>
+
+            {/* Are you currently employed question */}
+            <div>
+              <Label className="text-sm mb-3 block">
+                Are you currently employed?<span className="text-red-500">*</span>
+              </Label>
+              <div className="flex gap-4">
+                <Button
+                  type="button"
+                  variant={formData.currentEmployment !== null ? "default" : "outline"}
+                  onClick={() => {
+                    updateFormData("currentEmployment", {
+                      currentlyEmployed: "yes",
+                      companyName: formData.currentEmployment?.companyName || "",
+                      currentJobTitle: formData.currentEmployment?.currentJobTitle || "",
+                      currentCity: formData.currentEmployment?.currentCity || "",
+                      currentState: formData.currentEmployment?.currentState || "",
+                      durationFrom: formData.currentEmployment?.durationFrom || "",
+                      durationTo: "Present", // Always set to "Present" when Yes is clicked
+                      annualSalary: formData.currentEmployment?.annualSalary || "",
+                      noticePeriod: formData.currentEmployment?.noticePeriod || "",
+                      industry: formData.currentEmployment?.industry || "",
+                      department: formData.currentEmployment?.department || "",
+                      roleCategory: formData.currentEmployment?.roleCategory || "",
+                      jobRole: formData.currentEmployment?.jobRole || "",
+                      currentlyEmployed: "yes",
+                    })
+                  }}
+                  className="rounded-full"
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  variant={
+                    formData.currentEmployment === null && formData.workStatus === "experienced" ? "default" : "outline"
+                  }
+                  onClick={() => {
+                    updateFormData("currentEmployment", null)
+                    // updateFormData("workStatus", "experienced") // This line was causing an issue if workStatus was already set to fresher
+                  }}
+                  className="rounded-full"
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+
+            {/* Current Employment Form - Conditionally rendered */}
+            {formData.currentEmployment !== null && (
+              <div className="space-y-4 mt-4 border border-gray-200 rounded-xl p-6 bg-gradient-to-br from-gray-50 to-white shadow-sm">
+                {isCurrentEmploymentSaved && !isCurrentEmploymentEditable && (
+                  <div className="flex justify-between items-center mb-4 pb-3 border-b">
+                    <h3 className="font-semibold text-lg">Current Employment</h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsCurrentEmploymentEditable(true)}
+                      className="h-8 px-4 rounded-full"
+                    >
+                      Edit
+                    </Button>
                   </div>
                 )}
 
-                {showAdditionalEmploymentForm && (
-                  <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium text-sm">Add Previous Employment</h3>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setShowAdditionalEmploymentForm(false)
-                          setEditingAdditionalIndex(null)
-                          setCurrentAdditionalEntry({
-                            companyName: "",
-                            jobTitle: "",
-                            fromDate: "",
-                            toDate: "",
-                          })
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentCompanyName">
+                      Company Name <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="currentCompanyName"
+                      type="text"
+                      value={formData.currentEmployment?.companyName || ""}
+                      onChange={(e) => handleInputChange("current", null, "companyName", e.target.value)}
+                      placeholder="Enter company name"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="currentJobTitle">
+                      Current Job Title <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="currentJobTitle"
+                      type="text"
+                      value={formData.currentEmployment?.currentJobTitle || ""}
+                      onChange={(e) => handleInputChange("current", null, "currentJobTitle", e.target.value)}
+                      placeholder="Enter job title"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2 relative">
+                    <Label htmlFor="currentCity">
+                      Current City <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="currentCity"
+                      type="text"
+                      value={formData.currentEmployment?.currentCity || ""}
+                      onChange={(e) => {
+                        handleInputChange("current", null, "currentCity", e.target.value)
+                        setShowCityDropdown(e.target.value.length > 0)
+                      }}
+                      onFocus={() => setShowCityDropdown(formData.currentEmployment?.currentCity?.length > 0)}
+                      onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
+                      placeholder="Enter city"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                    {showCityDropdown && formData.currentEmployment?.currentCity && (
+                      <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                        {INDIAN_CITIES.filter(
+                          (
+                            loc, // Use the locally defined INDIAN_CITIES
+                          ) =>
+                            loc.city
+                              .toLowerCase()
+                              .includes((formData.currentEmployment?.currentCity || "").toLowerCase()),
+                        ).map((loc) => (
+                          <div
+                            key={`${loc.city}-${loc.state}`}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            onClick={() => handleCitySelect(loc.city, loc.state)}
+                          >
+                            {loc.city}, {loc.state}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="currentState">
+                      State <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="currentState"
+                      type="text"
+                      value={formData.currentEmployment?.currentState || ""}
+                      onChange={(e) => handleInputChange("current", null, "currentState", e.target.value)}
+                      placeholder="Enter state"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="noticePeriod">
+                      Notice Period <span className="text-red-500">*</span>
+                    </Label>
+                    <select
+                      id="noticePeriod"
+                      value={formData.currentEmployment?.noticePeriod || ""}
+                      onChange={(e) => handleInputChange("current", null, "noticePeriod", e.target.value)}
+                      className="flex h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    >
+                      <option value="">Select notice period</option>
+                      {NOTICE_PERIOD_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="annualSalary">Annual Salary (INR)</Label>
+                    <Input
+                      id="annualSalary"
+                      type="text"
+                      value={formData.currentEmployment?.annualSalary || ""}
+                      onChange={(e) =>
+                        handleInputChange("current", null, "annualSalary", formatIndianNumber(e.target.value))
+                      }
+                      placeholder="e.g., 5,00,000"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="durationFrom">
+                      Duration From <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="durationFrom"
+                      type="month"
+                      value={formData.currentEmployment?.durationFrom || ""}
+                      onChange={(e) => {
+                        handleInputChange("current", null, "durationFrom", e.target.value)
+                        calculateTotalExperienceFromEmployment(formData, updateFormData)
+                      }}
+                      placeholder="YYYY/MM"
+                      className="rounded-full h-10"
+                      disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="durationTo">Duration To</Label>
+                    <Input
+                      id="durationTo"
+                      type="month"
+                      value={
+                        formData.currentEmployment?.durationTo === "Present"
+                          ? ""
+                          : formData.currentEmployment?.durationTo || ""
+                      }
+                      onChange={(e) => {
+                        handleInputChange("current", null, "durationTo", e.target.value)
+                        calculateTotalExperienceFromEmployment(formData, updateFormData)
+                      }}
+                      disabled={
+                        formData.currentEmployment?.durationTo === "Present" ||
+                        (isCurrentEmploymentSaved && !isCurrentEmploymentEditable)
+                      }
+                      placeholder={formData.currentEmployment?.durationTo === "Present" ? "Present" : "YYYY/MM"}
+                      className="rounded-full h-10"
+                    />
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="checkbox"
+                        id="currentlyWorking"
+                        checked={formData.currentEmployment?.durationTo === "Present"}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            handleInputChange("current", null, "durationTo", "Present")
+                          } else {
+                            handleInputChange("current", null, "durationTo", "")
+                          }
+                          calculateTotalExperienceFromEmployment(formData, updateFormData)
                         }}
-                      >
-                        Cancel
-                      </Button>
+                        className="rounded"
+                        disabled={isCurrentEmploymentSaved && !isCurrentEmploymentEditable}
+                      />
+                      <label htmlFor="currentlyWorking" className="text-sm text-gray-600">
+                        I currently work here
+                      </label>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-sm">Company name*</Label>
-                        <Input
-                          value={currentAdditionalEntry.companyName}
-                          onChange={(e) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, companyName: e.target.value })
-                          }
-                          placeholder="Eg. Google"
-                          className="h-10 text-sm rounded-full"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-sm">Job title*</Label>
-                        <Input
-                          value={currentAdditionalEntry.jobTitle}
-                          onChange={(e) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, jobTitle: e.target.value })
-                          }
-                          placeholder="Eg. Product Manager"
-                          className="h-10 text-sm rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Duration*</Label>
-                      <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                        <MonthYearPicker
-                          value={currentAdditionalEntry.fromDate}
-                          onChange={(value) =>
-                            setCurrentAdditionalEntry({ ...currentAdditionalEntry, fromDate: value })
-                          }
-                          placeholder="MM/YY"
-                        />
-                        <span className="text-gray-400 text-sm">to</span>
-                        <MonthYearPicker
-                          value={currentAdditionalEntry.toDate}
-                          onChange={(value) => setCurrentAdditionalEntry({ ...currentAdditionalEntry, toDate: value })}
-                          placeholder="MM/YY"
-                        />
-                      </div>
-                    </div>
-
+                {isCurrentEmploymentEditable && (
+                  <div className="flex justify-end pt-4">
                     <Button
                       type="button"
-                      onClick={handleSaveAdditionalEmployment}
-                      className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
+                      onClick={() => {
+                        console.log("[v0] Saving current employment to UI")
+                        setIsCurrentEmploymentSaved(true)
+                        setIsCurrentEmploymentEditable(false)
+                        calculateTotalExperienceFromEmployment(formData, updateFormData)
+                      }}
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8 h-10"
                     >
-                      {editingAdditionalIndex !== null ? "Update Entry" : "Add Entry"}
+                      Save
                     </Button>
                   </div>
                 )}
               </div>
             )}
-          </>
-        )}
 
-        {/* Total experience */}
-        <div className="space-y-2">
-          <Label className="text-sm">Total work experience*</Label>
-          <div className="flex gap-3">
-            <select
-              value={formData.totalExperienceYears}
-              onChange={(e) => updateFormData("totalExperienceYears", e.target.value)}
-              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select year</option>
-              {Array.from({ length: 51 }, (_, i) => (
-                <option key={i} value={i}>
-                  {i} Year{i !== 1 ? "s" : ""}
-                </option>
-              ))}
-            </select>
-            <select
-              value={formData.totalExperienceMonths}
-              onChange={(e) => updateFormData("totalExperienceMonths", e.target.value)}
-              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-            >
-              <option value="">Select month</option>
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i} value={i}>
-                  {i} Month{i !== 1 ? "s" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            {formData.workStatus === "experienced" && (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm">Previous Employment History</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addAdditionalEmployment}
+                    className="h-8 px-3 rounded-full text-xs bg-transparent"
+                  >
+                    + Add
+                  </Button>
+                </div>
+                {formData.additionalEmployment.map((job, index) => (
+                  <div
+                    key={index}
+                    className="border border-gray-200 rounded-xl p-5 bg-gradient-to-br from-gray-50 to-white shadow-sm"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Company Name */}
+                      <div>
+                        <Label htmlFor={`additionalCompanyName-${index}`} className="text-xs">
+                          Company Name
+                        </Label>
+                        <Input
+                          id={`additionalCompanyName-${index}`}
+                          type="text"
+                          value={job.companyName}
+                          onChange={(e) => handleInputChange("additional", index, "companyName", e.target.value)}
+                          placeholder="Company Name"
+                          className="mt-1 h-9 rounded-full"
+                        />
+                      </div>
+                      {/* Job Title */}
+                      <div>
+                        <Label htmlFor={`additionalJobTitle-${index}`} className="text-xs">
+                          Job Title
+                        </Label>
+                        <Input
+                          id={`additionalJobTitle-${index}`}
+                          type="text"
+                          value={job.jobTitle}
+                          onChange={(e) => handleInputChange("additional", index, "jobTitle", e.target.value)}
+                          placeholder="Job Title"
+                          className="mt-1 h-9 rounded-full"
+                        />
+                      </div>
+                      {/* From Date */}
+                      <div>
+                        <Label htmlFor={`additionalFrom-${index}`} className="text-xs">
+                          From (MM/YY)
+                        </Label>
+                        <Input
+                          id={`additionalFrom-${index}`}
+                          type="month"
+                          value={job.fromDate || ""}
+                          onChange={(e) => {
+                            handleInputChange("additional", index, "fromDate", e.target.value)
+                            calculateTotalExperienceFromEmployment(formData, updateFormData)
+                          }}
+                          placeholder="YYYY-MM"
+                          className="rounded-full h-10"
+                        />
+                      </div>
 
-        <div className="space-y-6 bg-white p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold">Industry & Role Details</h3>
+                      {/* To Date */}
+                      <div>
+                        <Label htmlFor={`additionalTo-${index}`} className="text-xs">
+                          To (MM/YY)
+                        </Label>
+                        <Input
+                          id={`additionalTo-${index}`}
+                          type="month"
+                          value={job.toDate || ""}
+                          onChange={(e) => {
+                            handleInputChange("additional", index, "toDate", e.target.value)
+                            calculateTotalExperienceFromEmployment(formData, updateFormData)
+                          }}
+                          placeholder="YYYY-MM"
+                          className="rounded-full h-10"
+                        />
+                      </div>
+                    </div>
 
-          <div className="space-y-2">
-            <Label className="text-sm">Industry*</Label>
-            <div className="relative">
-              <Input
-                value={formData.industry}
-                onChange={(e) => {
-                  const value = e.target.value
-                  updateFormData({ industry: value, department: "", roleCategory: "", jobRole: "" })
-                  setShowIndustryDropdown(true)
-                }}
-                onFocus={() => setShowIndustryDropdown(true)}
-                onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
-                placeholder="Type to search industry..."
-                className="h-10 text-sm rounded-full"
-              />
-              {showIndustryDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {industries
-                    .filter((ind) => ind.name.toLowerCase().includes(formData.industry.toLowerCase()))
-                    .map((ind) => (
-                      <button
-                        key={ind.name}
+                    <div className="flex gap-2 mt-3">
+                      <Button
                         type="button"
                         onClick={() => {
-                          updateFormData({ industry: ind.name, department: "", roleCategory: "", jobRole: "" })
-                          setShowIndustryDropdown(false)
+                          // Save this employment entry (mark as saved in state if needed)
+                          calculateTotalExperienceFromEmployment(formData, updateFormData)
+                          console.log(`[v0] Saved previous employment ${index + 1}`)
                         }}
-                        className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
+                        className="rounded-full text-xs h-8 px-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
                       >
-                        {ind.name}
-                      </button>
-                    ))}
-                </div>
-              )}
-            </div>
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeAdditionalEmployment(index)}
+                        className="rounded-full text-xs h-8 px-4"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {formData.industry && (
-            <div className="space-y-2">
-              <Label className="text-sm">Department*</Label>
-              <select
-                value={formData.department}
-                onChange={(e) => {
-                  updateFormData({ department: e.target.value, roleCategory: "", jobRole: "" })
-                }}
-                className="w-full h-10 px-3 border rounded-full text-sm"
-              >
-                <option value="">Select department</option>
-                {industries
-                  .find((ind) => ind.name === formData.industry)
-                  ?.departments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-
-          {formData.department && (
-            <>
-              <div className="space-y-2">
-                <Label className="text-sm">Role Category*</Label>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="totalExperienceYears" className="text-sm">
+                  Years of Experience <span className="text-red-500">*</span>
+                </Label>
                 <select
-                  value={formData.roleCategory}
-                  onChange={(e) => {
-                    updateFormData({ roleCategory: e.target.value, jobRole: "" })
-                  }}
-                  className="w-full h-10 px-3 border rounded-full text-sm"
+                  id="totalExperienceYears"
+                  value={formData.totalExperienceYears}
+                  onChange={(e) => handleTotalExperienceChange("years", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Select role category</option>
-                  {Array.from(
-                    new Set(
-                      industries
-                        .find((ind) => ind.name === formData.industry)
-                        ?.roles.filter((r) => r.department === formData.department)
-                        .map((r) => r.category) || [],
-                    ),
-                  ).map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
+                  <option value="0">0 Years</option>
+                  {Array.from({ length: 51 }, (_, i) => i).map((year) => (
+                    <option key={year} value={year}>
+                      {year} {year === 1 ? "Year" : "Years"}
                     </option>
                   ))}
                 </select>
               </div>
+              <div>
+                <Label htmlFor="totalExperienceMonths" className="text-sm">
+                  Months
+                </Label>
+                <select
+                  id="totalExperienceMonths"
+                  value={formData.totalExperienceMonths}
+                  onChange={(e) => handleTotalExperienceChange("months", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i).map((month) => (
+                    <option key={month} value={month}>
+                      {month} {month === 1 ? "Month" : "Months"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
 
-              {formData.roleCategory && (
-                <div className="space-y-2">
-                  <Label className="text-sm">Job Title*</Label>
-                  <select
-                    value={formData.jobRole}
-                    onChange={(e) => updateFormData({ jobRole: e.target.value })}
-                    className="w-full h-10 px-3 border rounded-full text-sm"
-                  >
-                    <option value="">Select job title</option>
-                    {industries
-                      .find((ind) => ind.name === formData.industry)
-                      ?.roles.filter(
-                        (r) => r.department === formData.department && r.category === formData.roleCategory,
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Industry Field - Autosuggest */}
+              <div className="max-w-md relative">
+                <Label htmlFor="industry" className="text-sm">
+                  Industry you work in <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="industry"
+                  type="text"
+                  value={formData.industry}
+                  onChange={(e) => {
+                    updateFormData("industry", e.target.value)
+                    setIndustrySearch(e.target.value)
+                    setShowIndustryDropdown(e.target.value.length > 0)
+                    updateFormData("department", "")
+                    updateFormData("roleCategory", "")
+                    updateFormData("jobRole", "")
+                    setSelectedIndustryId(null)
+                  }}
+                  onFocus={() => setShowIndustryDropdown(formData.industry.length > 0 || industrySearch.length > 0)}
+                  onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
+                  placeholder="Type to search industries"
+                  className="mt-1 h-10 rounded-full"
+                />
+                {/* CHANGE Updated dropdown to use database industries */}
+                {showIndustryDropdown && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {industriesData
+                      .filter((ind) =>
+                        ind.name.toLowerCase().includes((industrySearch || formData.industry).toLowerCase()),
                       )
-                      .flatMap((r) => r.titles)
-                      .map((title) => (
-                        <option key={title} value={title}>
-                          {title}
-                        </option>
+                      .map((ind) => (
+                        <div
+                          key={ind.id}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleIndustrySelect(ind.name, ind.id)}
+                        >
+                          {ind.name}
+                        </div>
                       ))}
-                  </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Department - Shows after Industry is selected */}
+              {formData.industry && (
+                <div className="max-w-md relative">
+                  <Label htmlFor="department" className="text-sm">
+                    Department <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="department"
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => {
+                      updateFormData("department", e.target.value)
+                      setDepartmentSearch(e.target.value)
+                      setShowDepartmentDropdown(true)
+                      updateFormData("roleCategory", "")
+                      updateFormData("jobRole", "")
+                    }}
+                    onFocus={() => {
+                      setDepartmentSearch(formData.department)
+                      setShowDepartmentDropdown(true)
+                    }}
+                    onBlur={() => setTimeout(() => setShowDepartmentDropdown(false), 300)}
+                    placeholder="Type to search or add custom department"
+                    className="mt-1 h-10 rounded-full"
+                  />
+                  {/* CHANGE Updated dropdown to use database departments */}
+                  {showDepartmentDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {departments
+                        .filter((dept) =>
+                          dept.department_name
+                            .toLowerCase()
+                            .includes((departmentSearch || formData.department).toLowerCase()),
+                        )
+                        .map((dept) => (
+                          <div
+                            key={dept.id}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            onClick={() => {
+                              updateFormData("department", dept.department_name)
+                              setDepartmentSearch(dept.department_name)
+                              setShowDepartmentDropdown(false)
+                              setSelectedDepartmentId(dept.id)
+                              updateFormData("roleCategory", "")
+                              updateFormData("jobRole", "")
+                            }}
+                          >
+                            {dept.department_name}
+                          </div>
+                        ))}
+                      {/* CHANGE Add custom department option */}
+                      {departmentSearch &&
+                        !departments.some(
+                          (d) => d.department_name.toLowerCase() === departmentSearch.toLowerCase(),
+                        ) && (
+                          <div
+                            className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600 border-t"
+                            onClick={() => addCustomDepartment(departmentSearch)}
+                          >
+                            + Add "{departmentSearch}" as custom department
+                          </div>
+                        )}
+                    </div>
+                  )}
                 </div>
               )}
-            </>
-          )}
-        </div>
-
-        <div className="space-y-6 bg-white p-6 rounded-lg border">
-          <h3 className="text-lg font-semibold">Employment History</h3>
-
-          {/* ... existing employment fields WITHOUT industry/department/roleCategory/jobRole ... */}
-
-          {/* Remove the entire industry/department section from inside employment history */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="annualSalary">
-                Annual salary (in ₹)*
-              </Label>
-              <Input
-                id="annualSalary"
-                value={currentEntry.annualSalary}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/,/g, "")
-                  if (/^\d*$/.test(value)) {
-                    // Indian number system formatting (lakhs)
-                    const num = Number.parseInt(value)
-                    let formatted = ""
-                    if (num >= 100000) {
-                      // Display in lakhs
-                      formatted = value
-                        .replace(/\B(?=(\d{2})+(?!\d)(?=\d{5}))/g, ",")
-                        .replace(/(?<=\d{5})\B(?=(\d{3})+(?!\d))/g, ",")
-                    } else {
-                      formatted = value.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                    }
-                    setCurrentEntry({ ...currentEntry, annualSalary: formatted })
-                  }
-                }}
-                placeholder="Eg. 10,00,000 (10 Lakhs)"
-                className="h-10 text-sm rounded-full"
-              />
             </div>
-
-            {/* ... existing notice period ... */}
           </div>
 
-          {/* Save button */}
-          <Button
-            type="button"
-            onClick={handleSaveCurrentEmployment}
-            className="w-auto px-8 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full"
-          >
-            {currentEntry.currentlyEmployed === "yes" ? "Save Current Employment" : "Save Previous Employment"}
-          </Button>
-        </div>
+          {formData.department && (
+            <div className="grid md:grid-cols-2 gap-4 mt-4">
+              {/* Role Category - Only shows after Department is selected */}
+              <div className="max-w-md relative">
+                <Label htmlFor="roleCategory" className="text-sm">
+                  Role Category <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="roleCategory"
+                  type="text"
+                  value={formData.roleCategory}
+                  onChange={(e) => {
+                    updateFormData("roleCategory", e.target.value)
+                    setRoleCategorySearch(e.target.value)
+                    setShowRoleCategoryDropdown(e.target.value.length > 0)
+                    updateFormData("jobRole", "")
+                  }}
+                  onFocus={() => {
+                    setRoleCategorySearch(formData.roleCategory)
+                    setShowRoleCategoryDropdown(true)
+                  }}
+                  onBlur={() => setTimeout(() => setShowRoleCategoryDropdown(false), 300)}
+                  placeholder="Type to search or add custom role category"
+                  className="mt-1 h-10 rounded-full"
+                />
+                {showRoleCategoryDropdown && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {roleCategories
+                      .filter((role) =>
+                        role.role_category_name
+                          .toLowerCase()
+                          .includes((roleCategorySearch || formData.roleCategory).toLowerCase()),
+                      )
+                      .map((role) => (
+                        <div
+                          key={role.id}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            updateFormData("roleCategory", role.role_category_name)
+                            setRoleCategorySearch(role.role_category_name)
+                            setShowRoleCategoryDropdown(false)
+                            updateFormData("jobRole", "")
+                          }}
+                        >
+                          {role.role_category_name}
+                        </div>
+                      ))}
+                    {roleCategorySearch &&
+                      !roleCategories.some(
+                        (role) => role.role_category_name.toLowerCase() === roleCategorySearch.toLowerCase(),
+                      ) && (
+                        <div
+                          className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-blue-600 border-t"
+                          onClick={() => addCustomRoleCategory(roleCategorySearch)}
+                        >
+                          + Add "{roleCategorySearch}" as custom role category
+                        </div>
+                      )}
+                  </div>
+                )}
+              </div>
 
-        <div className="flex justify-between pt-4 border-t">
-          <Button type="button" onClick={prevStep} variant="outline" className="rounded-full px-8 bg-transparent h-10">
-            Back
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSaveAndContinue}
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 h-10"
-          >
-            {isLoading || isSaving ? "Saving..." : "Save & Continue"}
-          </Button>
+              {/* Job Title - Only shows after Role Category is selected */}
+              {formData.roleCategory && (
+                <div className="max-w-md relative">
+                  <Label htmlFor="jobRole" className="text-sm">
+                    Job Title <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="jobRole"
+                    type="text"
+                    value={formData.jobRole}
+                    onChange={(e) => {
+                      updateFormData("jobRole", e.target.value)
+                      setJobTitleSearch(e.target.value)
+                      setShowJobTitleDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => {
+                      setJobTitleSearch(formData.jobRole)
+                      setShowJobTitleDropdown(true)
+                    }}
+                    onBlur={() => setTimeout(() => setShowJobTitleDropdown(false), 300)}
+                    placeholder="Type to search or add custom job title"
+                    className="mt-1 h-10 rounded-full"
+                  />
+                  {showJobTitleDropdown && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {getJobTitles(formData.industry, formData.department, formData.roleCategory)
+                        .filter((title) =>
+                          title.toLowerCase().includes((jobTitleSearch || formData.jobRole).toLowerCase()),
+                        )
+                        .map((title) => (
+                          <div
+                            key={title}
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                            onClick={() => {
+                              updateFormData("jobRole", title)
+                              setJobTitleSearch(title)
+                              setShowJobTitleDropdown(false)
+                            }}
+                          >
+                            {title}
+                          </div>
+                        ))}
+                      {formData.jobRole.trim() &&
+                        !getJobTitles(formData.industry, formData.department, formData.roleCategory).some(
+                          (title) => title.toLowerCase() === formData.jobRole.toLowerCase(),
+                        ) && (
+                          <div
+                            className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-t text-blue-600"
+                            onClick={() => {
+                              setShowJobTitleDropdown(false)
+                            }}
+                          >
+                            + Add "{formData.jobRole.trim()}" as custom job title
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
+
+      <CardFooter className="flex justify-between pt-6">
+        <Button type="button" variant="outline" onClick={prevStep} className="rounded-full px-8 bg-transparent">
+          Back
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSaveAndContinue}
+          disabled={isLoading}
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+        >
+          {isLoading ? "Saving..." : "Save & Continue"}
+        </Button>
+      </CardFooter>
     </Card>
   )
 }
 
-function Step4EducationAndProjects({ formData, updateFormData, nextStep, prevStep, setIsLoading }: StepProps) {
-  const qualificationOptions = [
-    "Below 10th",
-    "10th Pass",
-    "12th Pass",
-    "Diploma",
-    "Graduated", // Added Graduated option
-    "Bachelor's Degree",
-    "Master's Degree",
-    "PhD/Doctorate",
-  ]
-
-  const courseOptions = [
-    "B.Tech/B.E.",
-    "B.Sc",
-    "B.Com",
-    "B.A.",
-    "BBA",
-    "BCA",
-    "M.Tech/M.E.",
-    "M.Sc",
-    "M.Com",
-    "M.A.",
-    "MBA",
-    "MCA",
-    "MBBS",
-    "B.Pharma",
-    "M.Pharma",
-    "Arts",
-    "Commerce",
-    "Science",
-  ]
-
-  const specializationOptions = [
-    // Computer Science related
-    "Computer Science",
-    "Software Engineering",
-    "Information Technology",
-    "Artificial Intelligence",
-    "Machine Learning",
-    "Data Science",
-    "Cyber Security",
-    "Cloud Computing",
-    "DevOps",
-    "Web Development",
-    "Mobile Development",
-    "Game Development",
-    "Computer Networks",
-    "Database Management",
-
-    // Electronics and Communication related
-    "Electronics Engineering",
-    "Communication Engineering",
-    "VLSI Design",
-    "Signal Processing",
-    "Embedded Systems",
-
-    // Mechanical Engineering related
-    "Mechanical Engineering",
-    "Automotive Engineering",
-    "Aerospace Engineering",
-    "Industrial Engineering",
-    "Manufacturing Engineering",
-    "Mechatronics",
-
-    // Civil Engineering related
-    "Civil Engineering",
-    "Structural Engineering",
-    "Geotechnical Engineering",
-    "Transportation Engineering",
-    "Environmental Engineering",
-
-    // Electrical Engineering related
-    "Electrical Engineering",
-    "Power Systems",
-    "Control Systems",
-    "Instrumentation Engineering",
-
-    // Commerce and Management related
-    "Finance",
-    "Accounting",
-    "Marketing",
-    "Human Resources",
-    "Operations Management",
-    "International Business",
-    "Business Analytics",
-    "Supply Chain Management",
-    "Entrepreneurship",
-
-    // Science related
-    "Physics",
-    "Chemistry",
-    "Mathematics",
-    "Statistics",
-    "Biology",
-    "Biotechnology",
-    "Biochemistry",
-    "Environmental Science",
-
-    // Arts and Humanities related
-    "Economics",
-    "Psychology",
-    "Sociology",
-    "Political Science",
-    "History",
-    "English Literature",
-    "Philosophy",
-
-    // Other
-    "General",
-    "Other",
-  ]
-
-  const [customCourse, setCustomCourse] = useState("")
-  const [customSpecialization, setCustomSpecialization] = useState("")
-  const [showCourseDropdown, setShowCourseDropdown] = useState(false)
-  const [showSpecializationDropdown, setShowSpecializationDropdown] = useState(false)
-
-  const [isSaving, setIsSaving] = useState(false)
-
-  const handleSaveEducation = async () => {
-    if (isSaving) return
-
-    setIsSaving(true)
-    setIsLoading?.(true)
-
-    try {
-      console.log("[v0] Saving education details...")
-      const result = await updateEducationDetails(formData.email, {
-        highestQualification: formData.highestQualification,
-        course: formData.course,
-        courseType: formData.courseType,
-        specialization: formData.specialization,
-        university: formData.university,
-        startingYear: formData.startingYear,
-        passingYear: formData.passingYear,
-        certifications: formData.certifications,
-      })
-
-      if (result.success) {
-        console.log("[v0] Education saved successfully")
-        nextStep?.()
-      } else {
-        alert(result.error || "Failed to save education details")
-      }
-    } catch (error) {
-      console.error("[v0] Error saving education:", error)
-      alert("An error occurred while saving education details")
-    } finally {
-      setIsLoading?.(false)
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader className="border-b">
-        <CardTitle className="text-2xl">Education & Projects</CardTitle>
-        <p className="text-sm text-muted-foreground mt-1">
-          Detail your educational background and showcase your key projects.
-        </p>
-      </CardHeader>
-      <CardContent className="pt-6 space-y-6">
-        {/* Start of Education Fields */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium">Educational Qualifications</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="highestQualification">
-                Highest Qualification
-              </Label>
-              <select
-                id="highestQualification"
-                value={formData.highestQualification}
-                onChange={(e) => updateFormData("highestQualification", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-              >
-                <option value="">Select qualification</option>
-                {qualificationOptions.map((qual) => (
-                  <option key={qual} value={qual}>
-                    {qual}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="course">
-                Course
-              </Label>
-              <div className="relative">
-                <Input
-                  id="course"
-                  value={formData.course}
-                  onChange={(e) => {
-                    updateFormData("course", e.target.value)
-                    setShowCourseDropdown(true)
-                  }}
-                  onFocus={() => setShowCourseDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowCourseDropdown(false), 200)}
-                  placeholder="Select or type course"
-                  className="h-10 text-sm rounded-full"
-                />
-                {showCourseDropdown && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {courseOptions
-                      .filter((course) => course.toLowerCase().includes(formData.course.toLowerCase()))
-                      .map((course) => (
-                        <button
-                          key={course}
-                          type="button"
-                          onClick={() => {
-                            updateFormData("course", course)
-                            setShowCourseDropdown(false)
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                        >
-                          {course}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="courseType">
-                Course Type
-              </Label>
-              <select
-                id="courseType"
-                value={formData.courseType}
-                onChange={(e) => updateFormData("courseType", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-              >
-                <option value="">Select type</option>
-                <option value="full-time">Full-time</option>
-                <option value="part-time">Part-time</option>
-                <option value="online">Online</option>
-                <option value="distance">Distance</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="specialization">
-                Specialization
-              </Label>
-              <div className="relative">
-                <Input
-                  id="specialization"
-                  value={formData.specialization}
-                  onChange={(e) => {
-                    updateFormData("specialization", e.target.value)
-                    setShowSpecializationDropdown(true)
-                  }}
-                  onFocus={() => setShowSpecializationDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowSpecializationDropdown(false), 200)}
-                  placeholder="Select or type specialization"
-                  className="h-10 text-sm rounded-full"
-                />
-                {showSpecializationDropdown && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {specializationOptions
-                      .filter((spec) => spec.toLowerCase().includes(formData.specialization.toLowerCase()))
-                      .map((spec) => (
-                        <button
-                          key={spec}
-                          type="button"
-                          onClick={() => {
-                            updateFormData("specialization", spec)
-                            setShowSpecializationDropdown(false)
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                        >
-                          {spec}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="university">
-                University/Board
-              </Label>
-              <Input
-                id="university"
-                value={formData.university}
-                onChange={(e) => updateFormData("university", e.target.value)}
-                placeholder="Eg. University of Mumbai"
-                className="h-10 text-sm rounded-full"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="startingYear">
-                Starting Year
-              </Label>
-              <Input
-                id="startingYear"
-                type="number"
-                value={formData.startingYear}
-                onChange={(e) => updateFormData("startingYear", e.target.value)}
-                placeholder="2018"
-                className="h-10 text-sm rounded-full"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="passingYear">
-                Passing Year
-              </Label>
-              <Input
-                id="passingYear"
-                type="number"
-                value={formData.passingYear}
-                onChange={(e) => updateFormData("passingYear", e.target.value)}
-                placeholder="2022"
-                className="h-10 text-sm rounded-full"
-              />
-            </div>
-          </div>
-        </div>
-        {/* End of Education Fields */}
-
-        <div className="space-y-4 border-t pt-4 mt-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Certifications</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                updateFormData("certifications", [
-                  ...formData.certifications,
-                  { name: "", issuer: "", issueDate: "", expiryDate: "" },
-                ])
-              }}
-              className="rounded-full"
-            >
-              + Add Certification
-            </Button>
-          </div>
-
-          {formData.certifications.map((cert, index) => (
-            <div key={index} className="p-4 border rounded-lg space-y-3">
-              <div className="flex justify-between items-start">
-                <h4 className="font-medium">Certification {index + 1}</h4>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    updateFormData(
-                      "certifications",
-                      formData.certifications.filter((_, i) => i !== index),
-                    )
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Certification Name<span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    value={cert.name}
-                    onChange={(e) => {
-                      const updated = [...formData.certifications]
-                      updated[index].name = e.target.value
-                      updateFormData("certifications", updated)
-                    }}
-                    placeholder="e.g., AWS Certified Solutions Architect"
-                    className="h-10 text-sm rounded-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Issuing Organization<span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    value={cert.issuer}
-                    onChange={(e) => {
-                      const updated = [...formData.certifications]
-                      updated[index].issuer = e.target.value
-                      updateFormData("certifications", updated)
-                    }}
-                    placeholder="e.g., Amazon Web Services"
-                    className="h-10 text-sm rounded-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Issue Date<span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    type="month"
-                    value={cert.issueDate}
-                    onChange={(e) => {
-                      const updated = [...formData.certifications]
-                      updated[index].issueDate = e.target.value
-                      updateFormData("certifications", updated)
-                    }}
-                    className="h-10 text-sm rounded-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Expiry Date (Optional)</Label>
-                  <Input
-                    type="month"
-                    value={cert.expiryDate || ""}
-                    onChange={(e) => {
-                      const updated = [...formData.certifications]
-                      updated[index].expiryDate = e.target.value
-                      updateFormData("certifications", updated)
-                    }}
-                    className="h-10 text-sm rounded-full"
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {formData.certifications.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No certifications added yet. Click "Add Certification" to add your professional certifications.
-            </p>
-          )}
-        </div>
-        {/* End of Certifications Section */}
-
-        <div className="space-y-4 border-t pt-4 mt-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Projects</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                updateFormData("projects", [
-                  ...formData.projects,
-                  { title: "", description: "", role: "", startDate: "", endDate: "", technologies: "" },
-                ])
-              }}
-              className="rounded-full"
-            >
-              + Add Project
-            </Button>
-          </div>
-
-          {formData.projects.map((project, index) => (
-            <div key={index} className="p-4 border rounded-lg space-y-3">
-              <div className="flex justify-between items-start">
-                <h4 className="font-medium">Project {index + 1}</h4>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    updateFormData(
-                      "projects",
-                      formData.projects.filter((_, i) => i !== index),
-                    )
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Project Title<span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    value={project.title}
-                    onChange={(e) => {
-                      const updated = [...formData.projects]
-                      updated[index].title = e.target.value
-                      updateFormData("projects", updated)
-                    }}
-                    placeholder="e.g., E-Commerce Platform Development"
-                    className="h-10 text-sm rounded-full"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Description<span className="text-red-500">*</span>
-                  </Label>
-                  <textarea
-                    value={project.description}
-                    onChange={(e) => {
-                      const updated = [...formData.projects]
-                      updated[index].description = e.target.value
-                      updateFormData("projects", updated)
-                    }}
-                    placeholder="Briefly describe the project, your contributions, and achievements"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[100px]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm">
-                      Your Role<span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      value={project.role}
-                      onChange={(e) => {
-                        const updated = [...formData.projects]
-                        updated[index].role = e.target.value
-                        updateFormData("projects", updated)
-                      }}
-                      placeholder="e.g., Full Stack Developer"
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">Technologies Used</Label>
-                    <Input
-                      value={project.technologies || ""}
-                      onChange={(e) => {
-                        const updated = [...formData.projects]
-                        updated[index].technologies = e.target.value
-                        updateFormData("projects", updated)
-                      }}
-                      placeholder="e.g., React, Node.js, MongoDB"
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">
-                      Start Date<span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      type="month"
-                      value={project.startDate}
-                      onChange={(e) => {
-                        const updated = [...formData.projects]
-                        updated[index].startDate = e.target.value
-                        updateFormData("projects", updated)
-                      }}
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm">End Date</Label>
-                    <Input
-                      type="month"
-                      value={project.endDate || ""}
-                      onChange={(e) => {
-                        const updated = [...formData.projects]
-                        updated[index].endDate = e.target.value
-                        updateFormData("projects", updated)
-                      }}
-                      placeholder="Leave empty if ongoing"
-                      className="h-10 text-sm rounded-full"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {formData.projects.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No projects added yet. Click "Add Project" to showcase your work.
-            </p>
-          )}
-        </div>
-        {/* End of Projects Section */}
-
-        <div className="flex justify-between pt-4 border-t">
-          <Button type="button" onClick={prevStep} variant="outline" className="rounded-full px-8 bg-transparent h-10">
-            Back
-          </Button>
-          <Button
-            onClick={handleSaveEducation} // Save education before moving to next step
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-8 h-10"
-            disabled={isSaving}
-          >
-            {isSaving ? "Saving..." : "Save & Continue"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function Step5PersonalAndPreferences({
+const Step4EducationAndProjects = ({
   formData,
   updateFormData,
   nextStep,
   prevStep,
   setIsLoading,
   isLoading,
-}: StepProps) {
-  const [showPreferredLocationsDropdown, setShowPreferredLocationsDropdown] = useState(false)
-  const [locationSearchTerm, setLocationSearchTerm] = useState("") // Add search term state
-  const locationInputRef = useRef<HTMLInputElement>(null) // Add ref for click outside detection
+  setFormData,
+}: StepProps) => {
+  const [availableCourses, setAvailableCourses] = useState<Array<{ id: string; education_name: string }>>([])
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false)
 
-  const indianCities = [
-    "Mumbai",
-    "Delhi",
-    "Bangalore",
-    "Hyderabad",
-    "Chennai",
-    "Kolkata",
-    "Pune",
-    "Ahmedabad",
-    "Jaipur",
-    "Surat",
-    "Lucknow",
-    "Kanpur",
-    "Nagpur",
-    "Indore",
-    "Thane",
-    "Bhopal",
-    "Visakhakhakhakhakhakhakhakhakhakham",
-    "Patna",
-    "Vadodara",
-    "Ghaziabad",
-  ]
+  const [availableSpecializations, setAvailableSpecializations] = useState<
+    Array<{ id: string; specialization_name: string; description?: string }>
+  >([])
+  const [isLoadingSpecializations, setIsLoadingSpecializations] = useState(false)
+  const [selectedEducationId, setSelectedEducationId] = useState<string>("")
 
-  const handleAddPreferredLocation = (city: string) => {
-    if (!formData.preferredLocations.includes(city)) {
-      updateFormData("preferredLocations", [...formData.preferredLocations, city])
+  useEffect(() => {
+    const fetchCourses = async () => {
+      if (!formData.highestQualification) {
+        setAvailableCourses([])
+        return
+      }
+
+      setIsLoadingCourses(true)
+      const result = await getEducationsByLevel(formData.highestQualification)
+
+      if (result.success && result.educations) {
+        setAvailableCourses(result.educations)
+      } else {
+        console.error("[v0] Error fetching courses:", result.error)
+        setAvailableCourses([])
+      }
+      setIsLoadingCourses(false)
     }
-    setLocationSearchTerm("") // Clear search after selection
-    setShowPreferredLocationsDropdown(false) // Close dropdown after selection
+
+    fetchCourses()
+  }, [formData.highestQualification])
+
+  useEffect(() => {
+    const fetchSpecializations = async () => {
+      if (!selectedEducationId) {
+        setAvailableSpecializations([])
+        return
+      }
+
+      console.log("[v0] Fetching specializations for education ID:", selectedEducationId)
+      setIsLoadingSpecializations(true)
+      const result = await getSpecializationsByEducation(selectedEducationId)
+
+      if (result.success && result.specializations) {
+        setAvailableSpecializations(result.specializations)
+        console.log("[v0] Loaded specializations:", result.specializations.length)
+      } else {
+        console.error("[v0] Error fetching specializations:", result.error)
+        setAvailableSpecializations([])
+      }
+      setIsLoadingSpecializations(false)
+    }
+
+    fetchSpecializations()
+  }, [selectedEducationId])
+
+  const [institutionInput, setInstitutionInput] = useState("")
+  const [institutionSuggestions, setInstitutionSuggestions] = useState<any[]>([])
+  const [showInstitutionDropdown, setShowInstitutionDropdown] = useState(false)
+  const [loadingInstitutions, setLoadingInstitutions] = useState(false)
+
+  const [certInputs, setCertInputs] = useState<{
+    [key: number]: { name: string; issuer: string }
+  }>(() => {
+    const initial: { [key: number]: { name: string; issuer: string } } = {}
+    ;(formData.certifications || []).forEach((cert, index) => {
+      initial[index] = { name: cert.name || "", issuer: cert.issuer || "" }
+    })
+    return initial
+  })
+
+  const [projectInputs, setProjectInputs] = useState<{
+    [key: number]: { title: string; role: string; description: string; technologies: string }
+  }>(() => {
+    const initial: { [key: number]: { title: string; role: string; description: string; technologies: string } } = {}
+    ;(formData.projects || []).forEach((proj, index) => {
+      initial[index] = {
+        title: proj.title || "",
+        role: proj.role || "",
+        description: proj.description || "",
+        technologies: proj.technologies || "",
+      }
+    })
+    return initial
+  })
+
+  const fetchInstitutionSuggestions = async (query: string) => {
+    if (query.length < 2) {
+      setInstitutionSuggestions([])
+      return
+    }
+
+    setLoadingInstitutions(true)
+    const result = await fetchInstitutions(query)
+
+    if (result.success) {
+      setInstitutionSuggestions(result.data)
+    }
+    setLoadingInstitutions(false)
   }
 
-  const handleRemovePreferredLocation = (city: string) => {
-    updateFormData(
-      "preferredLocations",
-      formData.preferredLocations.filter((loc) => loc !== city),
-    )
+  const selectInstitution = (institutionName: string) => {
+    setFormData({ ...formData, university: institutionName })
+    setInstitutionInput("")
+    setShowInstitutionDropdown(false)
+    setInstitutionSuggestions([])
   }
 
-  const handleSaveAndComplete = async () => {
+  const addCustomInstitution = async () => {
+    if (institutionInput.trim()) {
+      console.log("[v0] Adding custom institution:", institutionInput.trim())
+
+      // Save to database first
+      const result = await saveCustomInstitution(institutionInput.trim())
+
+      if (result.success) {
+        if (result.alreadyExists) {
+          console.log("[v0] Institution already exists in database")
+        } else {
+          console.log("[v0] New institution added to database successfully")
+        }
+
+        // Update form data with the institution name
+        setFormData({ ...formData, university: institutionInput.trim() })
+        setInstitutionInput("")
+        setShowInstitutionDropdown(false)
+        setInstitutionSuggestions([])
+      } else {
+        console.error("[v0] Failed to save institution:", result.error)
+        alert("Failed to save institution. Please try again.")
+      }
+    }
+  }
+
+  const addCertification = () => {
+    const certs = formData.certifications || []
+    const newIndex = certs.length
+    updateFormData("certifications", [...certs, { name: "", issuer: "", issueDate: "", expiryDate: "" }])
+    setCertInputs({ ...certInputs, [newIndex]: { name: "", issuer: "" } })
+  }
+
+  const addProject = () => {
+    const projects = formData.projects || []
+    const newIndex = projects.length
+    updateFormData("projects", [
+      ...projects,
+      { title: "", description: "", role: "", startDate: "", endDate: "", technologies: "" },
+    ])
+    setProjectInputs({
+      ...projectInputs,
+      [newIndex]: { title: "", role: "", description: "", technologies: "" },
+    })
+  }
+
+  // Handle saving education details
+  const handleSaveAndContinue = async () => {
     if (isLoading) return
 
     setIsLoading?.(true)
+    console.log("[v0] Step4 saving education data...")
 
     try {
-      console.log("[v0] Completing registration with data:", {
-        resumeHeadline: formData.resumeHeadline,
-        preferredLocations: formData.preferredLocations,
-        preferredSalary: formData.preferredSalary,
-        languagesKnown: formData.languagesKnown,
-        certifications: formData.certifications,
-        projects: formData.projects,
-        dateOfBirth: formData.dateOfBirth,
-        maritalStatus: formData.maritalStatus,
+      const result = await updateEducationDetails(formData.email, {
+        highestQualification: formData.highestQualification,
+        course: formData.course,
+        courseType: formData.courseType || "",
+        specialization: formData.specialization,
+        university: formData.university,
+        passingYearFrom: formData.passingYearFrom,
+        passingYearTo: formData.passingYearTo,
+        certifications: formData.certifications || [],
+        projects: formData.projects || [],
       })
 
-      const result = await updatePreferencesAndComplete(formData.email, {
-        resumeHeadline: formData.resumeHeadline,
-        preferredLocations: formData.preferredLocations,
-        preferredSalary: formData.preferredSalary,
-        gender: formData.gender,
-        currentCity: formData.currentCity,
-        currentState: formData.currentState,
-        availabilityToJoin: formData.availabilityToJoin,
-        dateOfBirth: formData.dateOfBirth,
-        languagesKnown: formData.languagesKnown,
-        maritalStatus: formData.maritalStatus,
-        projects: formData.projects,
-        certifications: formData.certifications,
-      })
-
-      if (result.success) {
-        console.log("[v0] Registration completed successfully")
-        alert("Registration complete! Please login to continue.")
-        window.location.href = "/candidate/login"
-      } else {
-        console.error("[v0] Registration failed:", result.error)
-        alert(result.error || "Failed to complete registration")
+      if (!result.success) {
+        alert(`Failed to save education details: ${result.error}`)
         setIsLoading?.(false)
+        return
       }
+
+      console.log("[v0] Education data saved successfully")
+      nextStep() // Proceed to the next step
     } catch (error) {
-      console.error("[v0] Error completing registration:", error)
-      alert("An error occurred while completing registration")
+      console.error("[v0] Error saving education data:", error)
+      alert("An error occurred while saving your education details")
+    } finally {
       setIsLoading?.(false)
     }
   }
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader className="border-b">
-        <CardTitle className="text-2xl">Personal Details & Preferences</CardTitle>
-        <p className="text-sm text-muted-foreground mt-1">
-          Share your preferences and personal details to complete your profile.
-        </p>
+    <Card className="w-full max-w-4xl mx-auto shadow-lg p-6 md:p-8">
+      <CardHeader className="pb-6">
+        <CardTitle className="text-2xl font-bold">Education Details</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Share your educational background and achievements.</p>
       </CardHeader>
-      <CardContent className="pt-6 space-y-6">
-        {/* Resume Headline */}
-        <div className="space-y-2">
-          <Label className="text-sm" htmlFor="resumeHeadline">
-            Resume Headline
-          </Label>
-          <Input
-            id="resumeHeadline"
-            value={formData.resumeHeadline}
-            onChange={(e) => updateFormData("resumeHeadline", e.target.value)}
-            placeholder="Eg. Experienced Software Engineer with expertise in AI/ML"
-            className="h-10 text-sm rounded-full"
-          />
-          <p className="text-xs text-gray-500">A brief summary highlighting your key skills and experience.</p>
-        </div>
-
-        {/* Preferred Salary */}
-        <div className="space-y-2">
-          <Label className="text-sm" htmlFor="preferredSalary">
-            Expected Salary
-          </Label>
-          <div className="flex gap-2">
-            <select className="w-20 rounded-full border border-input bg-background px-3 py-2 text-sm">
-              <option>₹</option>
-            </select>
-            <Input
-              id="preferredSalary"
-              value={formData.preferredSalary}
-              onChange={(e) => updateFormData("preferredSalary", e.target.value)} // Handle formatting in Step 3 if needed, or here
-              placeholder="Eg. 10,00,000"
-              className="flex-1 h-10 text-sm rounded-full"
-            />
-            <span className="flex items-center text-sm text-muted-foreground">per year</span>
-          </div>
-        </div>
-
-        {/* Preferred Locations */}
-        <div className="space-y-2">
-          <Label className="text-sm">Preferred Job Locations</Label>
-          <div className="relative">
-            <Input
-              ref={locationInputRef}
-              value={locationSearchTerm}
-              onChange={(e) => {
-                setLocationSearchTerm(e.target.value)
-                setShowPreferredLocationsDropdown(true)
-              }}
-              onFocus={() => setShowPreferredLocationsDropdown(true)}
-              onBlur={() => {
-                setTimeout(() => setShowPreferredLocationsDropdown(false), 200)
-              }}
-              placeholder="Search for locations..."
-              className="h-10 text-sm rounded-full"
-            />
-            {formData.preferredLocations.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {formData.preferredLocations.map((location) => (
-                  <span
-                    key={location}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-800 rounded-full text-xs"
-                  >
-                    {location}
-                    <X
-                      className="w-4 h-4 cursor-pointer hover:text-blue-900"
-                      onClick={() => handleRemovePreferredLocation(location)}
-                    />
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {showPreferredLocationsDropdown && (
-              <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {indianCities
-                  .filter(
-                    (city) =>
-                      city.toLowerCase().includes(locationSearchTerm.toLowerCase()) &&
-                      !formData.preferredLocations.includes(city),
-                  )
-                  .slice(0, 10)
-                  .map((city) => (
-                    <button
-                      key={city}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        handleAddPreferredLocation(city)
-                      }}
-                      className="w-full text-left px-4 py-2 hover:bg-muted text-sm"
-                    >
-                      {city}
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-gray-500">Select up to 3 locations you are interested in.</p>
-        </div>
-
-        {/* Availability to Join */}
-        <div className="space-y-2">
-          <Label className="text-sm" htmlFor="availabilityToJoin">
-            When can you join?
-          </Label>
-          <select
-            id="availabilityToJoin"
-            value={formData.availabilityToJoin}
-            onChange={(e) => updateFormData("availabilityToJoin", e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-          >
-            <option value="">Select availability</option>
-            <option value="immediate">Immediate</option>
-            <option value="15-days">Within 15 days</option>
-            <option value="1-month">Within 1 month</option>
-            <option value="2-months">Within 2 months</option>
-            <option value="3-months">Within 3 months</option>
-            <option value="more-than-3-months">More than 3 months</option>
-          </select>
-        </div>
-
-        {/* Personal Information Section */}
-        <div className="space-y-4 border-t pt-4 mt-6">
-          <h3 className="text-lg font-medium">Personal Information</h3>
-
+      <CardContent className="space-y-6">
+        {/* Education Fields */}
+        <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Date of Birth */}
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="dateOfBirth">
-                Date of Birth<span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="dateOfBirth"
-                type="date"
-                value={formData.dateOfBirth}
-                onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
-                max={new Date().toISOString().split("T")[0]}
-                className="h-10 text-sm rounded-full"
-              />
-            </div>
-
-            {/* Marital Status */}
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="maritalStatus">
-                Marital Status<span className="text-red-500">*</span>
+            <div>
+              <Label htmlFor="qualification" className="text-sm">
+                Highest Qualification <span className="text-red-500">*</span>
               </Label>
               <select
-                id="maritalStatus"
-                value={formData.maritalStatus}
-                onChange={(e) => updateFormData("maritalStatus", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
+                id="qualification"
+                value={formData.highestQualification || ""}
+                onChange={(e) => {
+                  const qual = e.target.value
+                  setFormData({
+                    ...formData,
+                    highestQualification: qual,
+                    course: "",
+                    courseType: "",
+                    specialization: "",
+                  })
+                }}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
               >
-                <option value="">Select marital status</option>
-                <option value="single">Single</option>
-                <option value="married">Married</option>
+                <option value="">Select qualification</option>
+                <option value="10th">10th</option>
+                <option value="12th">12th</option>
+                <option value="Diploma">Diploma</option>
+                <option value="Graduation/Diploma">Any Graduated</option>
+                <option value="Post Graduation/Masters">Post Graduation/Masters</option>
+                <option value="Doctorate/PhD">Doctorate/PhD</option>
               </select>
             </div>
 
-            {/* Gender */}
-            <div className="space-y-2">
-              <Label className="text-sm" htmlFor="gender">
-                Gender<span className="text-red-500">*</span>
-              </Label>
-              <select
-                id="gender"
-                value={formData.gender}
-                onChange={(e) => updateFormData("gender", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-10"
-              >
-                <option value="">Select gender</option>
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
+            {formData.highestQualification && formData.highestQualification !== "10th" && (
+              <div>
+                <Label htmlFor="course" className="text-sm font-medium">
+                  Course / Degree name <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="course"
+                  value={formData.course || ""}
+                  onChange={(e) => {
+                    const selectedCourseName = e.target.value
+                    const selectedCourse = availableCourses.find((c) => c.education_name === selectedCourseName)
+
+                    setFormData({
+                      ...formData,
+                      course: selectedCourseName,
+                      specialization: "", // Reset specialization when course changes
+                    })
+
+                    if (selectedCourse) {
+                      setSelectedEducationId(selectedCourse.id)
+                      console.log("[v0] Selected course:", selectedCourseName, "ID:", selectedCourse.id)
+                    }
+                  }}
+                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                  disabled={isLoadingCourses}
+                >
+                  <option value="">{isLoadingCourses ? "Loading courses..." : "Select course"}</option>
+                  {availableCourses.map((course) => (
+                    <option key={course.id} value={course.education_name}>
+                      {course.education_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Languages Known */}
-          <div className="space-y-4 border-t pt-4 mt-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Languages Known</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateFormData("languagesKnown", [
-                    ...formData.languagesKnown,
-                    { language: "", read: false, write: false, speak: false },
-                  ])
-                }}
-                className="rounded-full"
-              >
-                + Add Language
-              </Button>
-            </div>
+          {formData.highestQualification && formData.course && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="courseType" className="text-sm font-medium">
+                  Degree Type <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="courseType"
+                  value={formData.courseType || ""}
+                  onChange={(e) => setFormData({ ...formData, courseType: e.target.value })}
+                  className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                >
+                  <option value="">Select course type</option>
+                  <option value="Full Time">Full Time</option>
+                  <option value="Part Time">Part Time</option>
+                  <option value="Distance Learning">Distance Learning</option>
+                  <option value="Online">Online</option>
+                  <option value="Correspondence">Correspondence</option>
+                </select>
+              </div>
 
-            {formData.languagesKnown.map((lang, index) => (
-              <div key={index} className="p-4 border rounded-lg space-y-3">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 space-y-2">
-                    <Label className="text-sm">Language</Label>
-                    <Input
-                      value={lang.language}
-                      onChange={(e) => {
-                        const updated = [...formData.languagesKnown]
-                        updated[index].language = e.target.value
-                        updateFormData("languagesKnown", updated)
-                      }}
-                      placeholder="e.g., English, Hindi, Tamil"
-                      className="rounded-full"
-                    />
+              {formData.highestQualification !== "10th" && formData.highestQualification !== "12th" && (
+                <div>
+                  <Label htmlFor="specialization" className="text-sm font-medium">
+                    Specialization <span className="text-red-500">*</span>
+                  </Label>
+                  <select
+                    id="specialization"
+                    value={formData.specialization || ""}
+                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                    className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    required
+                    disabled={isLoadingSpecializations || !formData.course}
+                  >
+                    <option value="">
+                      {isLoadingSpecializations
+                        ? "Loading specializations..."
+                        : formData.course
+                          ? "Select specialization"
+                          : "Select a course first"}
+                    </option>
+                    {availableSpecializations.map((spec) => (
+                      <option key={spec.id} value={spec.specialization_name}>
+                        {spec.specialization_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Replace the university input field with autocomplete dropdown */}
+          {formData.highestQualification && formData.course && (
+            <div className="relative">
+              <Label htmlFor="university" className="text-sm font-medium">
+                University/Institution <span className="text-red-500">*</span>
+              </Label>
+
+              {formData.university ? (
+                // Display selected institution with option to change
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="flex-1 h-10 px-4 rounded-full border border-gray-300 bg-gray-50 flex items-center">
+                    <span className="text-sm">{formData.university}</span>
                   </div>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => {
-                      const updated = formData.languagesKnown.filter((_, i) => i !== index)
-                      updateFormData("languagesKnown", updated)
+                      setFormData({ ...formData, university: "" })
+                      setInstitutionInput("")
                     }}
+                    className="rounded-full"
+                  >
+                    Change
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    id="university"
+                    type="text"
+                    value={institutionInput}
+                    onChange={(e) => {
+                      setInstitutionInput(e.target.value)
+                      fetchInstitutionSuggestions(e.target.value)
+                    }}
+                    onFocus={() => {
+                      setShowInstitutionDropdown(true)
+                      if (institutionInput.length >= 2) {
+                        fetchInstitutionSuggestions(institutionInput)
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => setShowInstitutionDropdown(false), 200)
+                    }}
+                    placeholder="Type to search institution..."
+                    className="mt-1 h-10 rounded-full"
+                    required
+                  />
+
+                  {showInstitutionDropdown && institutionInput.length >= 2 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {loadingInstitutions ? (
+                        <div className="p-3 text-sm text-gray-500">Loading institutions...</div>
+                      ) : institutionSuggestions.length > 0 ? (
+                        <>
+                          {institutionSuggestions.map((inst) => (
+                            <button
+                              key={inst.id}
+                              type="button"
+                              onClick={() => selectInstitution(inst.institute_name)}
+                              className="w-full text-left px-4 py-2 hover:bg-purple-50 focus:bg-purple-50 transition-colors"
+                            >
+                              <div className="text-sm font-medium text-gray-900">{inst.institute_name}</div>
+                              {inst.state && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {inst.state}
+                                  {inst.district ? `, ${inst.district}` : ""}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+
+                          {/* Add custom institution option */}
+                          <button
+                            type="button"
+                            onClick={addCustomInstitution}
+                            className="w-full text-left px-4 py-2 border-t border-gray-200 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            + Add "{institutionInput}" as custom institution
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={addCustomInstitution}
+                          className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          + Add "{institutionInput}" as custom institution
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="passingYearFrom" className="text-sm font-medium">
+                Year From <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="passingYearFrom"
+                value={formData.passingYearFrom || ""}
+                onChange={(e) => setFormData({ ...formData, passingYearFrom: e.target.value })}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select year</option>
+                {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="passingYearTo" className="text-sm font-medium">
+                Year To <span className="text-red-500">*</span>
+              </Label>
+              <select
+                id="passingYearTo"
+                value={formData.passingYearTo || ""}
+                onChange={(e) => setFormData({ ...formData, passingYearTo: e.target.value })}
+                className="mt-1 w-full h-10 px-4 rounded-full border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="">Select year</option>
+                {Array.from({ length: 51 }, (_, i) => 2030 - i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-8 mt-8 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Certifications (Optional)</h3>
+              <p className="text-sm text-muted-foreground">Add any relevant certifications you've earned</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCertification}
+              className="rounded-full bg-transparent"
+            >
+              + Add Certification
+            </Button>
+          </div>
+
+          {formData.certifications && formData.certifications.length > 0 && (
+            <div className="space-y-4">
+              {formData.certifications.map((cert, index) => (
+                <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Certification Name</Label>
+                      <Input
+                        value={certInputs[index]?.name || ""}
+                        onChange={(e) => {
+                          setCertInputs({
+                            ...certInputs,
+                            [index]: { ...certInputs[index], name: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].name = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        placeholder="e.g., AWS Certified Solutions Architect"
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Issuing Organization</Label>
+                      <Input
+                        value={certInputs[index]?.issuer || ""}
+                        onChange={(e) => {
+                          setCertInputs({
+                            ...certInputs,
+                            [index]: { ...certInputs[index], issuer: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].issuer = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        placeholder="e.g., Amazon Web Services"
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Issue Date</Label>
+                      <Input
+                        type="month"
+                        value={cert.issueDate}
+                        onChange={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].issueDate = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Expiry Date (Optional)</Label>
+                      <Input
+                        type="month"
+                        value={cert.expiryDate || ""}
+                        onChange={(e) => {
+                          const certs = [...(formData.certifications || [])]
+                          certs[index].expiryDate = e.target.value
+                          updateFormData("certifications", certs)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const certs = formData.certifications?.filter((_, i) => i !== index) || []
+                      const newInputs = { ...certInputs }
+                      delete newInputs[index]
+                      // Re-index remaining inputs
+                      const reindexed: { [key: number]: { name: string; issuer: string } } = {}
+                      Object.keys(newInputs).forEach((key) => {
+                        const oldIndex = Number.parseInt(key)
+                        const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                        reindexed[newIndex] = newInputs[oldIndex]
+                      })
+                      setCertInputs(reindexed)
+                      updateFormData("certifications", certs)
+                    }}
+                    className="rounded-full h-8 px-3 text-xs"
                   >
                     Remove
                   </Button>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={lang.read}
-                      onChange={(e) => {
-                        const updated = [...formData.languagesKnown]
-                        updated[index].read = e.target.checked
-                        updateFormData("languagesKnown", updated)
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Read</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={lang.write}
-                      onChange={(e) => {
-                        const updated = [...formData.languagesKnown]
-                        updated[index].write = e.target.checked
-                        updateFormData("languagesKnown", updated)
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Write</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={lang.speak}
-                      onChange={(e) => {
-                        const updated = [...formData.languagesKnown]
-                        updated[index].speak = e.target.checked
-                        updateFormData("languagesKnown", updated)
-                      }}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm">Speak</span>
-                  </label>
-                </div>
-              </div>
-            ))}
+        <div className="pt-8 mt-8 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Projects</h3>
+              <p className="text-sm text-muted-foreground">Detail any significant projects you've worked on</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addProject}
+              className="rounded-full bg-transparent"
+            >
+              + Add Project
+            </Button>
           </div>
+
+          {formData.projects && formData.projects.length > 0 && (
+            <div className="space-y-4">
+              {formData.projects.map((project, index) => (
+                <div key={index} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label htmlFor={`projectTitle-${index}`} className="text-sm">
+                        Project Title
+                      </Label>
+                      <Input
+                        id={`projectTitle-${index}`}
+                        value={projectInputs[index]?.title || ""}
+                        onChange={(e) => {
+                          setProjectInputs({
+                            ...projectInputs,
+                            [index]: { ...projectInputs[index], title: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const updatedProjects = [...formData.projects]
+                          updatedProjects[index] = { ...updatedProjects[index], title: e.target.value }
+                          updateFormData("projects", updatedProjects)
+                        }}
+                        placeholder="e.g., E-commerce Platform"
+                        className="mt-1 h-10 rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor={`projectRole-${index}`} className="text-sm">
+                        Your Role
+                      </Label>
+                      <Input
+                        id={`projectRole-${index}`}
+                        value={projectInputs[index]?.role || ""}
+                        onChange={(e) => {
+                          setProjectInputs({
+                            ...projectInputs,
+                            [index]: { ...projectInputs[index], role: e.target.value },
+                          })
+                        }}
+                        onBlur={(e) => {
+                          const updatedProjects = [...formData.projects]
+                          updatedProjects[index] = { ...updatedProjects[index], role: e.target.value }
+                          updateFormData("projects", updatedProjects)
+                        }}
+                        placeholder="e.g., Lead Developer"
+                        className="mt-1 h-10 rounded-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label className="text-sm">Start Date</Label>
+                      <Input
+                        type="month"
+                        value={project.startDate}
+                        onChange={(e) => {
+                          const projects = [...(formData.projects || [])]
+                          projects[index].startDate = e.target.value
+                          updateFormData("projects", projects)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">End Date (Optional)</Label>
+                      <Input
+                        type="month"
+                        value={project.endDate || ""}
+                        onChange={(e) => {
+                          const projects = [...(formData.projects || [])]
+                          projects[index].endDate = e.target.value
+                          updateFormData("projects", projects)
+                        }}
+                        className="rounded-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <Label htmlFor={`projectDescription-${index}`} className="text-sm">
+                      Description
+                    </Label>
+                    <Input
+                      id={`projectDescription-${index}`}
+                      value={projectInputs[index]?.description || ""}
+                      onChange={(e) => {
+                        setProjectInputs({
+                          ...projectInputs,
+                          [index]: { ...projectInputs[index], description: e.target.value },
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const updatedProjects = [...formData.projects]
+                        updatedProjects[index] = { ...updatedProjects[index], description: e.target.value }
+                        updateFormData("projects", updatedProjects)
+                      }}
+                      placeholder="Briefly describe the project and your contributions"
+                      className="mt-1 h-10 rounded-full"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`projectTechnologies-${index}`} className="text-sm">
+                      Technologies Used
+                    </Label>
+                    <Input
+                      id={`projectTechnologies-${index}`}
+                      value={projectInputs[index]?.technologies || ""}
+                      onChange={(e) => {
+                        setProjectInputs({
+                          ...projectInputs,
+                          [index]: { ...projectInputs[index], technologies: e.target.value },
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const updatedProjects = [...formData.projects]
+                        updatedProjects[index] = { ...updatedProjects[index], technologies: e.target.value }
+                        updateFormData("projects", updatedProjects)
+                      }}
+                      placeholder="e.g., React, Node.js, MongoDB, AWS"
+                      className="mt-1 h-10 rounded-full"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const projects = formData.projects?.filter((_, i) => i !== index) || []
+                      const newInputs = { ...projectInputs }
+                      delete newInputs[index]
+                      // Re-index remaining inputs
+                      const reindexed: {
+                        [key: number]: { title: string; role: string; description: string; technologies: string }
+                      } = {}
+                      Object.keys(newInputs).forEach((key) => {
+                        const oldIndex = Number.parseInt(key)
+                        const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                        reindexed[newIndex] = newInputs[oldIndex]
+                      })
+                      setProjectInputs(reindexed)
+                      updateFormData("projects", projects)
+                    }}
+                    className="rounded-full h-8 px-3 text-xs mt-4"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex justify-between pt-4 border-t">
-          <Button type="button" onClick={prevStep} variant="outline" className="rounded-full px-8 bg-transparent h-10">
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-full px-8 bg-transparent"
+            onClick={prevStep}
+            disabled={isLoading}
+          >
             Back
           </Button>
           <Button
-            onClick={handleSaveAndComplete} // Use proper save function
-            className="w-full sm:w-auto h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-full px-8"
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+            onClick={handleSaveAndContinue}
             disabled={isLoading}
           >
-            {isLoading ? "Submitting..." : "Complete Registration"}
+            {isLoading ? "Saving..." : "Save & Continue"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+const Step5HeadlineAndPreferences = ({
+  formData,
+  updateFormData,
+  nextStep,
+  prevStep,
+  setFormData,
+  setIsLoading,
+  isLoading,
+  handleCompleteRegistration, // Receive the handler
+}: StepProps) => {
+  const [showHeadlineDropdown, setShowHeadlineDropdown] = useState(false)
+  const [headlineInput, setHeadlineInput] = useState(formData.resumeHeadline || "")
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false)
+  const [locationInput, setLocationInput] = useState("")
+  const [showCityDropdown, setShowCityDropdown] = useState(false)
+  const [cityInput, setCityInput] = useState(formData.currentCity || "")
+  const [salaryInput, setSalaryInput] = useState(formData.preferredSalary || "")
+  const [languageInputs, setLanguageInputs] = useState<{ [key: number]: string }>({
+    ...(formData.languagesKnown || []).reduce((acc, lang, index) => ({ ...acc, [index]: lang.language || "" }), {}),
+  })
+
+  // Generate profile-relevant headline suggestions based on user's data
+  const getProfileRelevantHeadlines = () => {
+    const industry = formData.industry || ""
+    const jobTitle = formData.jobRole || "" // Use jobRole from Step 3
+    const yearsOfExp = formData.totalExperienceYears || 0
+    const skills = (formData.skills || []).slice(0, 3).join(", ") // Use single skills field
+
+    const relevantHeadlines = []
+
+    // If user has job title and industry, create specific headlines
+    if (jobTitle && industry) {
+      relevantHeadlines.push(`${jobTitle} with ${yearsOfExp}+ years in ${industry}`)
+      if (skills) {
+        relevantHeadlines.push(`${jobTitle} skilled in ${skills}`)
+      }
+    }
+
+    // Add generic but relevant headlines based on industry
+    if (industry.includes("IT") || industry.includes("Technology")) {
+      relevantHeadlines.push(
+        "Experienced Software Engineer with full-stack development expertise",
+        "Full Stack Developer proficient in modern technologies",
+        "Senior Developer with strong problem-solving skills",
+      )
+    }
+    if (industry.includes("BPO") || industry.includes("Call")) {
+      relevantHeadlines.push(
+        "Customer Service Professional with excellent communication skills",
+        "Team Lead with proven track record in client satisfaction",
+        "Quality Analyst focused on process improvement",
+      )
+    }
+    if (industry.includes("Marketing") || industry.includes("Sales")) {
+      relevantHeadlines.push(
+        "Digital Marketing Specialist with data-driven approach",
+        "Sales Professional with consistent target achievement",
+        "Marketing Manager with proven ROI improvement",
+      )
+    }
+
+    // Fallback generic headlines if no specific data
+    if (relevantHeadlines.length === 0) {
+      relevantHeadlines.push(
+        `Professional with ${yearsOfExp}+ years of experience`,
+        "Dedicated professional seeking new opportunities",
+        "Results-oriented professional with strong work ethic",
+        "Experienced professional with domain expertise",
+      )
+    }
+
+    return relevantHeadlines.slice(0, 6) // Limit to 6 suggestions
+  }
+
+  const headlineSuggestions = getProfileRelevantHeadlines()
+
+  const filteredHeadlines = headlineSuggestions.filter((h) => h.toLowerCase().includes(headlineInput.toLowerCase()))
+
+  const [cities, setCities] = useState<Array<{ city: string; state: string }>>([])
+
+  useEffect(() => {
+    // Load cities from component constant (already defined in the file)
+    const INDIAN_CITIES = [
+      { city: "Mumbai", state: "Maharashtra" },
+      { city: "Delhi", state: "Delhi" },
+      { city: "Bangalore", state: "Karnataka" },
+      { city: "Hyderabad", state: "Telangana" },
+      { city: "Chennai", state: "Tamil Nadu" },
+      { city: "Kolkata", state: "West Bengal" },
+      { city: "Pune", state: "Maharashtra" },
+      { city: "Ahmedabad", state: "Gujarat" },
+      { city: "Jaipur", state: "Rajasthan" },
+      { city: "Surat", state: "Gujarat" },
+      { city: " Lucknow", state: "Uttar Pradesh" },
+      { city: "Kanpur", state: "Uttar Pradesh" },
+      { city: "Nagpur", state: "Maharashtra" },
+      { city: "Indore", state: "Madhya Pradesh" },
+      { city: "Thane", state: "Maharashtra" },
+      { city: "Bhopal", state: "Madhya Pradesh" },
+      { city: "Visakhapatnam", state: "Andhra Pradesh" },
+    ]
+    setCities(INDIAN_CITIES)
+  }, [])
+
+  const filteredCities = cities.filter(
+    (c) =>
+      c.city.toLowerCase().includes(cityInput.toLowerCase()) || c.state.toLowerCase().includes(cityInput.toLowerCase()),
+  )
+
+  const filteredLocations = cities.filter((c) => c.city.toLowerCase().includes(locationInput.toLowerCase()))
+
+  const formatIndianSalary = (value: string) => {
+    const num = value.replace(/,/g, "")
+    if (!/^\d*$/.test(num)) return value
+
+    if (num.length === 0) return ""
+
+    const lastThree = num.substring(num.length - 3)
+    const otherNumbers = num.substring(0, num.length - 3)
+    const formatted = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + (otherNumbers ? "," : "") + lastThree
+    return formatted
+  }
+
+  const handleAddLocation = () => {
+    if (locationInput.trim()) {
+      const currentLocations = formData.preferredLocations || []
+      if (!currentLocations.includes(locationInput.trim())) {
+        updateFormData("preferredLocations", [...currentLocations, locationInput.trim()])
+      }
+      setLocationInput("")
+      setShowLocationDropdown(false)
+    }
+  }
+
+  const handleRemoveLocation = (index: number) => {
+    const currentLocations = formData.preferredLocations || []
+    updateFormData(
+      "preferredLocations",
+      currentLocations.filter((_, i) => i !== index),
+    )
+  }
+
+  const handleAddLanguage = () => {
+    const currentLanguages = formData.languagesKnown || []
+    const newIndex = currentLanguages.length
+    updateFormData("languagesKnown", [...currentLanguages, { language: "", read: false, write: false, speak: false }])
+    setLanguageInputs({
+      ...languageInputs,
+      [newIndex]: "",
+    })
+  }
+
+  const handleRemoveLanguage = (index: number) => {
+    const currentLanguages = formData.languagesKnown || []
+    updateFormData(
+      "languagesKnown",
+      currentLanguages.filter((_, i) => i !== index),
+    )
+    const newInputs = { ...languageInputs }
+    delete newInputs[index]
+    // Re-index remaining inputs
+    const reindexed: { [key: number]: string } = {}
+    Object.keys(newInputs).forEach((key) => {
+      const oldIndex = Number.parseInt(key)
+      const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+      reindexed[newIndex] = newInputs[oldIndex]
+    })
+    setLanguageInputs(reindexed)
+  }
+
+  const handleLanguageChange = (index: number, field: string, value: any) => {
+    const currentLanguages = formData.languagesKnown || []
+    const updatedLanguages = [...currentLanguages]
+    updatedLanguages[index] = { ...updatedLanguages[index], [field]: value }
+    updateFormData("languagesKnown", updatedLanguages)
+  }
+
+  return (
+    <Card className="w-full max-w-4xl mx-auto p-6 md:p-8">
+      <CardHeader className="border-b pb-4">
+        <CardTitle className="text-2xl font-bold">Preferences</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">Tell us about your job preferences</p>
+      </CardHeader>
+      <CardContent className="pt-6 space-y-6">
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+
+            <div className="mb-4">
+              <Label htmlFor="resumeHeadline" className="text-sm">
+                Resume Headline <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  value={headlineInput}
+                  onChange={(e) => {
+                    setHeadlineInput(e.target.value)
+                    setShowHeadlineDropdown(e.target.value.length > 0)
+                  }}
+                  onFocus={() => setShowHeadlineDropdown(headlineInput.length > 0)}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      updateFormData("resumeHeadline", headlineInput)
+                      setShowHeadlineDropdown(false)
+                    }, 200)
+                  }}
+                  placeholder="e.g., Experienced Software Engineer..."
+                  className="rounded-full"
+                />
+                {showHeadlineDropdown && filteredHeadlines.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filteredHeadlines.map((headline, idx) => (
+                      <div
+                        key={idx}
+                        className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-sm"
+                        onClick={() => {
+                          setHeadlineInput(headline)
+                          updateFormData("resumeHeadline", headline)
+                          setShowHeadlineDropdown(false)
+                        }}
+                      >
+                        {headline}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">
+                  Current City / State <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={cityInput}
+                    onChange={(e) => {
+                      setCityInput(e.target.value)
+                      setShowCityDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => setShowCityDropdown(cityInput.length > 0)}
+                    onBlur={() => setTimeout(() => setShowCityDropdown(false), 200)}
+                    placeholder="Type to search city"
+                    className="rounded-full"
+                  />
+                  {showCityDropdown && filteredCities.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredCities.map((c, idx) => (
+                        <div
+                          key={idx}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            setCityInput(`${c.city}, ${c.state}`)
+                            updateFormData("currentCity", c.city)
+                            updateFormData("currentState", c.state)
+                            setShowCityDropdown(false)
+                          }}
+                        >
+                          {c.city}, {c.state}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">
+                  Availability to Join <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={formData.availabilityToJoin}
+                  onChange={(e) => updateFormData("availabilityToJoin", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select availability</option>
+                  <option value="Immediate">Immediate</option>
+                  <option value="15 Days">15 Days</option>
+                  <option value="1 Month">1 Month</option>
+                  <option value="2 Months">2 Months</option>
+                  <option value="3 Months">3 Months</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">
+                  Preferred Locations <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={locationInput}
+                    onChange={(e) => {
+                      setLocationInput(e.target.value)
+                      setShowLocationDropdown(e.target.value.length > 0)
+                    }}
+                    onFocus={() => setShowLocationDropdown(locationInput.length > 0)}
+                    onBlur={() => setTimeout(() => setShowLocationDropdown(false), 200)}
+                    placeholder="Type to search cities"
+                    className="rounded-full"
+                  />
+                  {showLocationDropdown && filteredLocations.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {filteredLocations.map((loc, idx) => (
+                        <div
+                          key={idx}
+                          className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                          onClick={() => {
+                            const locs = formData.preferredLocations || []
+                            if (!locs.includes(loc.city)) {
+                              updateFormData("preferredLocations", [...locs, loc.city])
+                            }
+                            setLocationInput("")
+                            setShowLocationDropdown(false)
+                          }}
+                        >
+                          {loc.city}, {loc.state}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {(formData.preferredLocations || []).map((loc, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center gap-2"
+                    >
+                      {loc}
+                      <button
+                        onClick={() => {
+                          const locs = formData.preferredLocations?.filter((_, i) => i !== idx) || []
+                          updateFormData("preferredLocations", locs)
+                        }}
+                        className="hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">
+                  Expected Salary (INR) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  value={salaryInput}
+                  onChange={(e) => {
+                    // Only update local state, don't trigger formData update
+                    setSalaryInput(e.target.value)
+                  }}
+                  onBlur={(e) => {
+                    // Finalize the formatting and save to formData on blur
+                    const formatted = formatIndianSalary(e.target.value)
+                    setSalaryInput(formatted)
+                    updateFormData("preferredSalary", formatted)
+                  }}
+                  placeholder="e.g., 10,00,000"
+                  className="rounded-full"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Personal Details (Optional)</h3>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-sm">Marital Status</Label>
+                <select
+                  value={formData.maritalStatus}
+                  onChange={(e) => updateFormData("maritalStatus", e.target.value)}
+                  className="mt-1 h-10 w-full rounded-full border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select status</option>
+                  <option value="single">Single</option>
+                  <option value="married">Married</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-sm">Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={formData.dateOfBirth}
+                  onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
+                  className="rounded-full"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold">Languages Known</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full bg-transparent"
+                  onClick={handleAddLanguage}
+                >
+                  + Add Language
+                </Button>
+              </div>
+
+              {(formData.languagesKnown || []).map((lang, index) => (
+                <div key={index} className="bg-gray-50 p-4 rounded-lg mb-3">
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <Input
+                      value={languageInputs[index] || ""}
+                      onChange={(e) => {
+                        setLanguageInputs({
+                          ...languageInputs,
+                          [index]: e.target.value,
+                        })
+                      }}
+                      onBlur={(e) => {
+                        const langs = [...(formData.languagesKnown || [])]
+                        langs[index].language = e.target.value
+                        updateFormData("languagesKnown", langs)
+                      }}
+                      placeholder="Language name"
+                      className="rounded-full"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const langs = formData.languagesKnown?.filter((_, i) => i !== index) || []
+                        const newInputs = { ...languageInputs }
+                        delete newInputs[index]
+                        // Re-index remaining inputs
+                        const reindexed: { [key: number]: string } = {}
+                        Object.keys(newInputs).forEach((key) => {
+                          const oldIndex = Number.parseInt(key)
+                          const newIndex = oldIndex > index ? oldIndex - 1 : oldIndex
+                          reindexed[newIndex] = newInputs[oldIndex]
+                        })
+                        setLanguageInputs(reindexed)
+                        updateFormData("languagesKnown", langs)
+                      }}
+                      className="rounded-full h-8 px-3 text-xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.read}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].read = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Read</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.write}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].write = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Write</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={lang.speak}
+                        onChange={(e) => {
+                          const langs = [...(formData.languagesKnown || [])]
+                          langs[index].speak = e.target.checked
+                          updateFormData("languagesKnown", langs)
+                        }}
+                      />
+                      <span className="text-sm">Speak</span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between pt-4">
+          <Button
+            variant="outline"
+            onClick={prevStep}
+            className="rounded-full px-8 bg-transparent"
+            disabled={isLoading}
+          >
+            Previous
+          </Button>
+          <Button
+            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full px-8"
+            onClick={async () => {
+              setIsLoading(true)
+              await handleCompleteRegistration()
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? "Completing Registration..." : "Complete Registration"}
           </Button>
         </div>
       </CardContent>

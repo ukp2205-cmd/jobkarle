@@ -14,12 +14,12 @@ import { PaymentCheckoutForm } from "@/components/payment-checkout-form"
 
 interface PaymentCheckoutModalProps {
   planType: string
-  billingCycle: "monthly" | "annual"
+  billingCycle?: "monthly" | "annual"
   amount: number
   onClose: () => void
 }
 
-export function PaymentCheckoutModal({ planType, billingCycle, amount, onClose }: PaymentCheckoutModalProps) {
+export function PaymentCheckoutModal({ planType, billingCycle = "monthly", amount, onClose }: PaymentCheckoutModalProps) {
   const router = useRouter()
   const [step, setStep] = useState<"login" | "payment">("login")
   const [loading, setLoading] = useState(true)

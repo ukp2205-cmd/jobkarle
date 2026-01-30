@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server"
 import { getEmployerSession } from "./employer-auth-actions"
+import { put } from "@vercel/blob"
 
 export async function getEmployerProfile() {
   try {
@@ -73,6 +74,7 @@ export async function updateEmployerProfile(profileData: any) {
         description: profileData.description,
         year_established: profileData.year_established,
         employee_count: profileData.employee_count,
+        logo_url: profileData.logo_url,
         tan_number: profileData.tan_number,
         gstin: profileData.gstin,
         phone_number_2: profileData.phone_number_2,
@@ -96,5 +98,45 @@ export async function updateEmployerProfile(profileData: any) {
   } catch (error: any) {
     console.error("[v0] Exception in updateEmployerProfile:", error)
     return { success: false, error: error.message }
+  }
+}
+
+export async function uploadEmployerProfileLogo(formData: FormData) {
+  try {
+    const { success, session } = await getEmployerSession()
+
+    if (!success || !session) {
+      return { success: false, message: "Not authenticated" }
+    }
+
+    const file = formData.get("file") as File
+
+    if (!file) {
+      return { success: false, message: "File is required" }
+    }
+
+    console.log("[v0] Uploading employer profile logo:", file.name, file.size)
+
+    const blob = await put(`employer-logos/${session.employerId}-${Date.now()}-${file.name}`, file, {
+      access: "public",
+    })
+
+    console.log("[v0] Logo uploaded successfully:", blob.url)
+
+    const supabase = await createServerClient()
+    const { error: updateError } = await supabase
+      .from("employers")
+      .update({ logo_url: blob.url })
+      .eq("id", session.employerId)
+
+    if (updateError) {
+      console.error("[v0] Error updating logo_url in database:", updateError)
+      return { success: false, message: "Failed to update logo in database" }
+    }
+
+    return { success: true, url: blob.url }
+  } catch (error: any) {
+    console.error("[v0] uploadEmployerProfileLogo: Exception:", error)
+    return { success: false, message: error.message }
   }
 }

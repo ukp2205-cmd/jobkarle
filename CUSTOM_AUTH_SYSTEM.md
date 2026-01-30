@@ -60,12 +60,12 @@ The JobKarle platform uses a **custom authentication system** for employers that
 
 Protected routes use `getEmployerSession()` to verify authentication:
 
-```typescript
+\`\`\`typescript
 const { success, session } = await getEmployerSession()
 if (!success || !session) {
   // Redirect to login
 }
-```
+\`\`\`
 
 ## Key Files
 
@@ -102,26 +102,26 @@ The decision to use custom authentication instead of Supabase Auth was made to:
 ## Usage Examples
 
 ### Login
-```typescript
+\`\`\`typescript
 const result = await loginEmployer(email, password)
 if (result.success) {
   // Redirect to dashboard
 }
-```
+\`\`\`
 
 ### Check Session
-```typescript
+\`\`\`typescript
 const { success, session } = await getEmployerSession()
 if (success && session) {
   console.log("Employer:", session.email)
 }
-```
+\`\`\`
 
 ### Logout
-```typescript
+\`\`\`typescript
 await logoutEmployer()
 // Redirect to login
-```
+\`\`\`
 
 ## Important Notes
 

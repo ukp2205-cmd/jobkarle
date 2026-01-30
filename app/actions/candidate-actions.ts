@@ -127,7 +127,22 @@ export async function createCandidate(data: {
 
   if (error) {
     console.error("Error creating candidate:", error)
-    return { success: false, error: error.message }
+
+    let errorMessage = error.message
+
+    // Check for duplicate mobile number (unique constraint violation)
+    if (error.code === "23505") {
+      if (error.message.includes("mobile_number") || error.message.includes("mobile")) {
+        errorMessage =
+          "This mobile number is already in use. Please use a different mobile number or login to your existing account."
+      } else if (error.message.includes("email")) {
+        errorMessage = "This email is already in use. Please use a different email address."
+      } else {
+        errorMessage = "An account with these details already exists. Please check your information."
+      }
+    }
+
+    return { success: false, error: errorMessage }
   }
 
   return { success: true, candidateId: candidate.id }
@@ -172,11 +187,12 @@ type AdditionalEmploymentEntry = Omit<EmploymentEntry, "type">
 export async function updateEmploymentDetails(
   email: string,
   data: {
-    currentEmployment: EmploymentEntry | null
-    additionalEmployment: AdditionalEmploymentEntry[]
+    currentEmployment: any | null
+    employmentHistory?: any[]
+    workStatus?: string
     totalExperienceYears: string
     totalExperienceMonths: string
-    skillsForRole: string[]
+    skills: string[]
     industry: string
     department: string
     roleCategory: string
@@ -185,25 +201,17 @@ export async function updateEmploymentDetails(
 ) {
   const supabase = await createClient()
 
-  const employmentHistory = []
+  const employmentHistory = data.employmentHistory || []
   if (data.currentEmployment) {
     employmentHistory.push({
       type: "current",
       ...data.currentEmployment,
     })
   }
-  if (data.additionalEmployment && data.additionalEmployment.length > 0) {
-    data.additionalEmployment.forEach((entry) => {
-      employmentHistory.push({
-        type: "additional",
-        ...entry,
-      })
-    })
-  }
 
   console.log("[SERVER] updateEmploymentDetails called for email:", email)
   console.log("[SERVER] Employment history:", JSON.stringify(employmentHistory))
-  console.log("[SERVER] Skills:", data.skillsForRole)
+  console.log("[SERVER] Skills:", data.skills)
 
   const currentEmployment = data.currentEmployment
 
@@ -222,8 +230,9 @@ export async function updateEmploymentDetails(
       notice_period: currentEmployment?.noticePeriod || null,
       total_experience_years: data.totalExperienceYears ? Number.parseInt(data.totalExperienceYears) : null,
       total_experience_months: data.totalExperienceMonths ? Number.parseInt(data.totalExperienceMonths) : null,
-      skills_for_role: data.skillsForRole,
-      skills_you_know: data.skillsForRole, // Also populate skills_you_know column
+      skills: data.skills,
+      skills_for_role: data.skills,
+      skills_you_know: data.skills,
       industry: data.industry || null,
       department: data.department || null,
       role_category: data.roleCategory || null,
@@ -325,13 +334,14 @@ export async function updatePreferencesAndComplete(
       endDate?: string
       url?: string
     }>
-    certifications?: Array<{ name: string; issuer: string; issueDate: string; expiryDate?: string }> // Added certifications parameter
+    certifications?: Array<{ name: string; issuer: string; issueDate: string; expiryDate?: string }>
+    skills?: string[]
   },
 ) {
   const supabase = await createClient()
 
   console.log("[SERVER] updatePreferencesAndComplete called for email:", email)
-  console.log("[SERVER] Complete data being saved:", JSON.stringify(data, null, 2)) // Enhanced logging
+  console.log("[SERVER] Complete data being saved:", JSON.stringify(data, null, 2))
 
   const updateData: Record<string, unknown> = {
     resume_headline: data.resumeHeadline || null,
@@ -342,12 +352,15 @@ export async function updatePreferencesAndComplete(
     languages_known: data.languagesKnown || [],
     marital_status: data.maritalStatus || null,
     projects: data.projects || [],
-    certifications: data.certifications || [], // Added certifications to update data
+    certifications: data.certifications || [],
+    skills: data.skills || [],
+    skills_for_role: data.skills || [],
+    skills_you_know: data.skills || [],
     registration_completed: true,
     current_registration_step: 6,
   }
 
-  console.log("[SERVER] Exact database update payload:", JSON.stringify(updateData, null, 2)) // Log exact payload
+  console.log("[SERVER] Exact database update payload:", JSON.stringify(updateData, null, 2))
 
   const { data: updateResult, error } = await supabase.from("candidates").update(updateData).eq("email", email).select()
 
@@ -365,7 +378,7 @@ export async function updatePreferencesAndComplete(
   }
 
   console.log("[SERVER] Successfully completed registration for:", email)
-  console.log("[SERVER] Final saved data:", JSON.stringify(updateResult[0], null, 2)) // Log what was actually saved
+  console.log("[SERVER] Final saved data:", JSON.stringify(updateResult[0], null, 2))
   return { success: true }
 }
 
@@ -460,7 +473,9 @@ export async function updateCandidateProfile(
     annual_salary: string
     notice_period: string
     currently_employed: string
+    skills: string[]
     skills_for_role: string[]
+    skills_you_know: string[]
     preferred_salary: string
     preferred_locations: string[]
     highest_qualification: string
@@ -484,6 +499,8 @@ export async function updateCandidateProfile(
       endDate?: string
       url?: string
     }>
+    profile_picture_url: string
+    employment_history: any[]
   }>,
 ) {
   const supabase = await createClient()
@@ -491,7 +508,18 @@ export async function updateCandidateProfile(
   console.log("[SERVER] updateCandidateProfile called for ID:", candidateId)
   console.log("[SERVER] Update data:", JSON.stringify(data))
 
-  const { data: updateResult, error } = await supabase.from("candidates").update(data).eq("id", candidateId).select()
+  const updatePayload = { ...data }
+  if (data.skills) {
+    updatePayload.skills = data.skills
+    updatePayload.skills_for_role = data.skills
+    updatePayload.skills_you_know = data.skills
+  }
+
+  const { data: updateResult, error } = await supabase
+    .from("candidates")
+    .update(updatePayload)
+    .eq("id", candidateId)
+    .select()
 
   if (error) {
     console.error("[SERVER] Error updating profile:", error)
@@ -565,10 +593,10 @@ export async function updateEmploymentHistory(
 export async function getRecommendedJobs(candidateId: string) {
   const supabase = await createClient()
 
-  // Get candidate's skills and preferences
+  // Get candidate's skills and preferences - prioritize 'skills' column
   const { data: candidate } = await supabase
     .from("candidates")
-    .select("skills_for_role, preferred_locations")
+    .select("skills, skills_for_role, preferred_locations, blocked_companies")
     .eq("id", candidateId)
     .single()
 
@@ -576,13 +604,24 @@ export async function getRecommendedJobs(candidateId: string) {
     return { success: false, jobs: [] }
   }
 
-  // Fetch published jobs
-  const { data: jobs, error } = await supabase
+  // Use skills field, fall back to skills_for_role if skills is empty
+  const candidateSkills = candidate.skills || candidate.skills_for_role || []
+  const blockedCompanies = candidate.blocked_companies || []
+
+  // Fetch published jobs, excluding blocked companies
+  let query = supabase
     .from("job_postings")
     .select("*")
     .eq("status", "published")
     .order("created_at", { ascending: false })
-    .limit(20)
+
+  // Filter out jobs from blocked companies
+  if (blockedCompanies && blockedCompanies.length > 0) {
+    const blockedCompanyNames = blockedCompanies.map((bc: any) => bc.company_name)
+    query = query.not("company_name", "in", `(${blockedCompanyNames.join(",")})`)
+  }
+
+  const { data: jobs, error } = await query.limit(20)
 
   if (error) {
     console.error("[SERVER] Error fetching recommended jobs:", error)
@@ -612,7 +651,7 @@ export async function getSavedJobs(candidateId: string) {
 
   const { data, error } = await supabase
     .from("saved_jobs")
-    .select("job_id, job_postings(*)")
+    .select("job_id, job_postings(*, employers!job_postings_employer_id_fkey(logo_url))")
     .eq("candidate_id", candidateId)
 
   if (error) {
@@ -644,7 +683,7 @@ export async function getMyApplications(candidateId: string) {
 
   const { data, error } = await supabase
     .from("job_applications")
-    .select("*, job_postings(*)")
+    .select("*, job_postings(*, employers!job_postings_employer_id_fkey(logo_url))")
     .eq("candidate_id", candidateId)
     .order("applied_at", { ascending: false })
 

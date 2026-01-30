@@ -17,6 +17,9 @@ export interface JobsByIndustry {
     work_mode: string
     created_at: string
     category: string // Added category field for displaying Premium/Urgent Hiring tag
+    required_skills: string[] // Added required_skills to interface
+    company_logo_url?: string
+    employers?: { logo_url?: string }
   }>
 }
 
@@ -24,10 +27,10 @@ export async function getJobsByIndustry() {
   try {
     const supabase = createAdminClient()
 
-    // Fetch all published jobs
+    // Fetch all published jobs with employer logos
     const { data: jobs, error } = await supabase
       .from("job_postings")
-      .select("*")
+      .select("*, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .order("created_at", { ascending: false })
 
@@ -60,6 +63,7 @@ export async function getJobsByIndustry() {
           work_mode: job.work_mode,
           created_at: job.created_at,
           category: job.category, // Added category field for displaying Premium/Urgent Hiring tag
+          required_skills: job.required_skills || [], // Added required_skills to data mapping
         })
       } else {
         // Add job to each of its industries
@@ -80,6 +84,7 @@ export async function getJobsByIndustry() {
             work_mode: job.work_mode,
             created_at: job.created_at,
             category: job.category, // Added category field for displaying Premium/Urgent Hiring tag
+            required_skills: job.required_skills || [], // Added required_skills to data mapping
           })
         })
       }
@@ -97,8 +102,6 @@ export async function getJobsByIndustry() {
         if (b.industry === "Other") return -1
         return a.industry.localeCompare(b.industry)
       })
-
-    console.log("[v0] Grouped jobs into", jobsByIndustry.length, "industries")
 
     return { success: true, jobsByIndustry }
   } catch (error: any) {

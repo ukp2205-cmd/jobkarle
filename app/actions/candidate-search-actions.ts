@@ -10,6 +10,7 @@ type SearchFilters = {
   maxSalary?: number
   employmentTypes?: string[]
   workModes?: string[]
+  datePosted?: "24h" | "7d" | "30d" | "all"
 }
 
 export async function searchJobs(query: string, filters: SearchFilters = {}, candidateId?: string) {
@@ -31,9 +32,27 @@ export async function searchJobs(query: string, filters: SearchFilters = {}, can
 
     const queryBuilder = supabase
       .from("job_postings")
-      .select("*, category, urgent_hiring, company_logo_url")
+      .select("*, category, urgent_hiring, company_logo_url, employers!job_postings_employer_id_fkey(logo_url)")
       .eq("status", "published")
       .order("created_at", { ascending: false })
+
+    if (filters.datePosted && filters.datePosted !== "all") {
+      const now = new Date()
+      let cutoffDate: Date
+
+      if (filters.datePosted === "24h") {
+        cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      } else if (filters.datePosted === "7d") {
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      } else if (filters.datePosted === "30d") {
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      } else {
+        cutoffDate = new Date(0) // All time
+      }
+
+      queryBuilder.gte("created_at", cutoffDate.toISOString())
+      console.log("[v0] Date posted filter applied:", filters.datePosted, "cutoff:", cutoffDate.toISOString())
+    }
 
     const { data: jobs, error } = await queryBuilder.limit(200)
 
@@ -290,6 +309,7 @@ export async function searchJobs(query: string, filters: SearchFilters = {}, can
       filters.minExperience !== undefined ? `${filters.minExperience} years` : "none",
     )
     console.log("[v0] Location filter:", filters.locations?.length ? filters.locations.join(", ") : "none")
+    console.log("[v0] Date posted filter:", filters.datePosted || "none")
     console.log("[v0] Total results:", filteredJobs.length)
 
     filteredJobs.sort((a, b) => {
@@ -490,5 +510,676 @@ export async function getSkillSuggestions(query = "") {
   } catch (error) {
     console.error("[v0] Error in getSkillSuggestions:", error)
     return { success: false, suggestions: [] }
+  }
+}
+
+export interface CandidateSearchResult {
+  id: string
+  full_name: string
+  email: string
+  mobile_number?: string
+  current_job_title?: string
+  company_name?: string
+  skills_for_role?: string[]
+  skills_you_know?: string[]
+  preferred_locations?: string[]
+  preferred_salary?: string
+  notice_period?: string
+  total_experience_years?: number
+  total_experience_months?: number
+  current_city?: string
+  current_state?: string
+  highest_qualification?: string
+  industry?: string
+  gender?: string
+  profile_picture_url?: string
+  resume_headline?: string
+  resume_url?: string
+  created_at?: string
+  updated_at?: string
+  is_mobile_verified?: boolean
+  otp_verified?: boolean
+}
+
+export async function getSkillsFromDB(query = "") {
+  try {
+    const supabase = await createServerClient()
+
+    let queryBuilder = supabase
+      .from("skills")
+      .select("id, skill_name, category")
+      .order("skill_name", { ascending: true })
+
+    if (query.trim()) {
+      queryBuilder = queryBuilder.ilike("skill_name", `%${query}%`)
+    }
+
+    const { data, error } = await queryBuilder.limit(50)
+
+    if (error) {
+      console.error("[v0] Error fetching skills:", error)
+      return { success: false, skills: [] }
+    }
+
+    return { success: true, skills: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getSkillsFromDB:", error)
+    return { success: false, skills: [] }
+  }
+}
+
+export async function getLocationsFromDB(query = "") {
+  try {
+    const supabase = await createServerClient()
+
+    // Fetch cities
+    let citiesQuery = supabase.from("cities").select("id, name, state_id").order("name", { ascending: true })
+
+    if (query.trim()) {
+      citiesQuery = citiesQuery.ilike("name", `%${query}%`)
+    }
+
+    const { data: cities, error: citiesError } = await citiesQuery.limit(30)
+
+    // Fetch states
+    let statesQuery = supabase.from("states").select("id, name, country").order("name", { ascending: true })
+
+    if (query.trim()) {
+      statesQuery = statesQuery.ilike("name", `%${query}%`)
+    }
+
+    const { data: states, error: statesError } = await statesQuery.limit(20)
+
+    if (citiesError || statesError) {
+      console.error("[v0] Error fetching locations:", citiesError || statesError)
+      return { success: false, cities: [], states: [] }
+    }
+
+    return { success: true, cities: cities || [], states: states || [] }
+  } catch (error) {
+    console.error("[v0] Error in getLocationsFromDB:", error)
+    return { success: false, cities: [], states: [] }
+  }
+}
+
+export async function getIndustriesFromDB() {
+  try {
+    const supabase = await createServerClient()
+
+    const { data, error } = await supabase
+      .from("industries")
+      .select("id, name, description")
+      .order("name", { ascending: true })
+
+    if (error) {
+      console.error("[v0] Error fetching industries:", error)
+      return { success: false, industries: [] }
+    }
+
+    return { success: true, industries: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getIndustriesFromDB:", error)
+    return { success: false, industries: [] }
+  }
+}
+
+export async function getDepartmentsFromDB(industryId?: string) {
+  try {
+    const supabase = await createServerClient()
+
+    let queryBuilder = supabase
+      .from("departments")
+      .select("id, department_name, industry_id, description")
+      .eq("is_active", true)
+      .order("department_name", { ascending: true })
+
+    if (industryId) {
+      queryBuilder = queryBuilder.eq("industry_id", industryId)
+    }
+
+    const { data, error } = await queryBuilder
+
+    if (error) {
+      console.error("[v0] Error fetching departments:", error)
+      return { success: false, departments: [] }
+    }
+
+    return { success: true, departments: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getDepartmentsFromDB:", error)
+    return { success: false, departments: [] }
+  }
+}
+
+export async function getRoleCategoriesFromDB(departmentId?: string) {
+  try {
+    const supabase = await createServerClient()
+
+    let queryBuilder = supabase
+      .from("role_categories")
+      .select("id, role_category_name, department_id, description")
+      .eq("is_active", true)
+      .order("role_category_name", { ascending: true })
+
+    if (departmentId) {
+      queryBuilder = queryBuilder.eq("department_id", departmentId)
+    }
+
+    const { data, error } = await queryBuilder
+
+    if (error) {
+      console.error("[v0] Error fetching role categories:", error)
+      return { success: false, roleCategories: [] }
+    }
+
+    return { success: true, roleCategories: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getRoleCategoriesFromDB:", error)
+    return { success: false, roleCategories: [] }
+  }
+}
+
+export async function getEducationFromDB() {
+  try {
+    const supabase = await createServerClient()
+
+    const { data, error } = await supabase
+      .from("highest_qualifications")
+      .select("id, level, display_order")
+      .order("display_order", { ascending: true })
+
+    if (error) {
+      console.error("[v0] Error fetching education:", error)
+      return { success: false, qualifications: [] }
+    }
+
+    return { success: true, qualifications: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getEducationFromDB:", error)
+    return { success: false, qualifications: [] }
+  }
+}
+
+export async function getEducationCoursesFromDB(qualificationId?: number) {
+  try {
+    const supabase = await createServerClient()
+
+    let queryBuilder = supabase
+      .from("educations_with_level")
+      .select("id, education_name, education_level, qualification_id")
+      .order("education_name", { ascending: true })
+
+    if (qualificationId) {
+      queryBuilder = queryBuilder.eq("qualification_id", qualificationId)
+    }
+
+    const { data, error } = await queryBuilder
+
+    if (error) {
+      console.error("[v0] Error fetching education courses:", error)
+      return { success: false, courses: [] }
+    }
+
+    return { success: true, courses: data || [] }
+  } catch (error) {
+    console.error("[v0] Error in getEducationCoursesFromDB:", error)
+    return { success: false, courses: [] }
+  }
+}
+
+export async function getSearchFilterOptions() {
+  try {
+    const supabase = await createServerClient()
+
+    // Parallel fetch all filter data
+    const [skillsResult, citiesResult, statesResult, industriesResult, departmentsResult, qualificationsResult] =
+      await Promise.all([
+        supabase.from("skills").select("id, skill_name, category").order("skill_name").limit(100),
+        supabase.from("cities").select("id, name").order("name").limit(100),
+        supabase.from("states").select("id, name").order("name"),
+        supabase.from("industries").select("id, name").order("name"),
+        supabase
+          .from("departments")
+          .select("id, department_name, industry_id")
+          .eq("is_active", true)
+          .order("department_name"),
+        supabase.from("highest_qualifications").select("id, level, display_order").order("display_order"),
+      ])
+
+    return {
+      success: true,
+      skills: skillsResult.data || [],
+      cities: citiesResult.data || [],
+      states: statesResult.data || [],
+      industries: industriesResult.data || [],
+      departments: departmentsResult.data || [],
+      qualifications: qualificationsResult.data || [],
+    }
+  } catch (error) {
+    console.error("[v0] Error in getSearchFilterOptions:", error)
+    return {
+      success: false,
+      skills: [],
+      cities: [],
+      states: [],
+      industries: [],
+      departments: [],
+      qualifications: [],
+    }
+  }
+}
+
+interface CandidateSearchParams {
+  employerId: string
+  keywords?: string
+  skills?: string[]
+  excludeKeywords?: string
+  locations?: string[]
+  includeRelocate?: boolean
+  experienceMin?: number
+  experienceMax?: number
+  salaryMin?: number
+  salaryMax?: number
+  includeSalaryNotMentioned?: boolean
+  noticePeriod?: string[]
+  education?: string[]
+  industry?: string[]
+  department?: string[]
+  company?: string
+  activeIn?: string
+  gender?: string[]
+  diversity?: string[]
+  ageMin?: number
+  ageMax?: number
+  jobType?: string[]
+  employmentType?: string[]
+  showOnly?: string[] // verified_mobile, verified_email, attached_resume
+  displayFilter?: string // all, new_registrations, modified
+}
+
+export async function searchCandidates(params: CandidateSearchParams): Promise<{
+  success: boolean
+  candidates?: CandidateSearchResult[]
+  total?: number
+  error?: string
+}> {
+  try {
+    const supabase = await createServerClient()
+
+    console.log("[v0] searchCandidates called with params:", JSON.stringify(params, null, 2))
+
+    // Build the query - fetch all candidates first for client-side filtering of array fields
+    let queryBuilder = supabase
+      .from("candidates")
+      .select("*", { count: "exact" })
+      .eq("registration_completed", true)
+      .eq("is_profile_active", true)
+      .order("updated_at", { ascending: false })
+
+    // Keywords search (name, job title, resume headline)
+    if (params.keywords?.trim()) {
+      const keyword = params.keywords.toLowerCase().trim()
+      queryBuilder = queryBuilder.or(
+        `full_name.ilike.%${keyword}%,current_job_title.ilike.%${keyword}%,resume_headline.ilike.%${keyword}%,company_name.ilike.%${keyword}%`,
+      )
+    }
+
+    // Experience filter
+    if (params.experienceMin !== undefined && params.experienceMin > 0) {
+      queryBuilder = queryBuilder.gte("total_experience_years", params.experienceMin)
+    }
+    if (params.experienceMax !== undefined && params.experienceMax < 30) {
+      queryBuilder = queryBuilder.lte("total_experience_years", params.experienceMax)
+    }
+
+    // Gender filter
+    if (params.gender && params.gender.length > 0) {
+      queryBuilder = queryBuilder.in("gender", params.gender)
+    }
+
+    // Industry filter
+    if (params.industry && params.industry.length > 0) {
+      queryBuilder = queryBuilder.in("industry", params.industry)
+    }
+
+    // Education filter
+    if (params.education && params.education.length > 0) {
+      queryBuilder = queryBuilder.in("highest_qualification", params.education)
+    }
+
+    // Notice period filter
+    if (params.noticePeriod && params.noticePeriod.length > 0) {
+      queryBuilder = queryBuilder.in("notice_period", params.noticePeriod)
+    }
+
+    // Verified mobile filter
+    if (params.showOnly?.includes("verified_mobile")) {
+      queryBuilder = queryBuilder.eq("is_mobile_verified", true)
+    }
+
+    // Verified email filter
+    if (params.showOnly?.includes("verified_email")) {
+      queryBuilder = queryBuilder.eq("otp_verified", true)
+    }
+
+    // Attached resume filter
+    if (params.showOnly?.includes("attached_resume")) {
+      queryBuilder = queryBuilder.not("resume_url", "is", null)
+    }
+
+    // Active in filter
+    if (params.activeIn && params.activeIn !== "all") {
+      const now = new Date()
+      let cutoffDate: Date
+
+      switch (params.activeIn) {
+        case "1month":
+          cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          break
+        case "3months":
+          cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+          break
+        case "6months":
+          cutoffDate = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000)
+          break
+        case "1year":
+          cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+          break
+        default:
+          cutoffDate = new Date(0)
+      }
+
+      if (params.displayFilter === "new_registrations") {
+        queryBuilder = queryBuilder.gte("created_at", cutoffDate.toISOString())
+      } else {
+        queryBuilder = queryBuilder.gte("updated_at", cutoffDate.toISOString())
+      }
+    }
+
+    // Limit results
+    queryBuilder = queryBuilder.limit(100)
+
+    const { data: candidates, error, count } = await queryBuilder
+
+    if (error) {
+      console.error("[v0] Error searching candidates:", error)
+      return { success: false, error: error.message, candidates: [], total: 0 }
+    }
+
+    console.log("[v0] Initial candidates fetched:", candidates?.length || 0)
+
+    let filteredCandidates = candidates || []
+
+    // Client-side filtering for array fields (skills, locations)
+    // Skills filter - check if candidate has ANY of the required skills
+    if (params.skills && params.skills.length > 0) {
+      const searchSkills = params.skills.map((s) => s.toLowerCase().trim())
+      console.log("[v0] Filtering by skills:", searchSkills)
+      console.log("[v0] Candidates before skill filter:", filteredCandidates.length)
+
+      filteredCandidates = filteredCandidates.filter((candidate) => {
+        // Debug: Log raw skill data
+        console.log("[v0] RAW skills_for_role:", candidate.skills_for_role, "Type:", typeof candidate.skills_for_role)
+        console.log("[v0] RAW skills_you_know:", candidate.skills_you_know, "Type:", typeof candidate.skills_you_know)
+        
+        // Get all candidate skills from both fields
+        const skillsForRole = Array.isArray(candidate.skills_for_role) ? candidate.skills_for_role : []
+        const skillsYouKnow = Array.isArray(candidate.skills_you_know) ? candidate.skills_you_know : []
+        
+        // Combine and normalize skills
+        const candidateSkills = [...skillsForRole, ...skillsYouKnow]
+          .filter(Boolean)
+          .map((s: any) => (typeof s === 'string' ? s.toLowerCase().trim() : ''))
+          .filter(Boolean)
+
+        console.log("[v0] Checking candidate:", candidate.full_name, "Normalized Skills:", candidateSkills)
+
+        // Check if candidate has at least one of the required skills (flexible matching)
+        const hasMatchingSkill = searchSkills.some((searchSkill) => {
+          return candidateSkills.some((candidateSkill) => {
+            // Try exact match first
+            if (candidateSkill === searchSkill) return true
+            // Try partial match (contains)
+            if (candidateSkill.includes(searchSkill)) return true
+            if (searchSkill.includes(candidateSkill)) return true
+            // Try word boundary match for multi-word skills
+            const searchWords = searchSkill.split(/\s+/)
+            const candidateWords = candidateSkill.split(/\s+/)
+            return searchWords.some(sw => candidateWords.some(cw => cw === sw))
+          })
+        })
+
+        if (hasMatchingSkill) {
+          console.log("[v0] ✓ Candidate MATCHES skills:", candidate.full_name)
+        } else {
+          console.log("[v0] ✗ Candidate does NOT match skills:", candidate.full_name)
+        }
+
+        return hasMatchingSkill
+      })
+
+      console.log("[v0] After skills filter:", filteredCandidates.length, "candidates")
+    }
+
+    // Location filter - check if candidate is in any of the specified locations
+    if (params.locations && params.locations.length > 0) {
+      const searchLocations = params.locations.map((l) => l.toLowerCase().trim())
+      console.log("[v0] Filtering by locations:", searchLocations)
+
+      filteredCandidates = filteredCandidates.filter((candidate) => {
+        const candidateLocations = [
+          candidate.current_city,
+          candidate.current_state,
+          ...(candidate.preferred_locations || []),
+        ]
+          .filter(Boolean)
+          .map((l: string) => l.toLowerCase().trim())
+
+        const matchesLocation = searchLocations.some((loc) =>
+          candidateLocations.some((cl) => cl.includes(loc) || loc.includes(cl)),
+        )
+
+        // If includeRelocate is true, also include candidates willing to relocate
+        if (params.includeRelocate && !matchesLocation) {
+          const prefLocations = (candidate.preferred_locations || []).map((l: string) => l.toLowerCase())
+          const willingToRelocate = prefLocations.some((pl) =>
+            searchLocations.some((sl) => pl.includes(sl) || sl.includes(pl)),
+          )
+          return willingToRelocate
+        }
+
+        return matchesLocation
+      })
+
+      console.log("[v0] After location filter:", filteredCandidates.length)
+    }
+
+    // Exclude keywords filter
+    if (params.excludeKeywords?.trim()) {
+      const excludeTerms = params.excludeKeywords
+        .toLowerCase()
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+
+      filteredCandidates = filteredCandidates.filter((candidate) => {
+        const candidateText = [
+          candidate.full_name,
+          candidate.current_job_title,
+          candidate.resume_headline,
+          candidate.company_name,
+          ...(candidate.skills_for_role || []),
+          ...(candidate.skills_you_know || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+
+        return !excludeTerms.some((term) => candidateText.includes(term))
+      })
+    }
+
+    // Salary filter (client-side since preferred_salary is a string)
+    if ((params.salaryMin && params.salaryMin > 0) || (params.salaryMax && params.salaryMax < 100)) {
+      filteredCandidates = filteredCandidates.filter((candidate) => {
+        if (!candidate.preferred_salary && params.includeSalaryNotMentioned) {
+          return true
+        }
+
+        if (!candidate.preferred_salary) {
+          return false
+        }
+
+        // Try to parse salary (handle formats like "5-10 LPA", "500000", etc.)
+        const salaryStr = candidate.preferred_salary.replace(/[^\d.-]/g, "")
+        const salary = Number.parseFloat(salaryStr)
+
+        if (isNaN(salary)) {
+          return params.includeSalaryNotMentioned
+        }
+
+        // Convert to LPA if needed
+        const salaryLPA = salary > 1000 ? salary / 100000 : salary
+
+        const minOk = !params.salaryMin || salaryLPA >= params.salaryMin
+        const maxOk = !params.salaryMax || params.salaryMax >= 100 || salaryLPA <= params.salaryMax
+
+        return minOk && maxOk
+      })
+    }
+
+    console.log("[v0] Final candidates count:", filteredCandidates.length)
+
+    // Try to save search (don't fail if this fails due to RLS)
+    try {
+      const searchName = params.keywords || params.skills?.join(", ") || "Search"
+      await supabase.from("employer_searches").insert({
+        employer_id: params.employerId,
+        search_name: searchName.slice(0, 100),
+        search_filters: params,
+        results_count: filteredCandidates.length,
+        is_saved: false,
+      })
+    } catch (saveError) {
+      console.log("[v0] Could not save search (non-critical):", saveError)
+    }
+
+    return {
+      success: true,
+      candidates: filteredCandidates,
+      total: filteredCandidates.length,
+    }
+  } catch (error) {
+    console.error("[v0] Error in searchCandidates:", error)
+    return { success: false, error: "Failed to search candidates", candidates: [], total: 0 }
+  }
+}
+
+export async function getRecentSearches(employerId: string) {
+  try {
+    const supabase = await createServerClient()
+
+    // Get recent searches (not saved)
+    const { data: recentSearches, error: recentError } = await supabase
+      .from("employer_searches")
+      .select("*")
+      .eq("employer_id", employerId)
+      .eq("is_saved", false)
+      .order("created_at", { ascending: false })
+      .limit(5)
+
+    // Get saved searches
+    const { data: savedSearches, error: savedError } = await supabase
+      .from("employer_searches")
+      .select("*")
+      .eq("employer_id", employerId)
+      .eq("is_saved", true)
+      .order("created_at", { ascending: false })
+      .limit(10)
+
+    if (recentError) {
+      console.log("[v0] Error fetching recent searches:", recentError)
+    }
+    if (savedError) {
+      console.log("[v0] Error fetching saved searches:", savedError)
+    }
+
+    return {
+      success: true,
+      recentSearches: recentSearches || [],
+      savedSearches: savedSearches || [],
+    }
+  } catch (error) {
+    console.error("[v0] Error in getRecentSearches:", error)
+    return { success: true, recentSearches: [], savedSearches: [] }
+  }
+}
+
+export async function saveSearch(params: { employerId: string; searchName: string; filters: any; isSaved?: boolean }) {
+  try {
+    const supabase = await createServerClient()
+    
+    const { data, error } = await supabase
+      .from("employer_searches")
+      .insert({
+        employer_id: params.employerId,
+        keywords: params.searchName.slice(0, 255),
+        filters: params.filters,
+        is_saved: params.isSaved ?? false, // Default to false (recent search), only true if explicitly saved
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Error saving search:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true, search: data }
+  } catch (error) {
+    console.error("[v0] Error in saveSearch:", error)
+    return { success: false, error: "Failed to save search" }
+  }
+}
+
+// Mark a recent search as saved permanently
+export async function markSearchAsSaved(searchId: string) {
+  try {
+    const supabase = await createServerClient()
+    
+    const { data, error } = await supabase
+      .from("employer_searches")
+      .update({ is_saved: true })
+      .eq("id", searchId)
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("[v0] Error marking search as saved:", error)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, search: data }
+  } catch (error) {
+    console.error("[v0] Error in markSearchAsSaved:", error)
+    return { success: false, error: "Failed to mark search as saved" }
+  }
+}
+
+export async function deleteSearch(searchId: string, employerId: string) {
+  try {
+    const supabase = await createServerClient()
+
+    const { error } = await supabase.from("employer_searches").delete().eq("id", searchId).eq("employer_id", employerId)
+
+    if (error) {
+      console.error("[v0] Error deleting search:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error("[v0] Error in deleteSearch:", error)
+    return { success: false, error: "Failed to delete search" }
   }
 }

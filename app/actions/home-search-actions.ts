@@ -32,9 +32,6 @@ export async function getSearchSuggestions() {
     const uniqueTitles = [...new Set((jobTitles || []).map((j) => j.job_title).filter(Boolean))]
     const uniqueCompanies = [...new Set((companies || []).map((c) => c.company_name).filter(Boolean))]
 
-    console.log("[v0] Fetched designations:", uniqueTitles.length)
-    console.log("[v0] Fetched companies:", uniqueCompanies.length)
-
     return {
       designations: uniqueTitles.sort(),
       companies: uniqueCompanies.sort(),
@@ -45,5 +42,44 @@ export async function getSearchSuggestions() {
       designations: [],
       companies: [],
     }
+  }
+}
+
+export async function getJobsByIndustry() {
+  try {
+    const supabase = await createServerClient()
+
+    const { data: jobs, error } = await supabase
+      .from("job_postings")
+      .select("candidate_industries, employers!job_postings_employer_id_fkey(logo_url)")
+      .eq("status", "published")
+      .not("candidate_industries", "is", null)
+
+    if (error) {
+      console.error("[v0] Error fetching jobs by industry:", error)
+      return { jobsByIndustry: [] }
+    }
+
+    const industryCount: Record<string, number> = {}
+    ;(jobs || []).forEach((job) => {
+      const industries = job.candidate_industries as string[] | null
+      if (Array.isArray(industries)) {
+        industries.forEach((industry) => {
+          if (industry && typeof industry === "string") {
+            industryCount[industry] = (industryCount[industry] || 0) + 1
+          }
+        })
+      }
+    })
+
+    // Convert to array and sort by count
+    const jobsByIndustry = Object.entries(industryCount)
+      .map(([industry, count]) => ({ industry, count }))
+      .sort((a, b) => b.count - a.count)
+
+    return { jobsByIndustry }
+  } catch (error) {
+    console.error("[v0] Error in getJobsByIndustry:", error)
+    return { jobsByIndustry: [] }
   }
 }

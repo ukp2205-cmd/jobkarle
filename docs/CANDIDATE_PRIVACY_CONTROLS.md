@@ -78,7 +78,7 @@ Candidates can temporarily deactivate their profile with optional reason.
 
 ## Database Schema
 
-```sql
+\`\`\`sql
 -- Migration script: scripts/030_add_candidate_privacy_controls.sql
 -- Adds privacy columns to candidates table
 
@@ -91,9 +91,9 @@ ADD COLUMN deactivation_reason TEXT;
 
 CREATE INDEX idx_candidates_profile_visibility ON candidates(profile_visibility);
 CREATE INDEX idx_candidates_is_active ON candidates(is_profile_active);
-```
+\`\`\`
 
-```sql
+\`\`\`sql
 -- Migration script: scripts/031_create_blocked_employers_table.sql
 -- Creates separate table for blocked employers
 
@@ -129,11 +129,11 @@ WITH CHECK (auth.uid() IN (SELECT user_id FROM candidates WHERE id = candidate_i
 CREATE POLICY "Candidates can unblock employers"
 ON blocked_employers FOR DELETE
 USING (auth.uid() IN (SELECT user_id FROM candidates WHERE id = candidate_id));
-```
+\`\`\`
 
 ## File Structure
 
-```
+\`\`\`
 app/
   candidate/
     settings/
@@ -150,7 +150,7 @@ components/
 scripts/
   030_add_candidate_privacy_controls.sql   # Adds privacy columns to candidates
   031_create_blocked_employers_table.sql   # Creates blocked_employers table
-```
+\`\`\`
 
 ## User Flow
 
@@ -223,7 +223,7 @@ scripts/
 Fetches all privacy settings and blocked employers for a candidate.
 
 **Returns:**
-```typescript
+\`\`\`typescript
 {
   success: boolean
   data?: {
@@ -243,7 +243,7 @@ Fetches all privacy settings and blocked employers for a candidate.
     }>
   }
 }
-```
+\`\`\`
 
 ### `updateProfileVisibility(candidateId, visibility)`
 Updates the profile visibility setting.
@@ -270,7 +270,7 @@ Reactivates a deactivated profile and clears deactivation data.
 Blocked companies are automatically filtered out in two places:
 
 ### 1. Job Recommendations (`getRecommendedJobs`)
-```typescript
+\`\`\`typescript
 // Fetch blocked companies
 const { data: blockedEmployers } = await supabase
   .from("blocked_employers")
@@ -283,10 +283,10 @@ const matchedJobs = jobs.filter(job => {
   const jobCompanyName = job.company_name?.toLowerCase()
   return !blockedCompanyNames.includes(jobCompanyName)
 })
-```
+\`\`\`
 
 ### 2. Job Search (`searchJobs`)
-```typescript
+\`\`\`typescript
 // Same filtering logic applied to search results
 if (candidateId) {
   const { data: blockedEmployers } = await supabase
@@ -296,7 +296,7 @@ if (candidateId) {
   
   // Filter jobs before returning results
 }
-```
+\`\`\`
 
 ## Security Considerations
 

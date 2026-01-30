@@ -22,9 +22,9 @@ The SQL script for creating storage buckets requires special permissions. Instea
 
 Run the setup script once:
 
-```bash
+\`\`\`bash
 npm run setup-storage
-```
+\`\`\`
 
 This will create the bucket using the Supabase JavaScript SDK.
 

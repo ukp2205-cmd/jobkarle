@@ -12,18 +12,18 @@ You were getting "require is not defined" errors because `@elastic/elasticsearch
 
 ### Step 1: Add Environment Variable
 Add this to your Vercel project (Vars section in sidebar):
-```
+\`\`\`
 ELASTIC_URL=http://localhost:9200
-```
+\`\`\`
 
 **Important:** After adding the environment variable, **redeploy your app** for changes to take effect.
 
 ### Step 2: Setup Elasticsearch Index
 Run these commands in order:
-```bash
+\`\`\`bash
 npm run setup-elastic    # Creates job_postings index
 npm run reindex-jobs     # Imports existing jobs
-```
+\`\`\`
 
 ### Step 3: Test Search
 1. Open your homepage
@@ -32,11 +32,11 @@ npm run reindex-jobs     # Imports existing jobs
 
 ## How It Works Now
 
-```
+\`\`\`
 User Search → Home Component → Elasticsearch Action → API Route (Node.js) → Elasticsearch Client → Elasticsearch Server
                                                           ↓
                                                    Returns ranked results
-```
+\`\`\`
 
 **Key Features:**
 - **Title Boost (3x)**: Jobs with "developer" in title rank higher

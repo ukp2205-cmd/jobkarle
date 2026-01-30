@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Briefcase, Building2, Users, CheckCircle2, Upload } from "lucide-react"
+import { Briefcase, Building2, Users, CheckCircle2, Upload, FileText } from "lucide-react"
 import { createInitialEmployer, uploadEmployerLogo, completeEmployerRegistration } from "@/app/actions/employer-actions"
 import { useRouter } from "next/navigation"
 import { AutocompleteInput } from "@/components/ui/autocomplete-input"
 import Link from "next/link"
+import DocumentVerificationStep from "@/components/document-verification-step"
 
 interface FormData {
   // Step 1
@@ -47,6 +48,13 @@ interface FormData {
   cityDetail: string
   pincode: string
   acceptTerms: boolean
+  skills: string[]
+  yearsOfExperience: string
+  monthsOfExperience: string
+  industry: string
+  department: string
+  roleCategory: string
+  jobTitle: string
 }
 
 const INDIAN_STATES = [
@@ -398,6 +406,139 @@ const CITIES_BY_STATE: Record<string, string[]> = {
   ],
 }
 
+const industryDepartmentRoleMapping: Record<string, Record<string, Record<string, string[]>>> = {
+  "IT Services & Consulting": {
+    Engineering: {
+      "Software Development": [
+        "Frontend Developer",
+        "Backend Developer",
+        "Full Stack Developer",
+        "Mobile App Developer",
+        "DevOps Engineer",
+      ],
+      "Quality Assurance": ["QA Engineer", "Test Automation Engineer", "Manual Tester", "Performance Tester"],
+      "Data & Analytics": ["Data Scientist", "Data Engineer", "Data Analyst", "ML Engineer", "AI Specialist"],
+    },
+    "Product Management": {
+      "Product Strategy": ["Product Manager", "Senior Product Manager", "Product Owner", "Technical Product Manager"],
+      "Product Operations": ["Product Operations Manager", "Product Analyst"],
+    },
+    Design: {
+      "UI/UX Design": ["UI Designer", "UX Designer", "Product Designer", "UX Researcher", "Interaction Designer"],
+      "Graphic Design": ["Graphic Designer", "Visual Designer", "Brand Designer"],
+    },
+  },
+  Banking: {
+    Operations: {
+      "Branch Operations": ["Branch Manager", "Operations Manager", "Customer Service Manager"],
+      Treasury: ["Treasury Manager", "Treasury Analyst", "Dealer"],
+    },
+    "Risk & Compliance": {
+      "Risk Management": ["Risk Manager", "Credit Risk Analyst", "Market Risk Analyst"],
+      Compliance: ["Compliance Officer", "AML Officer", "KYC Analyst"],
+    },
+    "Sales & Business Development": {
+      "Retail Banking": ["Relationship Manager", "Sales Officer", "Business Development Manager"],
+      "Corporate Banking": ["Corporate Relationship Manager", "Corporate Sales Manager"],
+    },
+  },
+  Healthcare: {
+    "Medical Services": {
+      Clinical: ["Doctor", "Specialist", "Consultant", "Physician", "Surgeon"],
+      Nursing: ["Staff Nurse", "Senior Nurse", "Nursing Supervisor", "ICU Nurse"],
+    },
+    Operations: {
+      "Hospital Administration": ["Hospital Administrator", "Operations Manager", "Facility Manager"],
+      "Medical Records": ["Medical Records Officer", "Health Information Manager"],
+    },
+    Pharmacy: {
+      Dispensing: ["Pharmacist", "Senior Pharmacist", "Clinical Pharmacist"],
+      "Drug Information": ["Drug Information Specialist", "Pharmacy Manager"],
+    },
+  },
+  Manufacturing: {
+    Production: {
+      "Production Management": ["Production Manager", "Production Supervisor", "Production Engineer"],
+      "Shop Floor": ["Machine Operator", "Assembly Line Worker", "Quality Inspector"],
+    },
+    "Quality Control": {
+      "Quality Assurance": ["QA Manager", "Quality Engineer", "QC Inspector"],
+      "Process Improvement": ["Six Sigma Specialist", "Lean Manufacturing Specialist"],
+    },
+    "Supply Chain": {
+      Procurement: ["Procurement Manager", "Purchase Officer", "Vendor Manager"],
+      Logistics: ["Logistics Manager", "Warehouse Manager", "Supply Chain Analyst"],
+    },
+  },
+  "E-commerce": {
+    Technology: {
+      Engineering: ["Software Engineer", "Full Stack Developer", "Mobile Developer", "Platform Engineer"],
+      Product: ["Product Manager", "Technical Product Manager", "Product Analyst"],
+    },
+    Operations: {
+      "Marketplace Operations": ["Operations Manager", "Category Manager", "Seller Management"],
+      "Customer Support": ["Customer Support Manager", "Support Associate", "Customer Success Manager"],
+    },
+    Marketing: {
+      "Digital Marketing": ["Digital Marketing Manager", "SEO Specialist", "SEM Specialist", "Social Media Manager"],
+      "Content Marketing": ["Content Manager", "Content Writer", "Copy Writer"],
+    },
+  },
+  Retail: {
+    "Store Operations": {
+      "Store Management": ["Store Manager", "Assistant Store Manager", "Department Manager"],
+      Sales: ["Sales Associate", "Sales Executive", "Cashier"],
+    },
+    Merchandising: {
+      "Visual Merchandising": ["Visual Merchandiser", "Display Designer"],
+      Buying: ["Buyer", "Merchandise Planner", "Category Manager"],
+    },
+    "Customer Service": {
+      "Service Desk": ["Customer Service Representative", "Service Desk Manager"],
+      "Returns & Exchange": ["Returns Coordinator", "Exchange Specialist"],
+    },
+  },
+  Telecommunications: {
+    "Network Operations": {
+      "Network Engineering": ["Network Engineer", "NOC Engineer", "Network Architect"],
+      "Network Planning": ["Network Planner", "RF Engineer", "Transmission Engineer"],
+    },
+    "Customer Service": {
+      "Customer Care": ["Customer Care Executive", "Technical Support Engineer", "Helpdesk Support"],
+      Sales: ["Sales Executive", "Relationship Manager", "Enterprise Sales Manager"],
+    },
+    Technology: {
+      "IT Operations": ["IT Manager", "System Administrator", "Database Administrator"],
+      "Software Development": ["Software Developer", "Application Engineer", "Solutions Architect"],
+    },
+  },
+}
+
+const popularSkills = [
+  "JavaScript",
+  "Python",
+  "Java",
+  "React",
+  "Node.js",
+  "SQL",
+  "AWS",
+  "Docker",
+  "Project Management",
+  "Data Analysis",
+  "Machine Learning",
+  "Communication",
+  "Leadership",
+  "Problem Solving",
+  "Team Management",
+  "Sales",
+  "Marketing",
+  "Customer Service",
+  "Financial Analysis",
+  "Excel",
+  "PowerPoint",
+  "SAP",
+]
+
 function OTPVerificationStep({
   mobileNumber,
   email,
@@ -568,6 +709,7 @@ export default function EmployerRegistration() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
+  const [employerId, setEmployerId] = useState<string>("")
   const [formData, setFormData] = useState<FormData>({
     username: "",
     email: "",
@@ -597,10 +739,22 @@ export default function EmployerRegistration() {
     pincode: "",
     acceptTerms: false,
     mobileVerified: false,
+    skills: [],
+    yearsOfExperience: "",
+    monthsOfExperience: "",
+    industry: "",
+    department: "",
+    roleCategory: "",
+    jobTitle: "",
   })
 
   const [selectedState, setSelectedState] = useState<string>("")
   const [selectedStateDetail, setSelectedStateDetail] = useState<string>("")
+  const [skillSearch, setSkillSearch] = useState("")
+  const [showSkillDropdown, setShowSkillDropdown] = useState(false)
+  const [industrySearch, setIndustrySearch] = useState("")
+  const [showIndustryDropdown, setShowIndustryDropdown] = useState(false)
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false)
 
   const handleInputChange = (field: string, value: any) => {
     if (field === "state") {
@@ -628,6 +782,24 @@ export default function EmployerRegistration() {
       !formData.city
     ) {
       alert("Please fill all required fields")
+      return
+    }
+
+    // Validate password requirements
+    if (formData.password.length < 8) {
+      alert("Password must be at least 8 characters long")
+      return
+    }
+    if (!/[A-Z]/.test(formData.password)) {
+      alert("Password must contain at least one capital letter")
+      return
+    }
+    if (!/[0-9]/.test(formData.password)) {
+      alert("Password must contain at least one number")
+      return
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(formData.password)) {
+      alert("Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>)")
       return
     }
 
@@ -714,6 +886,12 @@ export default function EmployerRegistration() {
       return
     }
 
+    // Add validation for required fields in step 3
+    if (!formData.industry || !formData.department || !formData.roleCategory || !formData.jobTitle) {
+      alert("Please select Industry, Department, Role Category, and Job Title.")
+      return
+    }
+
     if (!formData.acceptTerms) {
       alert("Please accept the Terms and Conditions")
       return
@@ -740,12 +918,23 @@ export default function EmployerRegistration() {
         stateDetail: formData.stateDetail,
         cityDetail: formData.cityDetail,
         pincode: formData.pincode,
+        // Pass new fields to the API
+        skills: formData.skills,
+        yearsOfExperience: formData.yearsOfExperience,
+        monthsOfExperience: formData.monthsOfExperience,
+        industry: formData.industry,
+        department: formData.department,
+        roleCategory: formData.roleCategory,
+        jobTitle: formData.jobTitle,
       })
 
       if (result.success) {
-        alert("Employer registration completed successfully! Please login to continue.")
-        // Redirect to employer login page
-        window.location.href = "/employer/login"
+        // Save employer ID for document upload
+        if (result.employer?.id) {
+          setEmployerId(result.employer.id)
+        }
+        // Proceed to Step 4 - Document Verification
+        setStep(4)
       } else {
         alert(result.message || "Registration failed. Please try again.")
       }
@@ -907,16 +1096,42 @@ export default function EmployerRegistration() {
                         className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all ${
                           step === 3
                             ? "bg-green-600 text-white ring-2 sm:ring-4 ring-green-100"
-                            : "bg-gray-200 text-gray-500"
+                            : step > 3
+                              ? "bg-green-600 text-white"
+                              : "bg-gray-200 text-gray-500"
                         }`}
                       >
                         3
                       </div>
 
                       <p
-                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 3 ? "text-green-600" : "text-gray-400"}`}
+                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 3 ? "text-green-600" : step > 3 ? "text-green-600" : "text-gray-400"}`}
                       >
                         Company Details
+                      </p>
+                    </div>
+
+                    {/* Progress Line */}
+                    <div
+                      className={`h-0.5 flex-1 mx-1 sm:mx-2 transition-all ${step > 3 ? "bg-green-600" : "bg-gray-200"}`}
+                    />
+
+                    {/* Step 4 - Document Verification */}
+                    <div className="flex flex-col items-center">
+                      <div
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all ${
+                          step === 4
+                            ? "bg-green-600 text-white ring-2 sm:ring-4 ring-green-100"
+                            : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
+                        4
+                      </div>
+
+                      <p
+                        className={`text-[9px] sm:text-[10px] mt-1 sm:mt-1.5 font-medium whitespace-nowrap ${step === 4 ? "text-green-600" : "text-gray-400"}`}
+                      >
+                        Verification
                       </p>
                     </div>
                   </div>
@@ -928,14 +1143,18 @@ export default function EmployerRegistration() {
                       ? "Let's get you started!"
                       : step === 2
                         ? "Verify mobile number"
-                        : "Complete your profile"}
+                        : step === 3
+                          ? "Complete your profile"
+                          : "Verify your company"}
                   </h2>
                   <p className="text-xs sm:text-sm text-gray-600">
                     {step === 1
                       ? "Create your employer account"
                       : step === 2
                         ? `We sent a code to ${formData.mobileNumber}`
-                        : "Add your company details"}
+                        : step === 3
+                          ? "Add your company details"
+                          : "Upload documents or use company email"}
                   </p>
                 </div>
 
@@ -986,9 +1205,33 @@ export default function EmployerRegistration() {
                         type="password"
                         value={formData.password}
                         onChange={(e) => handleInputChange("password", e.target.value)}
+                        onFocus={() => setShowPasswordRequirements(true)}
                         placeholder="Create a password"
                         className="h-9 sm:h-11 text-xs sm:text-sm"
                       />
+                      {showPasswordRequirements && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-gray-500">Password must contain:</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
+                            <div className={`flex items-center gap-1.5 ${formData.password.length >= 8 ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${formData.password.length >= 8 ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>Minimum 8 characters{formData.password.length >= 8 ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[A-Z]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[A-Z]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One capital letter{/[A-Z]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[0-9]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[0-9]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One number{/[0-9]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? "text-green-600" : "text-gray-400"}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? "bg-green-600" : "bg-gray-300"}`} />
+                              <span>One special character{/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? " - Matched" : ""}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1148,8 +1391,262 @@ export default function EmployerRegistration() {
                     isLoading={isLoading}
                     setIsLoading={setIsLoading}
                   />
-                ) : (
+                ) : step === 3 ? (
                   <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Skills</Label>
+                      <div className="space-y-3">
+                        {/* Skill input with autosuggest */}
+                        <div className="relative">
+                          <Input
+                            value={skillSearch}
+                            onChange={(e) => {
+                              setSkillSearch(e.target.value)
+                              setShowSkillDropdown(e.target.value.length > 0)
+                            }}
+                            onBlur={() => setTimeout(() => setShowSkillDropdown(false), 200)}
+                            placeholder="Type a skill or select from popular skills..."
+                            className="h-10 rounded-full text-sm"
+                          />
+                          {showSkillDropdown && skillSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-auto">
+                              {popularSkills
+                                .filter(
+                                  (skill) =>
+                                    skill.toLowerCase().includes(skillSearch.toLowerCase()) &&
+                                    !formData.skills.includes(skill),
+                                )
+                                .map((skill) => (
+                                  <button
+                                    key={skill}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!formData.skills.includes(skill)) {
+                                        handleInputChange("skills", [...formData.skills, skill])
+                                      }
+                                      setSkillSearch("")
+                                      setShowSkillDropdown(false)
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                                  >
+                                    {skill}
+                                  </button>
+                                ))}
+                              {skillSearch && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (skillSearch && !formData.skills.includes(skillSearch)) {
+                                      handleInputChange("skills", [...formData.skills, skillSearch])
+                                    }
+                                    setSkillSearch("")
+                                    setShowSkillDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-blue-600 border-t"
+                                >
+                                  + Add "{skillSearch}"
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Popular skills for quick selection */}
+                        <div>
+                          <p className="text-xs text-gray-500 mb-2">Popular Skills:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {popularSkills.slice(0, 8).map((skill) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => {
+                                  if (!formData.skills.includes(skill)) {
+                                    handleInputChange("skills", [...formData.skills, skill])
+                                  }
+                                }}
+                                disabled={formData.skills.includes(skill)}
+                                className="px-3 py-1 text-xs rounded-full border border-gray-300 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {skill}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Selected skills */}
+                        {formData.skills.length > 0 && (
+                          <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg">
+                            {formData.skills.map((skill) => (
+                              <span
+                                key={skill}
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-white border border-gray-300 rounded-full text-sm"
+                              >
+                                {skill}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleInputChange(
+                                      "skills",
+                                      formData.skills.filter((s) => s !== skill),
+                                    )
+                                  }
+                                  className="ml-1 text-gray-500 hover:text-red-600"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Total Experience</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="50"
+                            value={formData.yearsOfExperience}
+                            onChange={(e) => handleInputChange("yearsOfExperience", e.target.value)}
+                            placeholder="Years"
+                            className="h-10 rounded-full text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Years</p>
+                        </div>
+                        <div>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="11"
+                            value={formData.monthsOfExperience}
+                            onChange={(e) => handleInputChange("monthsOfExperience", e.target.value)}
+                            placeholder="Months"
+                            className="h-10 rounded-full text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Months</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block font-medium text-gray-700 text-sm">Industry *</Label>
+                      <div className="relative">
+                        <Input
+                          value={industrySearch || formData.industry}
+                          onChange={(e) => {
+                            setIndustrySearch(e.target.value)
+                            handleInputChange("industry", "")
+                            handleInputChange("department", "")
+                            handleInputChange("roleCategory", "")
+                            handleInputChange("jobTitle", "")
+                            setShowIndustryDropdown(e.target.value.length > 0)
+                          }}
+                          onBlur={() => setTimeout(() => setShowIndustryDropdown(false), 200)}
+                          placeholder="Type to search industry..."
+                          className="h-10 rounded-full text-sm"
+                        />
+                        {showIndustryDropdown && industrySearch && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                            {Object.keys(industryDepartmentRoleMapping)
+                              .filter((industry) => industry.toLowerCase().includes(industrySearch.toLowerCase()))
+                              .map((industry) => (
+                                <button
+                                  key={industry}
+                                  type="button"
+                                  onClick={() => {
+                                    handleInputChange("industry", industry)
+                                    setIndustrySearch("")
+                                    setShowIndustryDropdown(false)
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                                >
+                                  {industry}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Department *</Label>
+                        <Select
+                          value={formData.department}
+                          onValueChange={(value) => {
+                            handleInputChange("department", value)
+                            handleInputChange("roleCategory", "")
+                            handleInputChange("jobTitle", "")
+                          }}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(industryDepartmentRoleMapping[formData.industry] || {}).map((dept) => (
+                              <SelectItem key={dept} value={dept}>
+                                {dept}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {formData.department && formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Role Category *</Label>
+                        <Select
+                          value={formData.roleCategory}
+                          onValueChange={(value) => {
+                            handleInputChange("roleCategory", value)
+                            handleInputChange("jobTitle", "")
+                          }}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select role category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(
+                              industryDepartmentRoleMapping[formData.industry]?.[formData.department] || {},
+                            ).map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {role}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {formData.roleCategory && formData.department && formData.industry && (
+                      <div>
+                        <Label className="mb-2 block font-medium text-gray-700 text-sm">Job Title *</Label>
+                        <Select
+                          value={formData.jobTitle}
+                          onValueChange={(value) => handleInputChange("jobTitle", value)}
+                        >
+                          <SelectTrigger className="h-10 rounded-full text-sm">
+                            <SelectValue placeholder="Select job title" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(
+                              industryDepartmentRoleMapping[formData.industry]?.[formData.department]?.[
+                                formData.roleCategory
+                              ] || []
+                            ).map((title) => (
+                              <SelectItem key={title} value={title}>
+                                {title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
                     <div>
                       <Label
                         htmlFor="website"
@@ -1455,7 +1952,16 @@ export default function EmployerRegistration() {
                       </Button>
                     </div>
                   </form>
-                )}
+                ) : step === 4 ? (
+                  <DocumentVerificationStep
+                    employerId={employerId}
+                    onComplete={() => {
+                      alert("Registration completed successfully! Your documents will be verified by our team. You can now login to access your account.")
+                      window.location.href = "/employer/login"
+                    }}
+                    onBack={() => setStep(3)}
+                  />
+                ) : null}
               </div>
             </div>
           </div>

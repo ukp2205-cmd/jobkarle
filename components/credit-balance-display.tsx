@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Sparkles, TrendingUp } from "lucide-react"
+import { Sparkles, TrendingUp, Gift } from "lucide-react"
 import { getActiveCredits, type CreditBalance } from "@/app/actions/credits-actions"
+import { getCreditBreakdown } from "@/app/actions/free-credits-actions"
 import Link from "next/link"
 
 interface CreditBalanceDisplayProps {
@@ -12,8 +13,15 @@ interface CreditBalanceDisplayProps {
   showUpgradeButton?: boolean
 }
 
+interface CreditBreakdownData {
+  freeCredits: number
+  purchasedCredits: number
+  totalCredits: number
+}
+
 export function CreditBalanceDisplay({ employerId, showUpgradeButton = true }: CreditBalanceDisplayProps) {
   const [credits, setCredits] = useState<CreditBalance | null>(null)
+  const [breakdown, setBreakdown] = useState<CreditBreakdownData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,7 +31,15 @@ export function CreditBalanceDisplay({ employerId, showUpgradeButton = true }: C
   async function loadCredits() {
     setLoading(true)
     const balance = await getActiveCredits(employerId)
+    const breakdownData = await getCreditBreakdown(employerId)
     setCredits(balance)
+    if (breakdownData.success) {
+      setBreakdown({
+        freeCredits: breakdownData.freeCredits,
+        purchasedCredits: breakdownData.purchasedCredits,
+        totalCredits: breakdownData.totalCredits,
+      })
+    }
     setLoading(false)
   }
 
@@ -57,7 +73,23 @@ export function CreditBalanceDisplay({ employerId, showUpgradeButton = true }: C
               <span className="text-2xl font-bold">{credits.remainingCredits}</span>
               <span className="text-sm text-muted-foreground">/ {credits.totalCredits}</span>
             </div>
-            <p className="text-xs text-muted-foreground">Job credits</p>
+            <p className="text-xs text-muted-foreground">Total job credits</p>
+            {breakdown && (breakdown.freeCredits > 0 || breakdown.purchasedCredits > 0) && (
+              <div className="flex items-center gap-2 mt-1">
+                {breakdown.freeCredits > 0 && (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <Gift className="w-3 h-3" />
+                    {breakdown.freeCredits} Free
+                  </span>
+                )}
+                {breakdown.purchasedCredits > 0 && (
+                  <span className="text-xs text-blue-600 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    {breakdown.purchasedCredits} Purchased
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

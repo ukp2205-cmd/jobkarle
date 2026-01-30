@@ -402,9 +402,12 @@ export async function getAllEmployers(page = 1, limit = 10, search = "") {
 
     let query = supabase
       .from("employers")
-      .select("id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified", {
-        count: "exact",
-      })
+      .select(
+        "id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified, approval_status, approved_at",
+        {
+          count: "exact",
+        },
+      )
 
     if (search) {
       query = query.or(`company_name.ilike.%${search}%,email.ilike.%${search}%`)
@@ -1069,5 +1072,278 @@ export async function updateJob(
     console.error("Error updating job:", error)
     const errorMessage = error instanceof Error ? error.message : "Failed to update job"
     return { success: false, error: errorMessage }
+  }
+}
+
+// Approval management functions
+export async function approveEmployer(employerId: string, approvedBy: string) {
+  try {
+    const supabase = createAdminClient()
+
+    console.log("[v0] Approving employer:", employerId, "by admin:", approvedBy)
+
+    const { data: employer, error } = await supabase
+      .from("employers")
+      .update({
+        approval_status: "approved",
+        approved_at: new Date().toISOString(),
+        approved_by: approvedBy,
+        rejection_reason: null, // Clear any previous rejection reason
+      })
+      .eq("id", employerId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Error approving employer:", error)
+      throw error
+    }
+
+    console.log("[v0] Employer approved successfully")
+
+    // Allocate 10 free credits as welcome credits for approved employers
+    try {
+      console.log("[v0] ========== ALLOCATING WELCOME CREDITS ==========")
+      console.log("[v0] Employer ID:", employerId)
+      console.log("[v0] Employer Email:", employer?.email)
+      console.log("[v0] Company Name:", employer?.company_name)
+      
+      // Check if employer already has active free credits
+      const { data: existingCredits, error: checkError } = await supabase
+        .from("employer_credits")
+        .select("id, credits_remaining, expires_at")
+        .eq("employer_id", employerId)
+        .eq("plan_type", "free")
+        .eq("is_expired", false)
+        .gt("credits_remaining", 0)
+      
+      if (checkError) {
+        console.error("[v0] Error checking existing credits:", checkError)
+      }
+      
+      if (existingCredits && existingCredits.length > 0) {
+        console.log("[v0] Employer already has", existingCredits.length, "active free credit record(s)")
+        console.log("[v0] Skipping credit allocation to avoid duplicates")
+      } else {
+        console.log("[v0] No active free credits found, allocating 10 welcome credits")
+        
+        // Insert free credits directly into employer_credits table
+        const { data: creditRecord, error: creditError } = await supabase
+          .from("employer_credits")
+          .insert({
+            employer_id: employerId,
+            plan_type: "free",
+            credits_allocated: 10,
+            credits_used: 0,
+            credits_remaining: 10,
+            allocated_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days expiry (monthly)
+            is_expired: false,
+            billing_cycle: "monthly",
+          })
+          .select()
+          .single()
+
+        if (creditError) {
+          console.error("[v0] ❌ Error allocating welcome credits:", creditError.message, creditError.code)
+          console.error("[v0] Full error:", creditError)
+          // Don't fail the approval if credits fail, just log the error
+        } else {
+          console.log("[v0] ✓ Successfully allocated 10 welcome credits!")
+          console.log("[v0] Credit Record ID:", creditRecord?.id)
+          console.log("[v0] Expires At:", creditRecord?.expires_at)
+        }
+      }
+      
+      console.log("[v0] ========== WELCOME CREDITS ALLOCATION COMPLETE ==========")
+    } catch (creditAllocationError) {
+      console.error("[v0] ❌ Exception allocating welcome credits:", creditAllocationError)
+      // Continue with approval even if credit allocation fails
+    }
+
+    return { success: true, employer }
+  } catch (error: any) {
+    console.error("[v0] Error approving employer:", error)
+    return { success: false, error: error.message || "Failed to approve employer" }
+  }
+}
+
+// Manual Credit Assignment - Admin function to add credits manually
+export async function assignCreditsManually(
+  employerId: string,
+  creditsToAdd: number,
+  reason: string,
+  assignedBy: string,
+) {
+  try {
+    console.log("[v0] ========== MANUAL CREDIT ASSIGNMENT ==========")
+    console.log("[v0] Employer ID:", employerId)
+    console.log("[v0] Credits to add:", creditsToAdd)
+    console.log("[v0] Reason:", reason)
+    console.log("[v0] Assigned by:", assignedBy)
+
+    const supabase = createAdminClient()
+
+    // Validate inputs
+    if (!employerId || creditsToAdd <= 0) {
+      return { success: false, error: "Invalid employer ID or credit amount" }
+    }
+
+    // Verify employer exists
+    const { data: employer, error: employerError } = await supabase
+      .from("employers")
+      .select("id, email, company_name")
+      .eq("id", employerId)
+      .single()
+
+    if (employerError || !employer) {
+      console.error("[v0] Employer not found:", employerId)
+      return { success: false, error: "Employer not found" }
+    }
+
+    console.log("[v0] Employer found:", employer.email, "-", employer.company_name)
+
+    // Add credits to employer_credits table
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30) // Manual credits valid for 30 days
+
+    const { data: creditRecord, error: creditError } = await supabase
+      .from("employer_credits")
+      .insert({
+        employer_id: employerId,
+        plan_type: "classic", // Manual credits use classic plan type
+        credits_allocated: creditsToAdd,
+        credits_used: 0,
+        credits_remaining: creditsToAdd,
+        allocated_at: new Date().toISOString(),
+        expires_at: expiryDate.toISOString(),
+        is_expired: false,
+        billing_cycle: "manual",
+        payment_transaction_id: null, // No payment for manual credits
+      })
+      .select()
+      .single()
+
+    if (creditError) {
+      console.error("[v0] ❌ Error adding manual credits:", creditError.message)
+      return { success: false, error: `Failed to add credits: ${creditError.message}` }
+    }
+
+    console.log("[v0] ✓ Credits added successfully, record ID:", creditRecord?.id)
+
+    // Log manual credit assignment for audit trail
+    const { error: logError } = await supabase.from("manual_credit_assignments").insert({
+      employer_id: employerId,
+      credits_assigned: creditsToAdd,
+      reason: reason,
+      assigned_by: assignedBy,
+      credit_record_id: creditRecord.id,
+      assigned_at: new Date().toISOString(),
+    })
+
+    if (logError) {
+      console.error("[v0] Warning: Failed to log manual credit assignment:", logError.message)
+      // Don't fail the whole operation if logging fails
+    }
+
+    console.log("[v0] ========== MANUAL CREDIT ASSIGNMENT COMPLETE ==========")
+
+    return {
+      success: true,
+      creditId: creditRecord.id,
+      creditsAdded: creditsToAdd,
+      expiresAt: creditRecord.expires_at,
+      employer: {
+        email: employer.email,
+        companyName: employer.company_name,
+      },
+    }
+  } catch (error: any) {
+    console.error("[v0] Error assigning credits manually:", error)
+    return { success: false, error: error.message || "Failed to assign credits" }
+  }
+}
+
+export async function rejectEmployer(employerId: string, reason: string) {
+  try {
+    const supabase = createAdminClient()
+
+    console.log("[v0] Rejecting employer:", employerId, "reason:", reason)
+
+    const { data: employer, error } = await supabase
+      .from("employers")
+      .update({
+        approval_status: "rejected",
+        rejection_reason: reason,
+        approved_at: null,
+        approved_by: null,
+      })
+      .eq("id", employerId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Error rejecting employer:", error)
+      throw error
+    }
+
+    console.log("[v0] Employer rejected successfully")
+
+    // TODO: Send rejection email to employer
+
+    return { success: true, employer }
+  } catch (error) {
+    console.error("Error rejecting employer:", error)
+    return { success: false, error: "Failed to reject employer" }
+  }
+}
+
+export async function getPendingEmployers(page = 1, limit = 10, search = "") {
+  try {
+    const supabase = await createServerClient()
+    const offset = (page - 1) * limit
+
+    let query = supabase
+      .from("employers")
+      .select(
+        "id, email, company_name, contact_person, mobile_number, city, industry_type, created_at, otp_verified, approval_status, website, employee_count, year_established, description",
+        {
+          count: "exact",
+        },
+      )
+      .eq("approval_status", "pending")
+      .eq("otp_verified", true) // Only show employers who completed OTP verification
+
+    if (search) {
+      query = query.or(`company_name.ilike.%${search}%,email.ilike.%${search}%,contact_person.ilike.%${search}%`)
+    }
+
+    const {
+      data: employers,
+      count,
+      error,
+    } = await query.order("created_at", { ascending: false }).range(offset, offset + limit - 1)
+
+    if (error) throw error
+
+    const totalPages = Math.ceil((count || 0) / limit)
+
+    return {
+      success: true,
+      employers: employers || [],
+      pagination: {
+        total: count || 0,
+        page,
+        limit,
+        totalPages,
+      },
+    }
+  } catch (error) {
+    console.error("Error fetching pending employers:", error)
+    return {
+      success: false,
+      employers: [],
+      pagination: { total: 0, page: 1, limit: 10, totalPages: 0 },
+    }
   }
 }

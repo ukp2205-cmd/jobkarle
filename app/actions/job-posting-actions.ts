@@ -134,9 +134,14 @@ export async function createJobPosting(data: any) {
       urgent_hiring: data.urgentHiring !== undefined ? data.urgentHiring : data.urgent_hiring,
     }
 
-    // Set published_at if status is published
     if (insertData.status === "published") {
-      insertData.published_at = new Date().toISOString()
+      const now = new Date()
+      insertData.published_at = now.toISOString()
+
+      // Calculate expiry date as 30 days from now
+      const expiresAt = new Date(now)
+      expiresAt.setDate(expiresAt.getDate() + 30)
+      insertData.expires_at = expiresAt.toISOString()
     }
 
     console.log("[v0] [Request ID:", requestId, "] Inserting job into database...")
@@ -185,7 +190,18 @@ export async function createJobPosting(data: any) {
         }
       }
 
-      return { success: false, error: error.message }
+      let errorMessage = error.message
+
+      // Check for category constraint violation
+      if (error.message.includes("job_postings_category_check") || error.message.includes("category")) {
+        errorMessage = "Invalid job category. Please select either 'Classified' or 'Premium'."
+      }
+      // Check for duplicate job posting
+      else if (error.code === "23505") {
+        errorMessage = "A job posting with similar details already exists. Please modify your job details."
+      }
+
+      return { success: false, error: errorMessage }
     }
 
     console.log("[v0] [Request ID:", requestId, "] Job posting created successfully:", jobPosting.id)

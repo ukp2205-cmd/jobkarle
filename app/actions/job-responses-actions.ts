@@ -35,6 +35,10 @@ export interface JobApplication {
     industry: string
     department: string
     gender: string
+    resume_headline: string | null
+    languages_known: any | null // Changed from languages to languages_known
+    employment_history: any | null // Changed from previous_employment to employment_history
+    resume_url: string | null
   }
 }
 
@@ -183,7 +187,7 @@ export async function getJobApplications(
     const candidatesPromise = supabase
       .from("candidates")
       .select(
-        "id, full_name, email, mobile_number, current_job_title, company_name, skills_for_role, skills_you_know, preferred_locations, current_state, current_city, notice_period, availability_to_join, work_status, preferred_salary, annual_salary, total_experience_years, total_experience_months, highest_qualification, course, industry, department, gender",
+        "id, full_name, email, mobile_number, current_job_title, company_name, skills_for_role, skills_you_know, preferred_locations, current_state, current_city, notice_period, availability_to_join, work_status, preferred_salary, annual_salary, total_experience_years, total_experience_months, highest_qualification, course, industry, department, gender, resume_headline, languages_known, employment_history, resume_url",
       )
       .in("id", candidateIds)
 
@@ -245,6 +249,10 @@ export async function getJobApplications(
             industry: candidate.industry,
             department: candidate.department,
             gender: candidate.gender,
+            resume_headline: candidate.resume_headline || null,
+            languages_known: candidate.languages_known || null,
+            employment_history: candidate.employment_history || null,
+            resume_url: candidate.resume_url || null,
           },
         }
       })

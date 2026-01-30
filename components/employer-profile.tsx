@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -7,11 +9,16 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Briefcase, Edit, Save, X, ArrowLeft, CheckCircle, XCircle, Clock } from "lucide-react"
-import { getEmployerProfile, updateEmployerProfile } from "@/app/actions/employer-profile-actions"
+import { Calendar, Briefcase, Edit, Save, X, ArrowLeft, CheckCircle, XCircle, Clock, Upload } from "lucide-react"
+import {
+  getEmployerProfile,
+  updateEmployerProfile,
+  uploadEmployerProfileLogo,
+} from "@/app/actions/employer-profile-actions"
 import { useToast } from "@/components/ui/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import useSWR from "swr"
 
 interface EmployerProfileProps {
   employerId: string
@@ -52,6 +59,8 @@ interface JobStats {
   draft: number
 }
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
 export function EmployerProfile({ employerId }: EmployerProfileProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [jobStats, setJobStats] = useState<JobStats | null>(null)
@@ -59,9 +68,12 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editedProfile, setEditedProfile] = useState<Partial<ProfileData>>({})
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoError, setLogoError] = useState<string>("")
 
   const router = useRouter()
   const { toast } = useToast()
+  const { mutate } = useSWR("/api/employer-profile")
 
   useEffect(() => {
     loadProfile()
@@ -129,6 +141,130 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
     setIsEditing(false)
   }
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setLogoError("")
+
+    const validFormats = ["image/png", "image/jpeg", "image/jpg"]
+    if (!validFormats.includes(file.type)) {
+      const errorMsg = "Please upload PNG or JPG/JPEG format only"
+      setLogoError(errorMsg)
+      toast({
+        title: "Invalid File Format",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      e.target.value = ""
+      return
+    }
+
+    const maxSizeInBytes = 1048576 // 1MB
+    if (file.size > maxSizeInBytes) {
+      const errorMsg = `Logo size must be under 1MB. Your file is ${(file.size / 1048576).toFixed(2)}MB`
+      setLogoError(errorMsg)
+      toast({
+        title: "File Too Large",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      e.target.value = ""
+      return
+    }
+
+    const img = new Image()
+    img.src = URL.createObjectURL(file)
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          const width = img.width
+          const height = img.height
+          const aspectRatio = width / height
+
+          if (Math.abs(aspectRatio - 1) > 0.05) {
+            const errorMsg = `Logo must be square (1:1 aspect ratio). Your image is ${width}×${height}px`
+            setLogoError(errorMsg)
+            toast({
+              title: "Invalid Aspect Ratio",
+              description: errorMsg,
+              variant: "destructive",
+            })
+            e.target.value = ""
+            URL.revokeObjectURL(img.src)
+            reject(new Error(errorMsg))
+            return
+          }
+
+          if (width !== 200 || height !== 200) {
+            toast({
+              title: "Recommendation",
+              description: `Ideal logo size is 200×200 pixels. Your image is ${width}×${height}px. It will be resized to fit.`,
+            })
+          }
+
+          URL.revokeObjectURL(img.src)
+          resolve()
+        }
+
+        img.onerror = () => {
+          const errorMsg = "Failed to load image. Please try another file."
+          setLogoError(errorMsg)
+          toast({
+            title: "Invalid Image",
+            description: errorMsg,
+            variant: "destructive",
+          })
+          e.target.value = ""
+          URL.revokeObjectURL(img.src)
+          reject(new Error(errorMsg))
+        }
+      })
+    } catch (error) {
+      return
+    }
+
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const result = await uploadEmployerProfileLogo(formData)
+
+      if (result.success && result.url) {
+        setEditedProfile({ ...editedProfile, logo_url: result.url })
+        setProfile({ ...profile!, logo_url: result.url })
+        setLogoError("")
+        toast({
+          title: "Success",
+          description: "Logo uploaded successfully",
+        })
+        mutate(result.url)
+        router.refresh()
+      } else {
+        const errorMsg = result.message || "Failed to upload logo"
+        setLogoError(errorMsg)
+        toast({
+          title: "Error",
+          description: errorMsg,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Error uploading logo:", error)
+      const errorMsg = "An error occurred while uploading logo"
+      setLogoError(errorMsg)
+      toast({
+        title: "Error",
+        description: errorMsg,
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -193,16 +329,61 @@ export function EmployerProfile({ employerId }: EmployerProfileProps) {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold mb-4">
-                    {profile.company_name?.charAt(0) || "C"}
+                  <div className="relative inline-block">
+                    {profile?.logo_url ? (
+                      <img
+                        src={profile.logo_url || "/placeholder.svg"}
+                        alt={profile.company_name}
+                        className="w-[200px] h-[200px] mx-auto rounded-full object-cover border-4 border-white shadow-lg"
+                      />
+                    ) : (
+                      <div className="w-[200px] h-[200px] mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold border-4 border-white shadow-lg">
+                        {profile?.company_name?.charAt(0) || "C"}
+                      </div>
+                    )}
+                    {isEditing && (
+                      <label
+                        htmlFor="logo-upload"
+                        className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 cursor-pointer hover:bg-blue-700 shadow-lg"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <input
+                          id="logo-upload"
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    {uploadingLogo && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 rounded-full">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    )}
                   </div>
-                  <h2 className="text-xl font-bold text-gray-900">{profile.company_name}</h2>
-                  <p className="text-sm text-gray-600 mt-1">{profile.contact_person}</p>
-                  <p className="text-sm text-gray-500">{profile.designation}</p>
+                  {logoError && (
+                    <div className="mt-3 text-sm text-red-600 font-medium bg-red-50 border border-red-200 rounded-md p-2">
+                      {logoError}
+                    </div>
+                  )}
+                  <h2 className="text-xl font-bold text-gray-900 mt-4">{profile?.company_name}</h2>
+                  <p className="text-sm text-gray-600 mt-1">{profile?.contact_person}</p>
+                  <p className="text-sm text-gray-500">{profile?.designation}</p>
+                  {isEditing && (
+                    <div className="text-xs text-gray-500 mt-2 space-y-1">
+                      <p className="font-medium">Logo Requirements:</p>
+                      <p>• Size: 200×200 pixels (ideal)</p>
+                      <p>• Aspect Ratio: 1:1 (square)</p>
+                      <p>• Format: PNG or JPG</p>
+                      <p>• Max Size: 1MB</p>
+                    </div>
+                  )}
                   <div className="mt-4 pt-4 border-t">
                     <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
                       <Calendar className="h-4 w-4" />
-                      <span>Member since {new Date(profile.created_at).toLocaleDateString()}</span>
+                      <span>Member since {profile && new Date(profile.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>

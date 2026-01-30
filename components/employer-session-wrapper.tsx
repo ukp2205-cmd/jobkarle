@@ -15,8 +15,8 @@ export function EmployerSessionWrapper({ children }: EmployerSessionWrapperProps
   const router = useRouter()
 
   const { showWarning, secondsRemaining, extendSession } = useSessionTimeout({
-    timeoutMs: 60 * 1000, // 1 minute for testing (change to 15 * 60 * 1000 for production: 15 minutes)
-    warningMs: 10 * 1000, // 10 seconds warning (change to 2 * 60 * 1000 for production: 2 minutes)
+    timeoutMs: 15 * 60 * 1000, // 15 minutes (900,000 ms)
+    warningMs: 0, // 0 seconds - immediate logout without warning
     onTimeout: async () => {
       await logoutEmployer()
       router.push("/employer/login?timeout=true")

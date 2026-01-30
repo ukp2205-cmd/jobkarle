@@ -1,39 +1,117 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { verifyPayment } from "@/app/actions/payment-actions"
 import { createAdminClient } from "@/lib/supabase/admin"
+import crypto from "crypto"
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = body
 
-    console.log("[v0] Cashfree callback received - Order ID:", body.data?.order?.order_id)
+    console.log("[v0] ========== PAYMENT VERIFICATION STARTED ==========")
+    console.log("[v0] Razorpay Order ID:", razorpay_order_id)
+    console.log("[v0] Razorpay Payment ID:", razorpay_payment_id)
+    console.log("[v0] Our Order ID:", orderId)
 
-    // Extract payment details from Cashfree response
-    const paymentResponse = {
-      orderId: body.data?.order?.order_id,
-      orderAmount: body.data?.order?.order_amount,
-      referenceId: body.data?.payment?.cf_payment_id,
-      paymentStatus: body.data?.payment?.payment_status,
-      paymentMethod: body.data?.payment?.payment_method,
-      rawResponse: body,
+    // Verify signature
+    const keySecret = process.env.RAZORPAY_KEY_SECRET
+    if (!keySecret) {
+      console.error("[v0] RAZORPAY_KEY_SECRET not configured")
+      return NextResponse.json({ success: false, message: "Payment gateway not configured" }, { status: 500 })
     }
 
-    const result = await verifyPayment(paymentResponse)
+    const generatedSignature = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex")
 
-    // Redirect based on payment status
-    if (result.success) {
-      return NextResponse.redirect(new URL(`/employer/payment/success?txnid=${paymentResponse.orderId}`, request.url))
-    } else {
-      return NextResponse.redirect(
-        new URL(
-          `/employer/payment/failure?txnid=${paymentResponse.orderId}&message=${encodeURIComponent(result.message)}`,
-          request.url,
-        ),
-      )
+    console.log("[v0] Signature comparison - Received:", razorpay_signature.substring(0, 10) + "...")
+    console.log("[v0] Signature comparison - Generated:", generatedSignature.substring(0, 10) + "...")
+
+    if (generatedSignature !== razorpay_signature) {
+      console.error("[v0] ❌ Signature verification FAILED")
+      return NextResponse.json({ success: false, message: "Payment signature verification failed" }, { status: 400 })
     }
+
+    console.log("[v0] ✓ Signature verified successfully")
+
+    // Update transaction status in database
+    const supabase = createAdminClient()
+
+    const { data: transaction, error: txError } = await supabase
+      .from("payment_transactions")
+      .select("*")
+      .eq("transaction_id", orderId)
+      .single()
+
+    if (txError || !transaction) {
+      console.error("[v0] Transaction not found for order ID:", orderId)
+      console.error("[v0] Database error:", txError)
+      return NextResponse.json({ success: false, message: "Transaction not found" }, { status: 404 })
+    }
+    
+    // Get credits from response_data (stored during payment creation)
+    const creditsToAllocate = transaction.response_data?.credits || 0
+    console.log("[v0] Transaction found:", transaction.id, "Plan:", transaction.plan_type, "Credits:", creditsToAllocate)
+
+    // Update transaction status
+    const { error: updateError } = await supabase
+      .from("payment_transactions")
+      .update({
+        status: "success",
+        payment_id: razorpay_payment_id,
+        response_data: {
+          ...transaction.response_data,
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", transaction.id)
+
+    if (updateError) {
+      console.error("[v0] Error updating transaction:", updateError)
+      return NextResponse.json({ success: false, message: "Failed to update transaction" }, { status: 500 })
+    }
+
+    // Add credits to employer
+    const expiryDate = new Date()
+    expiryDate.setDate(expiryDate.getDate() + 30) // Credits valid for 30 days
+
+    console.log("[v0] Adding credits - Employer:", transaction.employer_id, "Credits:", creditsToAllocate, "Plan:", transaction.plan_type)
+
+    const { data: creditRecord, error: creditsError } = await supabase.from("employer_credits").insert({
+      employer_id: transaction.employer_id,
+      credits_allocated: creditsToAllocate,
+      credits_used: 0,
+      credits_remaining: creditsToAllocate,
+      plan_type: transaction.plan_type,
+      billing_cycle: transaction.billing_cycle || "monthly",
+      allocated_at: new Date().toISOString(),
+      payment_transaction_id: transaction.id,
+      is_expired: false,
+      expires_at: expiryDate.toISOString(),
+    }).select()
+
+    if (creditsError) {
+      console.error("[v0] ❌ Error adding credits:", creditsError.message)
+      console.error("[v0] Full error:", creditsError)
+      return NextResponse.json({ success: false, message: `Failed to add credits: ${creditsError.message}` }, { status: 500 })
+    }
+    
+    console.log("[v0] ✓ Credits added successfully, record ID:", creditRecord?.[0]?.id)
+
+    console.log("[v0] ✓ Payment verified and credits added successfully")
+    console.log("[v0] ========== PAYMENT VERIFICATION COMPLETED ==========")
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Payment verified successfully",
+      credits_added: creditsToAllocate
+    })
   } catch (error: any) {
-    console.error("[v0] Payment verification API error:", error)
-    return NextResponse.redirect(new URL("/employer/payment/failure?message=Verification+error", request.url))
+    console.error("[v0] Error in payment verification:", error)
+    return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 })
   }
 }
 

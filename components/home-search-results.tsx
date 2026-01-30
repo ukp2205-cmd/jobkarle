@@ -11,12 +11,14 @@ import {
   ChevronUp,
   SlidersHorizontal,
   X,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { searchJobsWithElastic } from "@/app/actions/elastic-search-actions"
 import Link from "next/link"
+import { getTimeAgo } from "@/lib/time-utils"
 
 type SearchParams = {
   skills: string[]
@@ -32,6 +34,7 @@ type HomeSearchResultsProps = {
 export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsProps) {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
 
   const [filters, setFilters] = useState({
@@ -42,6 +45,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     maxSalary: 50,
     employmentTypes: [] as string[],
     workModes: [] as string[],
+    datePosted: "all" as "24h" | "7d" | "30d" | "all",
   })
   const [expandedSections, setExpandedSections] = useState({
     location: true,
@@ -49,6 +53,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     salary: true,
     employmentType: true,
     workMode: true,
+    datePosted: true,
   })
 
   useEffect(() => {
@@ -57,67 +62,69 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
 
   const loadJobs = async () => {
     setLoading(true)
+    setError(null)
 
-    const query = searchParams.skills.filter(Boolean).join(" ")
+    try {
+      const query = searchParams.skills.filter(Boolean).join(" ")
 
-    console.log("[v0] === Home Search Component ===")
-    console.log("[v0] Search query:", query, "Skills array:", searchParams.skills)
-    console.log("[v0] Location filter:", filters.locations)
+      console.log("[v0] === Home Search Component ===")
+      console.log("[v0] Search query:", query, "Skills array:", searchParams.skills)
+      console.log("[v0] Location filter:", filters.locations)
 
-    // Parse experience if provided
-    const expMatch = searchParams.experience.match(/\d+/)
-    const experience = expMatch ? Number.parseInt(expMatch[0]) : undefined
+      // Parse experience if provided
+      const expMatch = searchParams.experience.match(/\d+/)
+      const experience = expMatch ? Number.parseInt(expMatch[0]) : undefined
 
-    const searchFilters: any = {}
+      const searchFilters: any = {}
 
-    // Add location filter
-    if (filters.locations.length > 0) {
-      searchFilters.city = filters.locations.join(",")
+      // Add location filter
+      if (filters.locations.length > 0) {
+        searchFilters.city = filters.locations.join(",")
+      }
+
+      // Add experience filter
+      if (experience !== undefined) {
+        searchFilters.min_experience = experience
+        searchFilters.max_experience = experience + 5
+      } else if (filters.minExperience > 0 || filters.maxExperience < 30) {
+        searchFilters.min_experience = filters.minExperience
+        searchFilters.max_experience = filters.maxExperience
+      }
+
+      // Add salary filter
+      if (filters.minSalary > 0 || filters.maxSalary < 50) {
+        searchFilters.min_salary = filters.minSalary * 100000 // Convert LPA to rupees
+        searchFilters.max_salary = filters.maxSalary * 100000
+      }
+
+      // Add employment type filter (Note: Elasticsearch doesn't support this yet)
+      if (filters.employmentTypes.length > 0) {
+        searchFilters.employment_type = filters.employmentTypes[0]
+      }
+
+      // Add work mode filter (Note: Elasticsearch doesn't support this yet)
+      if (filters.workModes.length > 0) {
+        searchFilters.work_mode = filters.workModes[0]
+      }
+
+      // Add date posted filter
+      if (filters.datePosted !== "all") {
+        searchFilters.date_posted = filters.datePosted
+      }
+
+      console.log("[v0] Elasticsearch search filters:", searchFilters)
+
+      const results = await searchJobsWithElastic(query, searchFilters)
+      const jobsArray = results?.jobs || []
+      console.log("[v0] Search results received:", jobsArray.length)
+
+      setJobs(jobsArray)
+    } catch (err) {
+      console.error("[v0] Error loading jobs:", err)
+      setError("Failed to load job results. Please try again.")
+    } finally {
+      setLoading(false)
     }
-
-    // Add experience filter
-    if (experience !== undefined) {
-      searchFilters.min_experience = experience
-      searchFilters.max_experience = experience + 5
-    } else if (filters.minExperience > 0 || filters.maxExperience < 30) {
-      searchFilters.min_experience = filters.minExperience
-      searchFilters.max_experience = filters.maxExperience
-    }
-
-    // Add salary filter
-    if (filters.minSalary > 0 || filters.maxSalary < 50) {
-      searchFilters.min_salary = filters.minSalary * 100000 // Convert LPA to rupees
-      searchFilters.max_salary = filters.maxSalary * 100000
-    }
-
-    // Add employment type filter (Note: Elasticsearch doesn't support this yet)
-    if (filters.employmentTypes.length > 0) {
-      searchFilters.employment_type = filters.employmentTypes[0]
-    }
-
-    // Add work mode filter (Note: Elasticsearch doesn't support this yet)
-    if (filters.workModes.length > 0) {
-      searchFilters.work_mode = filters.workModes[0]
-    }
-
-    console.log("[v0] Elasticsearch search filters:", searchFilters)
-
-    const result = await searchJobsWithElastic(query, searchFilters)
-
-    console.log("[v0] Search result:", {
-      success: result.success,
-      source: result.source,
-      jobsCount: result.jobs?.length || 0,
-      error: result.error,
-    })
-
-    if (result.success) {
-      setJobs(result.jobs || [])
-    } else {
-      console.error("[v0] ✗ Search failed:", result.error)
-      setJobs([])
-    }
-    setLoading(false)
   }
 
   const toggleLocation = (location: string) => {
@@ -145,6 +152,13 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
     }))
   }
 
+  const toggleDatePosted = (datePosted: "24h" | "7d" | "30d" | "all") => {
+    setFilters((prev) => ({
+      ...prev,
+      datePosted,
+    }))
+  }
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }))
   }
@@ -152,6 +166,20 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
   const availableLocations = ["Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", "Chennai"]
   const employmentTypes = ["Full-time", "Part-time", "Contract", "Internship"]
   const workModes = ["Office", "Hybrid", "Remote"]
+  const datePostedOptions = ["24h", "7d", "30d", "all"]
+
+  const clearFilters = () => {
+    setFilters({
+      locations: [],
+      minExperience: 0,
+      maxExperience: 30,
+      minSalary: 0,
+      maxSalary: 50,
+      employmentTypes: [],
+      workModes: [],
+      datePosted: "all",
+    })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -352,6 +380,54 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 )}
               </div>
 
+              {/* Date Posted Filter */}
+              <div className="border-b pb-4">
+                <button
+                  type="button"
+                  onClick={() => toggleSection("datePosted")}
+                  className="flex items-center justify-between w-full text-sm font-medium mb-2"
+                >
+                  Date Posted
+                  {expandedSections.datePosted ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                {expandedSections.datePosted && (
+                  <div className="space-y-2 mt-2 ml-1">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "24h"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "24h" }))}
+                      />
+                      <span className="text-gray-700">Last 24 hours</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "7d"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "7d" }))}
+                      />
+                      <span className="text-gray-700">Last 7 days</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "30d"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "30d" }))}
+                      />
+                      <span className="text-gray-700">Last 30 days</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={filters.datePosted === "all"}
+                        onCheckedChange={() => setFilters((prev) => ({ ...prev, datePosted: "all" }))}
+                      />
+                      <span className="text-gray-700">All time</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={() => {
                   loadJobs()
@@ -366,16 +442,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
 
           {/* Results */}
           <main className="flex-1 min-w-0">
-            <div className="mb-4">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                {loading ? "Searching..." : `${jobs.length} jobs found`}
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
-                {searchParams.skills.length > 0 && `Search: ${searchParams.skills.join(", ")}`}
-                {searchParams.experience && ` • Experience: ${searchParams.experience}`}
-                {searchParams.location && ` • Location: ${searchParams.location}`}
-              </p>
-            </div>
+            {error && (
+              <div className="text-center py-12">
+                <p className="text-red-500 mb-4">{error}</p>
+                <Button onClick={() => loadJobs()}>Try Again</Button>
+              </div>
+            )}
+            {!error && (
+              <div className="mb-4">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+                  {loading ? "Searching..." : `${jobs.length} jobs found`}
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
+                  {searchParams.skills.length > 0 && `Search: ${searchParams.skills.join(", ")}`}
+                  {searchParams.experience && ` • Experience: ${searchParams.experience}`}
+                  {searchParams.location && ` • Location: ${searchParams.location}`}
+                  {filters.datePosted !== "all" && ` • Date Posted: ${filters.datePosted}`}
+                </p>
+              </div>
+            )}
 
             {loading ? (
               <div className="space-y-4">
@@ -388,12 +473,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 ))}
               </div>
             ) : jobs.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-sm p-8 sm:p-12 text-center">
-                <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">No jobs found</h3>
-                <p className="text-sm text-gray-600 mb-4">Try adjusting your search criteria or filters</p>
-                <Button variant="outline" onClick={onBack}>
-                  Back to Search
+              <div className="text-center py-12 sm:py-20 bg-white rounded-lg border border-gray-200 px-4">
+                <Search className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">
+                  {filters.datePosted === "24h" && "No jobs posted in the last 24 hours"}
+                  {filters.datePosted === "7d" && "No jobs posted in the last 7 days"}
+                  {filters.datePosted === "30d" && "No jobs posted in the last 30 days"}
+                  {filters.datePosted === "all" && "No jobs found"}
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
+                  {filters.datePosted !== "all"
+                    ? "Try selecting a different time period or adjusting your filters"
+                    : "Try adjusting your search terms or filters"}
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={clearFilters}
+                  className="text-xs sm:text-sm h-9 sm:h-10 bg-transparent"
+                >
+                  Clear Filters
                 </Button>
               </div>
             ) : (
@@ -401,8 +499,49 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                 {jobs.map((job) => (
                   <div
                     key={job.id}
-                    className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow relative"
+                    className={`bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow relative ${
+                      job.category === "premium" ? "border-blue-200" : ""
+                    }`}
                   >
+                    {job.category === "premium" && (
+                      <div className="absolute left-0 top-0 z-[5]">
+                        <div className="relative">
+                          {/* Corner triangle background */}
+                            <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
+                              <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientHome)" />
+                            <defs>
+                              <linearGradient id="cornerGradientHome" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#93C5FD" />
+                                <stop offset="100%" stopColor="#60A5FA" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                            <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+                              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
+                              <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientHome)" />
+                              <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                              <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                              <defs>
+                                <linearGradient
+                                  id="goldDiamondGradientHome"
+                                  x1="10"
+                                  y1="1"
+                                  x2="10"
+                                  y2="19"
+                                  gradientUnits="userSpaceOnUse"
+                                >
+                                  <stop offset="0%" stopColor="#FEF3C7" />
+                                  <stop offset="30%" stopColor="#FCD34D" />
+                                  <stop offset="70%" stopColor="#F59E0B" />
+                                  <stop offset="100%" stopColor="#D97706" />
+                                </linearGradient>
+                              </defs>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {job.category === "premium" && job.urgent_hiring && (
                       <div className="absolute top-0 right-0 bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg z-10">
                         URGENT HIRING
@@ -413,29 +552,15 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start gap-3 mb-3">
-                            {job.company_logo_url ? (
-                              <img
-                                src={job.company_logo_url || "/placeholder.svg"}
-                                alt={`${job.company_name} logo`}
-                                className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                              />
-                            ) : (
-                              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                                <svg
-                                  className="w-6 h-6 text-white"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                  />
-                                </svg>
-                              </div>
-                            )}
+                            <img
+                              src={
+                                job.company_logo_url ||
+                                job.employers?.logo_url ||
+                                "/jobkarle-logo.png"
+                               || "/placeholder.svg"}
+                              alt={`${job.company_name} logo`}
+                              className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
                               <Link href={`/candidate/jobs/${job.id}`} className="block group">
                                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words group-hover:text-[#0277bd] transition-colors cursor-pointer">
@@ -445,7 +570,7 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                               <p className="text-sm text-gray-600 mb-3 break-words">{job.company_name}</p>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-4">
+                          <div className="flex flex-wrap gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600 mb-3">
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                               {(job.job_locations || []).join(", ") || "Not specified"}
@@ -459,6 +584,25 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                               {job.min_salary || 0}L - {job.max_salary || 0}L
                             </span>
                           </div>
+                          {job.required_skills && job.required_skills.length > 0 && (
+                            <div className="mb-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                {job.required_skills.slice(0, 5).map((skill: string, index: number) => (
+                                  <span
+                                    key={index}
+                                    className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200"
+                                  >
+                                    {skill}
+                                  </span>
+                                ))}
+                                {job.required_skills.length > 5 && (
+                                  <span className="px-2 py-1 bg-gray-50 text-gray-700 text-xs rounded border border-gray-200">
+                                    +{job.required_skills.length - 5} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded">
                               {job.employment_type}
@@ -469,17 +613,27 @@ export function HomeSearchResults({ searchParams, onBack }: HomeSearchResultsPro
                           </div>
                         </div>
                       </div>
-                      <div className="mt-4 flex flex-col sm:flex-row gap-2">
-                        <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
-                          <Button size="sm" variant="outline" className="w-full bg-transparent">
-                            View Details
-                          </Button>
-                        </Link>
-                        <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
-                          <Button size="sm" className="w-full bg-[#0277bd] hover:bg-[#0277bd]/90">
-                            Apply Now
-                          </Button>
-                        </Link>
+                      <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 order-2 sm:order-1">
+                          {job.created_at && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500">
+                              <Clock className="w-3 h-3 flex-shrink-0" />
+                              {getTimeAgo(job.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-2 order-1 sm:order-2">
+                          <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
+                            <Button size="sm" variant="outline" className="w-full bg-transparent">
+                              View Details
+                            </Button>
+                          </Link>
+                          <Link href={`/candidate/jobs/${job.id}`} className="flex-1 sm:flex-none">
+                            <Button size="sm" className="w-full bg-[#0277bd] hover:bg-[#0277bd]/90">
+                              Apply Now
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   </div>

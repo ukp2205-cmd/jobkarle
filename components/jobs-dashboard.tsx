@@ -21,6 +21,7 @@ import {
   Eye,
   X,
   RotateCcw,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -56,6 +57,9 @@ interface Job {
   new_responses: number
   shortlisted: number
   expires_at?: string // Added for expiry
+  company_name?: string // Added for share
+  min_experience?: number // Added for share
+  max_experience?: number // Added for share
 }
 
 interface Filters {
@@ -67,12 +71,14 @@ interface JobsDashboardProps {
   employerId: string
   employerName?: string
   companyName?: string
+  logoUrl?: string | null
 }
 
-export default function JobsDashboard({
+function JobsDashboard({
   employerId,
   employerName = "Employer",
   companyName = "Company",
+  logoUrl,
 }: JobsDashboardProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
@@ -117,6 +123,30 @@ export default function JobsDashboard({
     console.log("[v0] EmployerId type:", typeof employerId)
     console.log("[v0] EmployerId is valid:", employerId && employerId.length > 0)
   }, [employerId])
+
+  // Check for payment success and show notification
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search)
+      const paymentSuccess = urlParams.get("payment_success")
+      const creditsAdded = urlParams.get("credits_added")
+
+      if (paymentSuccess === "true" && creditsAdded) {
+        console.log("[v0] Payment successful! Credits added:", creditsAdded)
+        toast({
+          title: "Payment Successful!",
+          description: `${creditsAdded} credits have been added to your account.`,
+          duration: 5000,
+        })
+        
+        // Remove query parameters from URL without reload
+        window.history.replaceState({}, "", "/employer/dashboard")
+        
+        // Reload credits to show updated balance
+        loadCredits()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     loadJobs()
@@ -236,6 +266,11 @@ export default function JobsDashboard({
   const handleRepostJob = async (jobId: string) => {
     if (!employerId) return
 
+    const job = jobs.find((j) => j.id === jobId)
+    if (!job) return
+
+    const creditsNeeded = job.category === "premium" ? 2 : 1
+
     setRepostLoading(true)
     try {
       const result = await repostJob(jobId, employerId)
@@ -243,22 +278,24 @@ export default function JobsDashboard({
       if (result.success) {
         toast({
           title: "Job Reposted Successfully",
-          description: "2 credits have been deducted. The job is now active for 30 days.",
+          description: `${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} have been deducted. The job is now active for 30 days.`,
         })
+        await loadJobs()
+        await loadCredits()
         setRepostDialogOpen(false)
         setJobToRepost(null)
-        await Promise.all([loadJobs(), loadCredits()])
       } else {
         toast({
-          title: "Repost Failed",
-          description: result.error || "Failed to repost job",
+          title: "Failed to Repost Job",
+          description: result.error || "An error occurred",
           variant: "destructive",
         })
       }
     } catch (error) {
+      console.error("[v0] Error reposting job:", error)
       toast({
         title: "Error",
-        description: "An error occurred while reposting the job",
+        description: "An unexpected error occurred",
         variant: "destructive",
       })
     } finally {
@@ -281,7 +318,14 @@ export default function JobsDashboard({
 
     const jobUrl = `${window.location.origin}/jobs/${shareModalJob.id}`
     const jobTitle = shareModalJob.job_title
-    const shareText = `Check out this job opportunity: ${jobTitle}`
+    const location = shareModalJob.location
+    const company = shareModalJob.company_name || companyName
+    const experience = shareModalJob.min_experience !== undefined && shareModalJob.max_experience !== undefined
+      ? `${shareModalJob.min_experience} to ${shareModalJob.max_experience} years of experience`
+      : ""
+    
+    // Format: Job Title - Location - Company Name - Experience
+    const shareText = `${jobTitle} - ${location} - ${company}${experience ? ` - ${experience}` : ""}`
 
     let shareUrl = ""
 
@@ -347,110 +391,75 @@ export default function JobsDashboard({
     })}`
   }
 
-  // Helper to determine if a job can be reposted
-  const canRepostJob = (job: any) => {
-    // Can only repost closed, expired, or inactive jobs (not deleted or published)
-    if (job.status === "deleted" || job.status === "published") {
-      return false
+  const getDaysUntilExpiry = (expiresAt?: string) => {
+    if (!expiresAt) return null
+
+    const expiryDate = new Date(expiresAt)
+    const now = new Date()
+    const diffTime = expiryDate.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 0) {
+      return "Expired"
+    } else if (diffDays === 0) {
+      return "Expires today"
+    } else if (diffDays === 1) {
+      return "Expires in 1 day"
+    } else {
+      return `Expires in ${diffDays} days`
     }
+  }
 
-    // Check if job is expired
-    const isExpired = job.expires_at && new Date(job.expires_at) < new Date()
+  const canRefreshJob = (job: any) => {
+    return job.status === "published"
+  }
 
-    return job.status === "closed" || isExpired || job.status === "draft"
+  const canRepostJob = (job: any) => {
+    const now = new Date()
+    const expiresAt = job.expires_at ? new Date(job.expires_at) : null
+    const isExpired = expiresAt ? now > expiresAt : false
+
+    return job.status === "closed" || job.status === "expired" || isExpired
   }
 
   const getCategoryBadge = (category: string) => {
     if (category === "premium") {
       return (
-        <div className="absolute -left-2 -top-3.5 z-20">
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-lg"
-          >
-            {/* Main diamond body with blue gradient */}
-            <path
-              d="M12 2L2 7L12 22L22 7L12 2Z"
-              fill="url(#blueDiamondGradient)"
-              stroke="url(#blueStroke)"
-              strokeWidth="0.5"
-            />
-
-            {/* Diamond facets for depth and realism */}
-            <path d="M12 2L7 7H17L12 2Z" fill="rgba(59, 130, 246, 0.4)" stroke="none" />
-            <path d="M7 7L2 7L12 22L7 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
-            <path d="M17 7L22 7L12 22L17 7Z" fill="rgba(37, 99, 235, 0.5)" stroke="none" />
-            <path d="M12 7L12 22" stroke="rgba(29, 78, 216, 0.3)" strokeWidth="0.5" />
-
-            {/* White highlight for sparkle effect on diamond */}
-            <ellipse cx="10" cy="5" rx="2.5" ry="2" fill="white" opacity="0.9" />
-            <circle cx="10" cy="5" r="1.2" fill="white" opacity="1" />
-            <circle cx="14" cy="8" r="0.8" fill="white" opacity="0.7" />
-
-            {/* Animated gold sparkles around diamond */}
-            <g className="animate-pulse" style={{ animationDuration: "2s" }}>
-              {/* Top right large gold sparkle */}
-              <path
-                d="M20 3L20.8 5.2L23 6L20.8 6.8L20 9L19.2 6.8L17 6L19.2 5.2Z"
-                fill="url(#sparkleGold1)"
-                opacity="0.95"
-              />
-              {/* Bottom left gold sparkle */}
-              <path
-                d="M4 17L4.6 18.8L6.5 19.5L4.6 20.2L4 22L3.4 20.2L1.5 19.5L3.4 18.8Z"
-                fill="url(#sparkleGold2)"
-                opacity="0.9"
-              />
-              {/* Top left small gold sparkle */}
-              <path d="M5.5 1.5L5.9 2.7L7 3.1L5.9 3.5L5.5 4.7L5.1 3.5L4 3.1L5.1 2.7Z" fill="#FEF3C7" opacity="0.85" />
-              {/* Right side gold sparkle */}
-              <path
-                d="M21.5 12L21.8 13L22.8 13.3L21.8 13.6L21.5 14.6L21.2 13.6L20.2 13.3L21.2 13Z"
-                fill="#FDE68A"
-                opacity="0.8"
-              />
-            </g>
-
-            {/* Additional subtle shimmer gold sparkles */}
-            <g className="animate-pulse" style={{ animationDuration: "3s", animationDelay: "0.5s" }}>
-              <circle cx="8" cy="10" r="0.5" fill="#FEF3C7" opacity="0.7" />
-              <circle cx="16" cy="13" r="0.5" fill="#FDE68A" opacity="0.7" />
-              <circle cx="11" cy="15" r="0.4" fill="#FBBF24" opacity="0.6" />
-            </g>
-
-            <defs>
-              {/* Blue gradient for diamond */}
-              <linearGradient id="blueDiamondGradient" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#93C5FD" />
-                <stop offset="30%" stopColor="#60A5FA" />
-                <stop offset="60%" stopColor="#3B82F6" />
-                <stop offset="100%" stopColor="#2563EB" />
-              </linearGradient>
-
-              {/* Blue stroke for definition */}
-              <linearGradient id="blueStroke" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#2563EB" />
-                <stop offset="100%" stopColor="#1D4ED8" />
-              </linearGradient>
-
-              {/* Gold sparkle gradients */}
-              <radialGradient id="sparkleGold1">
-                <stop offset="0%" stopColor="#FEF3C7" />
-                <stop offset="50%" stopColor="#FCD34D" />
-                <stop offset="100%" stopColor="#FBBF24" />
-              </radialGradient>
-
-              <radialGradient id="sparkleGold2">
-                <stop offset="0%" stopColor="#FFFBEB" />
-                <stop offset="50%" stopColor="#FDE68A" />
-                <stop offset="100%" stopColor="#FCD34D" />
-              </radialGradient>
-            </defs>
-          </svg>
+        <div className="absolute left-0 top-0 z-20">
+          <div className="relative">
+            {/* Corner triangle background */}
+            <svg width="24" height="24" viewBox="0 0 48 48" className="drop-shadow-lg sm:w-12 sm:h-12">
+              <path d="M 0 0 L 48 0 L 0 48 Z" fill="url(#cornerGradientEmployer)" />
+              <defs>
+                <linearGradient id="cornerGradientEmployer" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#93C5FD" />
+                  <stop offset="100%" stopColor="#60A5FA" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="sm:w-[25px] sm:h-[25px]">
+                <path d="M10 1L5 6L10 19L15 6L10 1Z" fill="url(#goldDiamondGradientEmployer)" />
+                <path d="M10 1L7 6H13L10 1Z" fill="#FEF3C7" opacity="0.9" />
+                <ellipse cx="9" cy="4" rx="2" ry="1.2" fill="white" opacity="0.95" />
+                <defs>
+                  <linearGradient
+                    id="goldDiamondGradientEmployer"
+                    x1="10"
+                    y1="1"
+                    x2="10"
+                    y2="19"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop offset="0%" stopColor="#FEF3C7" />
+                    <stop offset="30%" stopColor="#FCD34D" />
+                    <stop offset="70%" stopColor="#F59E0B" />
+                    <stop offset="100%" stopColor="#D97706" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </div>
         </div>
       )
     }
@@ -553,11 +562,19 @@ export default function JobsDashboard({
                   </button>
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-500" />
                 </div>
+                <Link
+                  href="/employer/search-candidates"
+                  className="flex items-center gap-1.5 px-2 md:px-4 py-2 md:py-3 text-xs md:text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-t-md transition-colors"
+                >
+                  <Users className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                  <span className="hidden sm:inline">Search Candidates</span>
+                  <span className="sm:hidden">Search</span>
+                </Link>
               </nav>
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="relative w-24 sm:w-40 md:w-64">
+              <div className="relative w-20 sm:w-32 md:w-48">
                 <Search className="absolute left-2 md:left-3 top-1/2 -translate-y-1/2 h-3 md:h-4 w-3 md:w-4 text-gray-400" />
                 <input
                   type="text"
@@ -584,7 +601,15 @@ export default function JobsDashboard({
                   className="p-1.5 md:p-2 hover:bg-gray-100 rounded-full transition-colors"
                   aria-label="Profile menu"
                 >
-                  <User className="h-4 md:h-5 w-4 md:w-5 text-gray-600" />
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl || "/placeholder.svg"}
+                      alt={companyName}
+                      className="h-8 w-8 md:h-10 md:w-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <User className="h-4 md:h-5 w-4 md:w-5 text-gray-600" />
+                  )}
                 </button>
 
                 {showProfileDropdown && (
@@ -1066,9 +1091,11 @@ export default function JobsDashboard({
                             </div>
 
                             <div className="flex-1 min-w-0">
-                              <h3 className="text-sm md:text-base font-semibold text-gray-900 mb-1 break-words">
-                                {job.job_title}
-                              </h3>
+                              <Link href={`/employer/preview-job/${job.id}`} className="block group">
+                                <h3 className="text-sm md:text-base font-semibold text-gray-900 mb-1 break-words group-hover:text-blue-600 transition-colors cursor-pointer">
+                                  {job.job_title}
+                                </h3>
+                              </Link>
                               <p className="text-xs md:text-sm text-gray-600 mb-2 break-words">{job.location}</p>
 
                               {/* Job status badge and expiry date display */}
@@ -1128,31 +1155,63 @@ export default function JobsDashboard({
                               </button>
                             )}
 
-                            {/* Repost Button */}
-                            {canRepostJob(job) && availableCredits >= 2 ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  setJobToRepost(job.id)
-                                  setRepostDialogOpen(true)
-                                }}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                title="Repost Job (2 credits)"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            ) : canRepostJob(job) ? (
-                              <button
-                                type="button"
-                                disabled
-                                className="p-2 text-gray-400 cursor-not-allowed rounded-md"
-                                title="Insufficient credits. Need 2 credits to repost."
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-                            ) : null}
+                            {canRefreshJob(job) && !canRepostJob(job) && (
+                              <>
+                                {availableCredits >= (job.category === "premium" ? 2 : 1) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setJobToRepost(job.id)
+                                      setRepostDialogOpen(true)
+                                    }}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                                    title={`Refresh Job (${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""})`}
+                                  >
+                                    <RefreshCw className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="p-2 text-gray-400 cursor-not-allowed rounded-md"
+                                    title={`Insufficient credits. Need ${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""} to refresh.`}
+                                  >
+                                    <RefreshCw className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+                            {canRepostJob(job) && (
+                              <>
+                                {availableCredits >= (job.category === "premium" ? 2 : 1) ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      setJobToRepost(job.id)
+                                      setRepostDialogOpen(true)
+                                    }}
+                                    className="px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                                    title={`Repost Job (${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""})`}
+                                  >
+                                    Repost
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="px-3 py-1.5 text-sm text-gray-400 bg-gray-100 cursor-not-allowed rounded-md"
+                                    title={`Insufficient credits. Need ${job.category === "premium" ? 2 : 1} credit${job.category === "premium" ? "s" : ""} to repost.`}
+                                  >
+                                    Repost
+                                  </button>
+                                )}
+                              </>
+                            )}
 
                             {/* Edit button */}
                             <button
@@ -1196,6 +1255,11 @@ export default function JobsDashboard({
                           </div>
                         </div>
                       </div>
+                      {job.status !== "closed" && job.expires_at && getDaysUntilExpiry(job.expires_at) && (
+                        <div className="absolute bottom-2 right-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700 font-medium">
+                          {getDaysUntilExpiry(job.expires_at)}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -1252,9 +1316,18 @@ export default function JobsDashboard({
       <Dialog open={repostDialogOpen} onOpenChange={setRepostDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Repost Job</DialogTitle>
+            <DialogTitle>
+              {jobToRepost && canRefreshJob(jobs.find((j) => j.id === jobToRepost)) ? "Refresh Job" : "Repost Job"}
+            </DialogTitle>
             <DialogDescription>
-              Reposting this job will deduct 2 credits and make the job active for 30 days. Do you want to continue?
+              {jobToRepost &&
+                (() => {
+                  const job = jobs.find((j) => j.id === jobToRepost)
+                  if (!job) return null
+                  const creditsNeeded = job.category === "premium" ? 2 : 1
+                  const action = canRefreshJob(job) ? "Refreshing" : "Reposting"
+                  return `${action} this job will deduct ${creditsNeeded} credit${creditsNeeded > 1 ? "s" : ""} and make the job active for 30 days. Do you want to continue?`
+                })()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1269,7 +1342,7 @@ export default function JobsDashboard({
               Cancel
             </Button>
             <Button onClick={() => jobToRepost && handleRepostJob(jobToRepost)} disabled={repostLoading}>
-              {repostLoading ? "Reposting..." : "Confirm Repost"}
+              {repostLoading ? "Processing..." : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1278,4 +1351,5 @@ export default function JobsDashboard({
   )
 }
 
+export default JobsDashboard
 export { JobsDashboard }

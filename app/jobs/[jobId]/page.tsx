@@ -5,6 +5,50 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Home } from "lucide-react"
 import Link from "next/link"
+import type { Metadata } from "next"
+
+export async function generateMetadata({ params }: { params: Promise<{ jobId: string }> | { jobId: string } }): Promise<Metadata> {
+  try {
+    const resolvedParams = await Promise.resolve(params)
+    const { jobId } = resolvedParams
+    
+    const result = await getJobDetails(jobId, undefined)
+    
+    if (result.success && result.job) {
+      const job = result.job
+      const experience = job.min_experience !== undefined && job.max_experience !== undefined
+        ? `${job.min_experience} to ${job.max_experience} years of experience`
+        : ""
+      
+      const title = `${job.job_title} - ${job.location} - ${job.company_name}${experience ? ` - ${experience}` : ""}`
+      const description = job.description || `Apply for ${job.job_title} at ${job.company_name} in ${job.location}`
+      
+      return {
+        title: title,
+        description: description,
+        openGraph: {
+          title: title,
+          description: description,
+          type: "website",
+          url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://jobkarle.com'}/jobs/${jobId}`,
+          siteName: "JobKarle",
+        },
+        twitter: {
+          card: "summary_large_image",
+          title: title,
+          description: description,
+        },
+      }
+    }
+  } catch (error) {
+    console.error("[v0] Error generating metadata:", error)
+  }
+  
+  return {
+    title: "Job Details - JobKarle",
+    description: "Find your next opportunity on JobKarle",
+  }
+}
 
 export default async function PublicJobPage({ params }: { params: Promise<{ jobId: string }> | { jobId: string } }) {
   try {

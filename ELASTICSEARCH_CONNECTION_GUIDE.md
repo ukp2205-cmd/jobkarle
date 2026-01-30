@@ -17,18 +17,18 @@ You're seeing "Failed to fetch" error because `ELASTIC_URL=http://localhost:9200
 Use Elasticsearch only when running locally:
 
 1. **Start Elasticsearch locally:**
-   ```bash
+   \`\`\`bash
    # If using Docker:
    docker run -d -p 9200:9200 -e "discovery.type=single-node" elasticsearch:8.11.0
    
    # Or if installed directly:
    elasticsearch
-   ```
+   \`\`\`
 
 2. **Run Next.js locally:**
-   ```bash
+   \`\`\`bash
    npm run dev
-   ```
+   \`\`\`
 
 3. **Access at:** `http://localhost:3000`
 
@@ -45,9 +45,9 @@ For production deployment on Vercel, use a cloud Elasticsearch service:
 3. Create deployment
 4. Get the Cloud ID and create API key
 5. Update Vercel environment variables:
-   ```
+   \`\`\`
    ELASTIC_URL=https://your-deployment.es.us-central1.gcp.cloud.es.io:9243
-   ```
+   \`\`\`
 
 #### B. AWS OpenSearch
 
@@ -73,9 +73,9 @@ If you don't need Elasticsearch right now:
 ## Checking Connection
 
 Use the health check endpoint:
-```
+\`\`\`
 https://your-app.vercel.app/api/jobs/search/health
-```
+\`\`\`
 
 This will show:
 - Whether ELASTIC_URL is set

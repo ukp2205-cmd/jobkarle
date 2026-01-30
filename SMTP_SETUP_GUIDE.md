@@ -76,7 +76,7 @@ If you have a domain (e.g., jobkarle.com), you likely have email hosting. Here's
 3. Go to **Settings** > **Environment Variables**
 4. Add each variable:
 
-```
+\`\`\`
 SMTP_HOST=mail.jobkarle.com
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -84,7 +84,7 @@ SMTP_USER=noreply@jobkarle.com
 SMTP_PASSWORD=your_email_password_here
 SMTP_FROM_EMAIL=noreply@jobkarle.com
 SMTP_FROM_NAME=JobKarle
-```
+\`\`\`
 
 5. Click **Save** for each variable
 6. **Redeploy** your application for changes to take effect
@@ -132,18 +132,18 @@ After deploying, test the forgot password feature:
 Add these DNS records to improve email deliverability:
 
 ### SPF Record (TXT)
-```
+\`\`\`
 Host: @
 Type: TXT
 Value: v=spf1 a mx include:_spf.yourdomain.com ~all
-```
+\`\`\`
 
 ### DMARC Record (TXT)
-```
+\`\`\`
 Host: _dmarc
 Type: TXT
 Value: v=DMARC1; p=none; rua=mailto:admin@jobkarle.com
-```
+\`\`\`
 
 ## Alternative: Use a Transactional Email Service
 
